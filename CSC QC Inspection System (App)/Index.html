@@ -1,0 +1,47 @@
+<?!= include('Stylesheet'); ?>
+<?!= include('Combobox'); ?>
+<div id="app">
+  <nav id="sidenav">
+    <div class="brand">CSC QC Inspection System<small>Container Supply Co.</small></div>
+    <div class="nav-item active" data-view="home"><span class="icon">🏠</span> Home</div>
+    <div class="nav-item" data-view="dropfreeze"><span class="icon">🧊</span> Drop Freeze Test</div>
+    <div class="nav-item" data-view="inprocess"><span class="icon">📋</span> In-Process Inspection</div>
+    <div class="nav-item" data-view="metals"><span class="icon">⚙️</span> Metals Inspection</div>
+  </nav>
+  <main id="main">
+    <div class="view active" id="view-home"><?!= include('HomeDashboardView'); ?></div>
+    <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
+    <div class="view" id="view-inprocess"><?!= include('InProcessView'); ?></div>
+    <div class="view" id="view-metals"><?!= include('MetalsView'); ?></div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  var VIEWS = ['home', 'dropfreeze', 'inprocess', 'metals'];
+  var VIEWS_LOADED = {};
+
+  document.querySelectorAll('.nav-item').forEach(function (item) {
+    item.addEventListener('click', function () { showView(item.dataset.view); });
+  });
+
+  function showView(name) {
+    document.querySelectorAll('.nav-item').forEach(function (i) { i.classList.toggle('active', i.dataset.view === name); });
+    VIEWS.forEach(function (v) { document.getElementById('view-' + v).classList.toggle('active', v === name); });
+    if (!VIEWS_LOADED[name] && window['init_' + name]) { VIEWS_LOADED[name] = true; window['init_' + name](); }
+  }
+
+  var toastTimer;
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 4000);
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    VIEWS_LOADED.home = true;
+    if (window.init_home) init_home();
+  });
+</script>

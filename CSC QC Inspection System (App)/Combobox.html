@@ -1,0 +1,91 @@
+<style>
+  .combo { position: relative; }
+  .combo-list {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    max-height: 220px; overflow-y: auto; box-shadow: 0 6px 18px rgba(0,0,0,0.15); margin-top: 2px;
+  }
+  .combo-item { padding: 7px 10px; font-size: 13.5px; cursor: pointer; }
+  .combo-item .sub { color: var(--text-muted); font-size: 11.5px; }
+  .combo-item.active, .combo-item:hover { background: var(--series-1); color: #fff; }
+  .combo-item.active .sub, .combo-item:hover .sub { color: rgba(255,255,255,0.8); }
+  .combo-empty { padding: 8px 10px; font-size: 12.5px; color: var(--text-muted); }
+  input.combo-input.invalid { border-color: var(--critical); }
+</style>
+<script>
+  /**
+   * Turns a plain text input into a searchable combobox constrained to `items`.
+   * items: [{value, label, sublabel}]. Underlying value only updates via onSelect —
+   * free typing filters the list but never commits until a valid item is picked.
+   */
+  function initCombobox(inputEl, items, opts) {
+    opts = opts || {};
+    var wrap = inputEl.closest('.combo');
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'combo'; inputEl.parentNode.insertBefore(wrap, inputEl); wrap.appendChild(inputEl); }
+    var list = wrap.querySelector('.combo-list');
+    if (!list) { list = document.createElement('div'); list.className = 'combo-list hidden'; wrap.appendChild(list); }
+
+    var activeIdx = -1;
+    var filtered = [];
+
+    function render(query) {
+      var q = (query || '').toLowerCase();
+      filtered = items.filter(function (it) { return !q || it.label.toLowerCase().indexOf(q) >= 0; }).slice(0, 60);
+      activeIdx = -1;
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="combo-empty">No matches</div>';
+      } else {
+        list.innerHTML = filtered.map(function (it, i) {
+          return '<div class="combo-item" data-idx="' + i + '">' + esc(it.label) +
+            (it.sublabel ? '<div class="sub">' + esc(it.sublabel) + '</div>' : '') + '</div>';
+        }).join('');
+      }
+      list.classList.remove('hidden');
+    }
+
+    function close() { list.classList.add('hidden'); }
+
+    function commit(item) {
+      inputEl.value = item.label;
+      inputEl.classList.remove('invalid');
+      close();
+      if (opts.onSelect) opts.onSelect(item.value, item);
+    }
+
+    function checkValidOnBlur() {
+      var match = items.find(function (it) { return it.label === inputEl.value; });
+      inputEl.classList.toggle('invalid', inputEl.value !== '' && !match);
+      if (!match && opts.onInvalid) opts.onInvalid(inputEl.value);
+    }
+
+    inputEl.classList.add('combo-input');
+    inputEl.setAttribute('autocomplete', 'off');
+    inputEl.addEventListener('focus', function () { render(inputEl.value); });
+    inputEl.addEventListener('input', function () { render(inputEl.value); });
+    inputEl.addEventListener('blur', function () { setTimeout(function () { close(); checkValidOnBlur(); }, 150); });
+    inputEl.addEventListener('keydown', function (e) {
+      if (list.classList.contains('hidden') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { render(inputEl.value); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, filtered.length - 1); highlight(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (activeIdx >= 0 && filtered[activeIdx]) commit(filtered[activeIdx]); }
+      else if (e.key === 'Escape') { close(); }
+    });
+    list.addEventListener('mousedown', function (e) {
+      var el = e.target.closest('.combo-item');
+      if (!el) return;
+      e.preventDefault();
+      commit(filtered[parseInt(el.dataset.idx, 10)]);
+    });
+
+    function highlight() {
+      Array.prototype.forEach.call(list.querySelectorAll('.combo-item'), function (el, i) {
+        el.classList.toggle('active', i === activeIdx);
+      });
+    }
+
+    // Pre-fill if the input already has a value (e.g. re-rendering a line panel).
+    if (inputEl.value) checkValidOnBlur();
+  }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+</script>

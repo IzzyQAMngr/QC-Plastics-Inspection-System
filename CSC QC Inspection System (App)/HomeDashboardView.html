@@ -1,0 +1,71 @@
+<h1 class="page-title">Home</h1>
+<p class="page-sub">Live performance across all inspection systems.</p>
+<div id="home-loading" style="color:var(--text-muted);font-size:13px;">Loading dashboard…</div>
+<div id="home-content" class="hidden">
+
+  <section class="card">
+    <h2>🧊 Plastics — Drop Freeze Testing</h2>
+    <div class="tiles" id="df-tiles"></div>
+    <table class="qc-table">
+      <thead><tr><th>Tool Code</th><th>Tests</th><th>Fails</th></tr></thead>
+      <tbody id="df-table"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>📋 Plastics — In-Process Inspection</h2>
+    <div class="tiles" id="ip-tiles"></div>
+    <table class="qc-table">
+      <thead><tr><th>Mold</th><th>Fails (7d)</th></tr></thead>
+      <tbody id="ip-table"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>⚙️ Metals Inspection</h2>
+    <div class="placeholder-box">No Metals inspection data yet — this module is coming soon.</div>
+  </section>
+
+</div>
+
+<script>
+  function init_home() {
+    document.getElementById('home-loading').classList.remove('hidden');
+    document.getElementById('home-content').classList.add('hidden');
+    google.script.run
+      .withSuccessHandler(renderHome)
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getHomeDashboardData();
+  }
+
+  function homeTile(label, value, cls) {
+    return '<div class="tile"><div class="label">' + label + '</div><div class="value ' + (cls || '') + '">' + value + '</div></div>';
+  }
+
+  function renderHome(data) {
+    document.getElementById('home-loading').classList.add('hidden');
+    document.getElementById('home-content').classList.remove('hidden');
+
+    var df = data.dropFreeze;
+    document.getElementById('df-tiles').innerHTML = df.available ? [
+      homeTile('Total Records', df.totalRecords),
+      homeTile('Open', df.open, df.open > 0 ? 'warning' : ''),
+      homeTile('Pass Rate', (df.passRate !== null ? df.passRate + '%' : '—'), 'good'),
+      homeTile('Fails (7d)', df.failsThisWeek, df.failsThisWeek > 0 ? 'critical' : ''),
+    ].join('') : homeTile('No data yet', '—');
+    document.getElementById('df-table').innerHTML = (df.byToolCode || []).map(function (r) {
+      return '<tr><td>' + r.toolCode + '</td><td>' + r.total + '</td><td>' +
+        (r.fail > 0 ? '<span class="badge critical">' + r.fail + '</span>' : r.fail) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No records yet.</td></tr>';
+
+    var ip = data.inProcess;
+    document.getElementById('ip-tiles').innerHTML = ip.available ? [
+      homeTile('Total Inspections', ip.totalRecords),
+      homeTile('Dim. Pass Rate', (ip.dimPassRate !== null ? ip.dimPassRate + '%' : '—'), 'good'),
+      homeTile('Fails (7d)', ip.failsThisWeek, ip.failsThisWeek > 0 ? 'critical' : ''),
+    ].join('') : homeTile('No data yet', '—');
+    document.getElementById('ip-table').innerHTML = (ip.byMold || []).map(function (r) {
+      return '<tr><td>' + r.mold + '</td><td><span class="badge critical">' + r.fail + '</span></td></tr>';
+    }).join('') || '<tr><td colspan="2" style="color:var(--text-muted)">No fails recorded.</td></tr>';
+  }
+</script>

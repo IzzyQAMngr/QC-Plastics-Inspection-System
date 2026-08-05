@@ -1,0 +1,454 @@
+<h1 class="page-title">📋 In-Process Inspection</h1>
+<p class="page-sub">Fill in the Inspection Header once. Then work through each Line: pick its Mold once (Product Type & Description auto-fill) — that's the Line Batch — and a row is created automatically for every cavity. Fill in each row's measurements, switch lines any time, and submit everything together at the end.</p>
+
+<section class="card">
+  <h2>Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
+  <div class="field-row">
+    <div class="field"><label>Inspection Date</label><input type="date" id="ip-inspDate"></div>
+    <div class="field"><label>Inspection Time</label><input type="time" id="ip-inspTime"></div>
+    <div class="field"><label>Shift</label><select id="ip-shift"></select></div>
+    <div class="field"><label>Inspected By</label><select id="ip-inspector"></select></div>
+    <div class="field"><label>Shift Foreman</label><select id="ip-foreman"></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Existing Record #</label><input id="ip-record-id" placeholder="(assigned automatically on save)"></div>
+    <div class="field" style="align-self:end;"><button id="ip-new-btn" class="ghost">Start New Round</button></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Lines</h2>
+  <div class="line-tabs" id="ip-line-tabs"></div>
+</section>
+
+<section class="card">
+  <h2 id="ip-line-title">Line 1 — Line Batch</h2>
+  <div id="ip-line-panel-body"></div>
+</section>
+
+<section class="card">
+  <h2>Review &amp; Submit</h2>
+  <button id="ip-review-btn">Review All Lines</button>
+  <div id="ip-review-area" class="hidden" style="margin-top:14px;"></div>
+</section>
+
+<script>
+  var LINE_NUMBERS = [1,2,3,4,5,6,7,8,9,10];
+  var DIM_KEYS = ['weight','botThick','sw1','sw2','sw3','sw4','topDia','botDia','endPin','height','chimeAMin','chimeAMax','chimeBMin','chimeBMax'];
+  var DIM_LABELS = {
+    weight:'Weight (g)', botThick:'Bottom Thickness (in)', sw1:'SW1 - Top (in)', sw2:'SW2 - Bottom (in)',
+    sw3:'SW3 - Side Right (in)', sw4:'SW4 - Side Left (in)', topDia:'Top Diameter (in)', botDia:'Bottom Diameter (in)',
+    endPin:'End Pin Diameter (in)', height:'Height (in)', chimeAMin:'Chime A Min (in)', chimeAMax:'Chime A Max (in)',
+    chimeBMin:'Chime B Min (in)', chimeBMax:'Chime B Max (in)',
+  };
+  var CAVITY_FIELD_GROUPS = [
+    { title: null, fields: [
+      { key:'visual', label:'Visual', type:'text' },
+      { key:'dateCode', label:'Date Code', type:'select', optionsKey:'passFail' },
+      { key:'deltaL', label:'ΔL', type:'number' },
+      { key:'deltaA', label:'ΔA', type:'number' },
+    ]},
+    { title: null, fields: [
+      { key:'deltaB', label:'ΔB', type:'number' },
+      { key:'deltaE', label:'ΔE*ab', type:'number' },
+    ]},
+    { title: 'DIMENSIONAL', fields: DIM_KEYS.map(function (k) { return { key:k, label:DIM_LABELS[k], type:'number', spec:true }; }) },
+    { title: 'FUNCTIONAL', fields: [
+      { key:'nesting', label:'Nesting', type:'select', optionsKey:'passFail' },
+      { key:'coverFit', label:'Cover Fit', type:'select', optionsKey:'passFail' },
+      { key:'gaugeFit', label:'Gauge Fit', type:'select', optionsKey:'passFail' },
+    ]},
+  ];
+
+  var ipData = null;
+  var ipLines = {};
+  var ipActiveLine = 1;
+  var PASS_FAIL_OPTIONS = ['', 'Pass', 'Fail', 'N/A'];
+
+  function init_inprocess() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        ipData = data;
+        PASS_FAIL_OPTIONS = [''].concat(ipData.passFailOptions && ipData.passFailOptions.length ? ipData.passFailOptions : ['Pass', 'Fail', 'N/A']);
+        fillSelect('ip-shift', ipData.shifts);
+        fillSelect('ip-inspector', ipData.inspectors);
+        fillSelect('ip-foreman', ipData.foremen);
+        renderLineTabs();
+        renderLinePanel();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getInProcessFormData();
+  }
+
+  function fillSelect(id, values, placeholder) {
+    var el = document.getElementById(id); el.innerHTML = '';
+    el.appendChild(opt('', placeholder || '— select —'));
+    (values || []).forEach(function (v) { el.appendChild(opt(v)); });
+  }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+  function evalBound(value, bound) {
+    if (value === '' || value === null || value === undefined || isNaN(parseFloat(value))) return '';
+    var v = parseFloat(value);
+    if (bound && bound.lsl !== null && v < bound.lsl) return 'Fail';
+    if (bound && bound.usl !== null && v > bound.usl) return 'Fail';
+    return 'Pass';
+  }
+
+  function computeRowStatus(row, bounds) {
+    bounds = bounds || {};
+    var hasAny = false, failures = [];
+    if (row.dateCode) { hasAny = true; if (row.dateCode === 'Fail') failures.push('dateCode'); }
+    DIM_KEYS.forEach(function (k) {
+      if (row[k] !== '' && row[k] !== undefined && row[k] !== null) {
+        hasAny = true;
+        if (evalBound(row[k], bounds[k]) === 'Fail') failures.push(k);
+      }
+    });
+    var wallVals = ['sw1','sw2','sw3','sw4'].map(function (k) { return parseFloat(row[k]); });
+    if (wallVals.every(function (v) { return !isNaN(v); })) {
+      var swVar = Math.max.apply(null, wallVals) - Math.min.apply(null, wallVals);
+      if (swVar >= 0.005) failures.push('sw_var');
+    }
+    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k]) { hasAny = true; if (row[k] === 'Fail') failures.push(k); } });
+    if (!hasAny) return '';
+    return failures.length ? 'FAIL' : 'PASS';
+  }
+
+  function newCavityRow(cavity) {
+    var row = { cavity: cavity || '' };
+    ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit'].forEach(function (k) { row[k] = ''; });
+    DIM_KEYS.forEach(function (k) { row[k] = ''; });
+    return row;
+  }
+
+  function ensureLine(n) {
+    if (!ipLines[n]) {
+      ipLines[n] = {
+        product:'', mold:'', moldDescription:'', color:'', colorOptions:[], resinLot:'', pallet:'', sampleDate:'', sampleTime:'',
+        itemNo:'', itemDescription:'',
+        saveBatch:true, batchId:'', bounds:null, colorSpec:null, cavityRows:[],
+      };
+    }
+    return ipLines[n];
+  }
+
+  // ================= LINE TABS =================
+  function renderLineTabs() {
+    var wrap = document.getElementById('ip-line-tabs');
+    wrap.innerHTML = LINE_NUMBERS.map(function (n) {
+      var line = ipLines[n];
+      var hasData = line && line.cavityRows.length > 0;
+      var failCount = hasData ? line.cavityRows.filter(function (r) { return computeRowStatus(r, line.bounds) === 'FAIL'; }).length : 0;
+      var dot = hasData ? ('<span class="dot ' + (failCount > 0 ? 'critical' : 'good') + '"></span>') : '';
+      return '<button class="line-tab' + (n === ipActiveLine ? ' active' : '') + '" data-line="' + n + '">' + dot + 'Line ' + n + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-line]'), function (btn) {
+      btn.addEventListener('click', function () {
+        ipActiveLine = parseInt(btn.dataset.line, 10);
+        renderLineTabs();
+        renderLinePanel();
+      });
+    });
+  }
+
+  // ================= LINE PANEL (Line Batch + cavity rows) =================
+  function fieldHtml(f, value, bound) {
+    var input;
+    if (f.type === 'select') {
+      var opts = f.optionsKey === 'passFail' ? PASS_FAIL_OPTIONS : f.options;
+      input = '<select data-field="' + f.key + '">' + opts.map(function (o) {
+        return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>';
+      }).join('') + '</select>';
+    } else {
+      var oos = (f.spec && evalBound(value, bound) === 'Fail') ? ' oos' : '';
+      input = '<input type="' + (f.type === 'number' ? 'number" step="any' : 'text') + '" class="' + oos + '" data-field="' + f.key + '" value="' + esc(value) + '">';
+    }
+    var hint = (f.spec && bound && (bound.lsl !== null || bound.usl !== null))
+      ? '<div class="spec-hint">LSL ' + (bound.lsl === null ? '—' : bound.lsl) + ' / USL ' + (bound.usl === null ? '—' : bound.usl) + '</div>' : '';
+    return '<div class="field"><label>' + f.label + '</label>' + input + hint + '</div>';
+  }
+
+  function chunk(arr, size) {
+    var out = [];
+    for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }
+
+  function cavityRowHtml(idx, row, bounds) {
+    bounds = bounds || {};
+    var status = computeRowStatus(row, bounds);
+    var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
+    var body = CAVITY_FIELD_GROUPS.map(function (g) {
+      var rows = chunk(g.fields, 4).map(function (fs) {
+        return '<div class="field-row">' + fs.map(function (f) { return fieldHtml(f, row[f.key], bounds[f.key]); }).join('') + '</div>';
+      }).join('');
+      return (g.title ? '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">' + g.title + '</h3>' : '') + rows;
+    }).join('');
+    return '<div class="row-card" data-idx="' + idx + '">' +
+      '<div class="row-head"><div><strong>Cavity</strong> <input style="display:inline-block;width:90px;" data-field="cavity" value="' + esc(row.cavity) + '"></div>' +
+      '<div class="tag" data-badge-slot>' + badge + ' <button class="ghost" data-remove-row>Remove</button></div></div>' +
+      body + '</div>';
+  }
+
+  function renderLinePanel() {
+    var n = ipActiveLine;
+    var line = ensureLine(n);
+    document.getElementById('ip-line-title').textContent = 'Line ' + n + ' — Line Batch';
+
+    var openBatchOptions = (ipData.openBatches || []).map(function (b) {
+      return '<option value="' + esc(b.batchId) + '">' + esc(b.batchId) + ' — ' + esc(b.mold || b.line || '') + ' / Pallet ' + esc(b.pallet) + '</option>';
+    }).join('');
+
+    var html =
+      '<div class="field"><label>Load existing Batch into this line (optional)</label>' +
+      '<select id="lb-loadbatch"><option value="">— none —</option>' + openBatchOptions + '</select>' +
+      '<div class="spec-hint">Pulls Mold/Pallet/Resin Lot from a Batch already saved (e.g. by a Drop Freeze test on the same units).</div></div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>Mold</label><div class="combo"><input id="lb-mold" placeholder="Start typing to search…" value="' + esc(line.mold) + '"></div></div>' +
+        fieldSimple('lb-productType', 'Product Type', 'text', null, line.product, true) +
+        fieldSimple('lb-moldDescription', 'Mold Description', 'text', null, line.moldDescription, true) +
+        fieldSimple('lb-color', 'Color', 'select', line.colorOptions, line.color) +
+      '</div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>Item No.</label><div class="combo"><input id="lb-itemNo" placeholder="Start typing to search…" value="' + esc(line.itemNo) + '"></div></div>' +
+        fieldSimple('lb-itemDescription', 'Item Description', 'text', null, line.itemDescription, true) +
+        fieldSimple('lb-resinLot', 'LOT of Resin', 'text', null, line.resinLot) +
+        fieldSimple('lb-pallet', 'Pallet Sequence', 'text', null, line.pallet) +
+      '</div>' +
+      '<div class="field-row">' +
+        fieldSimple('lb-sampleDate', 'Sample Date', 'date', null, line.sampleDate) +
+        fieldSimple('lb-sampleTime', 'Sample Time', 'time', null, line.sampleTime) +
+      '</div>' +
+      '<div class="field"><label style="display:flex;align-items:center;gap:6px;">' +
+        '<input type="checkbox" id="lb-saveBatch" style="width:auto;"' + (line.saveBatch ? ' checked' : '') + '> ' +
+        'Save as shared Line Batch (so Drop Freeze can reuse it)</label></div>' +
+      '<div style="margin:10px 0;display:flex;gap:8px;">' +
+        '<button id="lb-regen-btn" class="ghost">🔄 Regenerate cavity rows from Master Register</button>' +
+        '<button id="lb-addrow-btn" class="ghost">+ Add Row Manually</button>' +
+      '</div>' +
+      '<div id="lb-cavity-rows">' +
+      (line.cavityRows.length
+        ? line.cavityRows.map(function (row, idx) { return cavityRowHtml(idx, row, line.bounds); }).join('')
+        : '<p class="spec-hint">No cavity rows yet — pick a Product + Mold above to auto-generate one row per cavity.</p>') +
+      '</div>';
+
+    document.getElementById('ip-line-panel-body').innerHTML = html;
+    wireLinePanelEvents();
+  }
+
+  function fieldSimple(id, label, type, options, value, readonly) {
+    var input;
+    if (type === 'select') {
+      input = '<select id="' + id + '"><option value="">— select —</option>' +
+        (options || []).map(function (o) { return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+    } else {
+      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value) + '"' + (readonly ? ' readonly' : '') + '>';
+    }
+    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
+  }
+
+  function wireLinePanelEvents() {
+    var n = ipActiveLine;
+
+    document.getElementById('lb-loadbatch').addEventListener('change', function (e) {
+      var batch = (ipData.openBatches || []).find(function (b) { return b.batchId === e.target.value; });
+      if (!batch) return;
+      var line = ensureLine(n);
+      line.pallet = batch.pallet || ''; line.resinLot = batch.resinLot || ''; line.batchId = batch.batchId;
+      var m = ipData.molds.find(function (x) { return x.moldId === batch.mold; });
+      line.mold = batch.mold || line.mold;
+      line.product = m ? m.productType : (batch.productType || line.product);
+      line.moldDescription = m ? m.description : line.moldDescription;
+      renderLinePanel();
+      if (line.mold) fetchMoldDependents(n, line.cavityRows.length === 0);
+    });
+
+    var moldItems = ipData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description + ' — ' + m.productType }; });
+    initCombobox(document.getElementById('lb-mold'), moldItems, {
+      onSelect: function (moldId, item) {
+        var m = ipData.molds.find(function (x) { return x.moldId === moldId; });
+        var line = ensureLine(n);
+        line.mold = moldId; line.product = m ? m.productType : ''; line.moldDescription = m ? m.description : '';
+        line.color = ''; line.colorOptions = [];
+        renderLinePanel();
+        fetchMoldDependents(n, false);
+      },
+      onInvalid: function () {
+        var line = ensureLine(n);
+        line.mold = ''; line.product = ''; line.moldDescription = ''; line.bounds = null;
+        document.getElementById('lb-productType').value = '';
+        document.getElementById('lb-moldDescription').value = '';
+      },
+    });
+
+    var itemItems = (ipData.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    initCombobox(document.getElementById('lb-itemNo'), itemItems, {
+      onSelect: function (itemNo, item) {
+        var line = ensureLine(n);
+        line.itemNo = itemNo; line.itemDescription = item.sublabel || '';
+        document.getElementById('lb-itemDescription').value = line.itemDescription;
+      },
+      onInvalid: function () { ensureLine(n).itemDescription = ''; document.getElementById('lb-itemDescription').value = ''; },
+    });
+
+    document.getElementById('lb-color').addEventListener('change', function (e) { ensureLine(n).color = e.target.value; });
+    ['resinLot','pallet','sampleDate','sampleTime'].forEach(function (key) {
+      document.getElementById('lb-' + key).addEventListener('input', function (e) { ensureLine(n)[key] = e.target.value; });
+    });
+    document.getElementById('lb-saveBatch').addEventListener('change', function (e) { ensureLine(n).saveBatch = e.target.checked; });
+    document.getElementById('lb-regen-btn').addEventListener('click', function () { fetchMoldDependents(n, true); });
+    document.getElementById('lb-addrow-btn').addEventListener('click', function () {
+      ensureLine(n).cavityRows.push(newCavityRow(''));
+      renderLinePanel();
+    });
+
+    var container = document.getElementById('lb-cavity-rows');
+    container.addEventListener('input', onCavityFieldChange);
+    container.addEventListener('change', onCavityFieldChange);
+    container.addEventListener('click', function (e) {
+      if (e.target.matches('[data-remove-row]')) {
+        var idx = parseInt(e.target.closest('.row-card').dataset.idx, 10);
+        ensureLine(n).cavityRows.splice(idx, 1);
+        renderLinePanel();
+        renderLineTabs();
+      }
+    });
+  }
+
+  function onCavityFieldChange(e) {
+    var field = e.target.dataset.field;
+    if (!field) return;
+    var n = ipActiveLine;
+    var line = ensureLine(n);
+    var idx = parseInt(e.target.closest('.row-card').dataset.idx, 10);
+    line.cavityRows[idx][field] = e.target.value;
+    if (DIM_KEYS.indexOf(field) >= 0) {
+      var bound = (line.bounds || {})[field];
+      e.target.classList.toggle('oos', evalBound(e.target.value, bound) === 'Fail');
+    }
+    var status = computeRowStatus(line.cavityRows[idx], line.bounds);
+    var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
+    var slot = e.target.closest('.row-card').querySelector('[data-badge-slot]');
+    if (slot) slot.innerHTML = badge + ' <button class="ghost" data-remove-row>Remove</button>';
+    renderLineTabs();
+  }
+
+  function fetchMoldDependents(n, regenerateRows) {
+    var line = ensureLine(n);
+    if (!line.mold) { renderLinePanel(); return; }
+
+    google.script.run
+      .withSuccessHandler(function (colors) { line.colorOptions = colors; renderLinePanel(); })
+      .withFailureHandler(function () {})
+      .getColorOptions(line.mold);
+
+    google.script.run
+      .withSuccessHandler(function (specInfo) {
+        line.bounds = specInfo.bounds;
+        line.colorSpec = specInfo.colorSpec;
+        if (regenerateRows || line.cavityRows.length === 0) {
+          var cavities = specInfo.cavityIds && specInfo.cavityIds.length ? specInfo.cavityIds : [''];
+          line.cavityRows = cavities.map(function (cav) { return newCavityRow(cav); });
+        }
+        renderLinePanel();
+        renderLineTabs();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getSpecsForRow(line.product, line.mold, line.color, line.itemNo);
+  }
+
+  // ================= REVIEW & SUBMIT =================
+  document.getElementById('ip-review-btn').addEventListener('click', renderReview);
+
+  function activeLinesWithData() {
+    return LINE_NUMBERS.filter(function (n) { return ipLines[n] && ipLines[n].mold && ipLines[n].cavityRows.length > 0; });
+  }
+
+  function renderReview() {
+    var area = document.getElementById('ip-review-area');
+    area.classList.remove('hidden');
+    var lines = activeLinesWithData();
+    if (lines.length === 0) { area.innerHTML = '<p class="spec-hint">No lines have data yet.</p>'; return; }
+
+    area.innerHTML = lines.map(function (n) {
+      var line = ipLines[n];
+      var rowsHtml = line.cavityRows.map(function (r) {
+        var status = computeRowStatus(r, line.bounds);
+        var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
+        return '<tr><td>' + esc(r.cavity) + '</td><td>' + badge + '</td></tr>';
+      }).join('');
+      return '<div class="row-card"><div class="row-head"><strong>Line ' + n + '</strong>' +
+        '<span class="tag">' + esc(line.product) + ' / ' + esc(line.mold) + (line.color ? ' / ' + esc(line.color) : '') +
+        (line.itemNo ? ' / Item ' + esc(line.itemNo) : '') +
+        ' — Pallet ' + esc(line.pallet || '—') + ' / Lot ' + esc(line.resinLot || '—') + '</span></div>' +
+        '<table class="qc-table"><thead><tr><th>Cavity</th><th>Status</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+    }).join('') +
+      '<button class="primary" id="ip-submit-all-btn" style="margin-top:10px;">Submit All (' + lines.length + ' line' + (lines.length > 1 ? 's' : '') + ')</button>';
+
+    document.getElementById('ip-submit-all-btn').addEventListener('click', submitAllLines);
+  }
+
+  function submitAllLines() {
+    var lines = activeLinesWithData();
+    if (lines.length === 0) return;
+    var header = {
+      inspDate: document.getElementById('ip-inspDate').value,
+      inspTime: document.getElementById('ip-inspTime').value,
+      shift: document.getElementById('ip-shift').value,
+      inspector: document.getElementById('ip-inspector').value,
+      foreman: document.getElementById('ip-foreman').value,
+    };
+    ensureBatchesThenSubmit(lines, 0, header);
+  }
+
+  function ensureBatchesThenSubmit(lines, i, header) {
+    if (i >= lines.length) { doSubmitAll(lines, header); return; }
+    var n = lines[i];
+    var line = ipLines[n];
+    if (line.saveBatch && !line.batchId) {
+      google.script.run
+        .withSuccessHandler(function (batch) { line.batchId = batch.batchId; ensureBatchesThenSubmit(lines, i + 1, header); })
+        .withFailureHandler(function (err) { showToast('Batch save failed for Line ' + n + ': ' + err.message, true); ensureBatchesThenSubmit(lines, i + 1, header); })
+        .createBatch({ line: String(n), shift: header.shift, productType: line.product, mold: line.mold, pallet: line.pallet, resinLot: line.resinLot, inspector: header.inspector });
+    } else {
+      ensureBatchesThenSubmit(lines, i + 1, header);
+    }
+  }
+
+  function doSubmitAll(lines, header) {
+    var rows = [];
+    lines.forEach(function (n) {
+      var line = ipLines[n];
+      line.cavityRows.forEach(function (r) {
+        var row = {};
+        for (var k in r) row[k] = r[k];
+        row.line = String(n); row.product = line.product; row.mold = line.mold; row.color = line.color;
+        row.resinLot = line.resinLot; row.pallet = line.pallet; row.sampleDate = line.sampleDate; row.sampleTime = line.sampleTime;
+        row.batchId = line.batchId || ''; row.itemNo = line.itemNo || ''; row.itemDescription = line.itemDescription || '';
+        rows.push(row);
+      });
+    });
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('ip-record-id').value = result.recordId;
+        showToast('Saved ' + result.savedRows + ' measurement(s) to ' + result.recordId + ' across ' + lines.length + ' line(s).' +
+          (result.failCount ? ' ' + result.failCount + ' sample(s) failed.' : ''));
+        ipLines = {}; ipActiveLine = 1;
+        renderLineTabs(); renderLinePanel();
+        document.getElementById('ip-review-area').classList.add('hidden');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .saveInProcessInspection({ recordId: document.getElementById('ip-record-id').value || null, header: header, rows: rows });
+  }
+
+  document.getElementById('ip-new-btn').addEventListener('click', function () {
+    document.getElementById('ip-record-id').value = '';
+    ipLines = {}; ipActiveLine = 1;
+    renderLineTabs(); renderLinePanel();
+    document.getElementById('ip-review-area').classList.add('hidden');
+    showToast('Started a new round.');
+  });
+</script>

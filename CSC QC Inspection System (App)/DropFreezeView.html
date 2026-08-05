@@ -1,0 +1,241 @@
+<h1 class="page-title">🧊 Drop Freeze Test</h1>
+<p class="page-sub">Log drop freeze test results by packet. Lines sharing a Batch inherit Line #, Shift, Pallet, Tool Code and Resin ID automatically — no re-keying.</p>
+
+<section class="card">
+  <h2>Edit an existing open packet</h2>
+  <div class="field-row">
+    <div class="field"><label>Open Record #</label><select id="df-load-select"><option value="">— select —</option></select></div>
+    <div class="field" style="align-self:end;"><button id="df-load-btn">Load</button></div>
+    <div class="field" style="align-self:end;"><button id="df-new-btn" class="ghost">Start New Packet</button></div>
+  </div>
+  <div class="field"><label>Current Record #</label><input id="df-record-key" readonly placeholder="(assigned automatically on save)"></div>
+</section>
+
+<section class="card">
+  <h2>Add Line Item</h2>
+  <div class="field">
+    <label>Batch</label>
+    <select id="df-batch-select"><option value="">— New batch —</option></select>
+    <div class="spec-hint">Pick an existing batch to reuse Line #, Shift, Pallet, Tool Code &amp; Resin ID from a prior In-Process inspection on the same units.</div>
+  </div>
+  <div class="field" id="df-save-batch-field">
+    <label style="display:flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="df-save-batch-chk" checked style="width:auto;"> Save these fields as a new shared Batch (so a later In-Process inspection can reuse them)
+    </label>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Line #</label><input id="df-lineNum"></div>
+    <div class="field"><label>Shift</label><select id="df-shift"></select></div>
+    <div class="field"><label>Pallet #</label><input id="df-pallet"></div>
+    <div class="field"><label>Tool Code</label><div class="combo"><input id="df-toolCode" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Product Type</label><input id="df-productType" readonly></div>
+    <div class="field"><label>Resin ID</label><input id="df-resinId"></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Item No.</label><div class="combo"><input id="df-itemNo" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="df-itemDescription" readonly></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Date / Time of Mfg</label><input type="datetime-local" id="df-dateOfMfg"></div>
+    <div class="field"><label>Cavity</label><input id="df-cavity"></div>
+    <div class="field"><label>Test Type</label><input id="df-testType" placeholder="e.g. Drop Freeze"></div>
+    <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="df-testDate"></div>
+    <div class="field"><label>Tested By</label><select id="df-testedBy"></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp"></div>
+    <div class="field"><label>Drop Height (in)</label><input type="number" step="any" id="df-dropHeight"></div>
+    <div class="field"><label>Drop Angle</label><select id="df-dropAngle"></select></div>
+    <div class="field"><label>Pass / Fail Result</label>
+      <select id="df-result"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select>
+    </div>
+  </div>
+  <div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc"></div>
+  <div class="field"><label>Other Notes / Observations</label><input id="df-notes"></div>
+  <button class="primary" id="df-add-line-btn">+ Add Line</button>
+</section>
+
+<section class="card">
+  <h2>Pending Lines</h2>
+  <table class="qc-table">
+    <thead><tr><th>#</th><th>Tool Code</th><th>Cavity</th><th>Test Type</th><th>Result</th><th>Batch</th><th></th></tr></thead>
+    <tbody id="df-lines-body"><tr><td colspan="7" style="color:var(--text-muted)">No lines added yet.</td></tr></tbody>
+  </table>
+  <div style="margin-top:14px;"><button class="primary" id="df-save-btn">Save Packet</button></div>
+</section>
+
+<script>
+  var dfData = null;
+  var dfLines = [];
+  var dfLoadedRecordKey = '';
+
+  function init_dropfreeze() {
+    google.script.run
+      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getDropFreezeFormData();
+  }
+
+  function opt(value, label) {
+    var o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; return o;
+  }
+
+  function renderDfFormOptions() {
+    var moldItems = dfData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description }; });
+    initCombobox(document.getElementById('df-toolCode'), moldItems, {
+      onSelect: function (moldId, item) {
+        var m = dfData.molds.find(function (x) { return x.moldId === moldId; });
+        document.getElementById('df-productType').value = m ? m.productType : '';
+      },
+      onInvalid: function () { document.getElementById('df-productType').value = ''; },
+    });
+
+    var itemItems = dfData.itemList.map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    initCombobox(document.getElementById('df-itemNo'), itemItems, {
+      onSelect: function (itemNo, item) { document.getElementById('df-itemDescription').value = item.sublabel || ''; },
+      onInvalid: function () { document.getElementById('df-itemDescription').value = ''; },
+    });
+
+    var angle = document.getElementById('df-dropAngle'); angle.innerHTML = '';
+    angle.appendChild(opt('', '— select —'));
+    dfData.angleOptions.forEach(function (a) { angle.appendChild(opt(a)); });
+
+    var testedBy = document.getElementById('df-testedBy'); testedBy.innerHTML = '';
+    testedBy.appendChild(opt('', '— select —'));
+    dfData.inspectors.forEach(function (p) { testedBy.appendChild(opt(p)); });
+
+    var shift = document.getElementById('df-shift'); shift.innerHTML = '';
+    shift.appendChild(opt('', '— select —'));
+    dfData.shifts.forEach(function (s) { shift.appendChild(opt(s)); });
+
+    var batchSel = document.getElementById('df-batch-select'); batchSel.innerHTML = '';
+    batchSel.appendChild(opt('', '— New batch —'));
+    dfData.openBatches.forEach(function (b) {
+      batchSel.appendChild(opt(b.batchId, b.batchId + ' — ' + (b.mold || b.line || '') + ' / Pallet ' + b.pallet));
+    });
+
+    var loadSel = document.getElementById('df-load-select'); loadSel.innerHTML = '';
+    loadSel.appendChild(opt('', '— select —'));
+    dfData.openRecords.forEach(function (r) { loadSel.appendChild(opt(r)); });
+  }
+
+  document.getElementById('df-batch-select').addEventListener('change', function (e) {
+    var batchId = e.target.value;
+    document.getElementById('df-save-batch-field').classList.toggle('hidden', !!batchId);
+    var batch = dfData.openBatches.find(function (b) { return b.batchId === batchId; });
+    if (!batch) return;
+    document.getElementById('df-lineNum').value = batch.line || '';
+    document.getElementById('df-shift').value = batch.shift || '';
+    document.getElementById('df-pallet').value = batch.pallet || '';
+    document.getElementById('df-toolCode').value = batch.mold || '';
+    document.getElementById('df-resinId').value = batch.resinLot || '';
+    var m = dfData.molds.find(function (x) { return x.moldId === batch.mold; });
+    document.getElementById('df-productType').value = m ? m.productType : '';
+  });
+
+  document.getElementById('df-add-line-btn').addEventListener('click', function () {
+    var toolCode = document.getElementById('df-toolCode').value;
+    if (!toolCode) { showToast('Tool Code is required.', true); return; }
+    var batchId = document.getElementById('df-batch-select').value;
+
+    function finishAdd(resolvedBatchId) {
+      dfLines.push({
+        lineNum: document.getElementById('df-lineNum').value,
+        shift: document.getElementById('df-shift').value,
+        pallet: document.getElementById('df-pallet').value,
+        toolCode: toolCode,
+        productType: document.getElementById('df-productType').value,
+        resinId: document.getElementById('df-resinId').value,
+        itemNo: document.getElementById('df-itemNo').value,
+        itemDescription: document.getElementById('df-itemDescription').value,
+        dateOfMfg: document.getElementById('df-dateOfMfg').value,
+        cavity: document.getElementById('df-cavity').value,
+        testType: document.getElementById('df-testType').value,
+        testDate: document.getElementById('df-testDate').value,
+        testedBy: document.getElementById('df-testedBy').value,
+        freezerTemp: document.getElementById('df-freezerTemp').value,
+        dropHeight: document.getElementById('df-dropHeight').value,
+        dropAngle: document.getElementById('df-dropAngle').value,
+        result: document.getElementById('df-result').value,
+        failureDescription: document.getElementById('df-failDesc').value,
+        notes: document.getElementById('df-notes').value,
+        batchId: resolvedBatchId || '',
+      });
+      renderDfLines();
+      ['df-cavity', 'df-testType', 'df-failDesc', 'df-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
+      document.getElementById('df-result').value = '';
+    }
+
+    if (batchId) { finishAdd(batchId); return; }
+
+    // No existing batch chosen — optionally create one from the fields just entered so
+    // a later In-Process (or repeat Drop Freeze) line can reuse them.
+    if (document.getElementById('df-save-batch-chk').checked) {
+      google.script.run.withSuccessHandler(function (batch) { finishAdd(batch.batchId); dfData.openBatches.push(batch); renderDfFormOptions(); })
+        .withFailureHandler(function (err) { showToast(err.message, true); finishAdd(''); })
+        .createBatch({
+          line: document.getElementById('df-lineNum').value,
+          shift: document.getElementById('df-shift').value,
+          pallet: document.getElementById('df-pallet').value,
+          mold: toolCode,
+          resinLot: document.getElementById('df-resinId').value,
+          inspector: document.getElementById('df-testedBy').value,
+        });
+    } else {
+      finishAdd('');
+    }
+  });
+
+  function renderDfLines() {
+    var body = document.getElementById('df-lines-body');
+    if (dfLines.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">No lines added yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = dfLines.map(function (li, i) {
+      var badge = li.result === 'Fail' ? '<span class="badge critical">Fail</span>'
+        : li.result === 'Pass' ? '<span class="badge good">Pass</span>'
+        : (li.result || '—');
+      return '<tr><td>' + (i + 1) + '</td><td>' + li.toolCode + '</td><td>' + (li.cavity || '') + '</td><td>' +
+        (li.testType || '') + '</td><td>' + badge + '</td><td>' + (li.batchId || '—') + '</td>' +
+        '<td><button class="ghost" onclick="removeDfLine(' + i + ')">Remove</button></td></tr>';
+    }).join('');
+  }
+
+  function removeDfLine(i) { dfLines.splice(i, 1); renderDfLines(); }
+
+  document.getElementById('df-new-btn').addEventListener('click', function () {
+    dfLoadedRecordKey = '';
+    dfLines = [];
+    document.getElementById('df-record-key').value = '';
+    renderDfLines();
+    showToast('Started a new packet.');
+  });
+
+  document.getElementById('df-load-btn').addEventListener('click', function () {
+    var recordKey = document.getElementById('df-load-select').value;
+    if (!recordKey) return;
+    google.script.run
+      .withSuccessHandler(function (packet) {
+        dfLoadedRecordKey = packet.recordKey;
+        document.getElementById('df-record-key').value = packet.recordKey;
+        dfLines = packet.lineItems;
+        renderDfLines();
+        showToast('Loaded ' + packet.lineItems.length + ' line item(s).');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .loadDropFreezeRecord(recordKey);
+  });
+
+  document.getElementById('df-save-btn').addEventListener('click', function () {
+    if (dfLines.length === 0) { showToast('Add at least one line item first.', true); return; }
+    google.script.run
+      .withSuccessHandler(function (result) {
+        dfLoadedRecordKey = result.recordKey;
+        document.getElementById('df-record-key').value = result.recordKey;
+        showToast('Saved ' + result.savedCount + ' line item(s) to ' + result.recordKey + '.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .saveDropFreezePacket({ recordKey: dfLoadedRecordKey || null, lineItems: dfLines });
+  });
+</script>
