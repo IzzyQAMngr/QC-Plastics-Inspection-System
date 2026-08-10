@@ -4,22 +4,31 @@
   <nav id="sidenav">
     <div class="brand">CSC QC Inspection System<small>Container Supply Co.</small></div>
     <div class="nav-item active" data-view="home"><span class="icon">🏠</span> Home</div>
-    <div class="nav-item" data-view="dropfreeze"><span class="icon">🧊</span> Drop Freeze Test</div>
+    <div class="nav-item" data-view="addrun"><span class="icon">🏭</span> Add Run</div>
+    <div class="nav-item" data-view="startup"><span class="icon">✅</span> Start-Up Verification</div>
+    <div class="nav-item" data-view="devapproval"><span class="icon">🔏</span> Deviation Approvals</div>
     <div class="nav-item" data-view="inprocess"><span class="icon">📋</span> In-Process Inspection</div>
+    <div class="nav-item" data-view="dropfreeze"><span class="icon">🧊</span> Drop Freeze Test</div>
+    <div class="nav-item" data-view="testdatareview"><span class="icon">🔍</span> Test Data Review</div>
     <div class="nav-item" data-view="metals"><span class="icon">⚙️</span> Metals Inspection</div>
   </nav>
   <main id="main">
     <div class="view active" id="view-home"><?!= include('HomeDashboardView'); ?></div>
+    <div class="view" id="view-addrun"><?!= include('AddRunView'); ?></div>
+    <div class="view" id="view-startup"><?!= include('StartUpVerificationView'); ?></div>
+    <div class="view" id="view-devapproval"><?!= include('DeviationApprovalView'); ?></div>
     <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
     <div class="view" id="view-inprocess"><?!= include('InProcessView'); ?></div>
+    <div class="view" id="view-testdatareview"><?!= include('TestDataReviewView'); ?></div>
     <div class="view" id="view-metals"><?!= include('MetalsView'); ?></div>
   </main>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-  var VIEWS = ['home', 'dropfreeze', 'inprocess', 'metals'];
+  var VIEWS = ['home', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metals'];
   var VIEWS_LOADED = {};
+  window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 
   document.querySelectorAll('.nav-item').forEach(function (item) {
     item.addEventListener('click', function () { showView(item.dataset.view); });
@@ -43,5 +52,8 @@
   window.addEventListener('DOMContentLoaded', function () {
     VIEWS_LOADED.home = true;
     if (window.init_home) init_home();
+    if (window.INITIAL_PARAMS && VIEWS.indexOf(window.INITIAL_PARAMS.view) >= 0) {
+      showView(window.INITIAL_PARAMS.view);
+    }
   });
 </script>

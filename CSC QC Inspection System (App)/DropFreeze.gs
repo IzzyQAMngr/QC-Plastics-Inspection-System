@@ -1,7 +1,10 @@
 /*************************************************************
  * PLASTICS DROP FREEZE TESTING — web app backend
- * Ported from legacy Plastics Drop Freeze Testing/Code.js
- * (submitQCCore_ / loadQcPacketFromDropdownCore_ / sendFailEmailsForSavedPacket_)
+ * Rebuilt 2026-08-07 onto the Run picker (Runs replace the old ad-hoc Batch concept —
+ * see Shared.gs) and the Spec Register's Functional Tests tab (auto-fills the test
+ * method/acceptance criteria/sample size once a Drop Freeze test is picked for the
+ * Run's mold; scoped to Test Name containing "Drop Freeze" — the register's other
+ * fit tests, e.g. Gauge Fit/Cover Fit/Handle Fit, aren't in scope for this module).
  *************************************************************/
 
 function getDropFreezeLogSheet_() {
@@ -13,14 +16,18 @@ function getDropFreezeLogSheet_() {
 /** Called by DropFreezeView.html on load to populate dropdowns. */
 function getDropFreezeFormData() {
   return {
-    molds: getAllMoldsList_(),         // [{moldId, description, productType}] — Tool Code combobox; picking one auto-fills description+productType client-side
-    itemList: getItemList_(),          // [{itemNo, description}] — Item No. combobox
+    runs: getActiveRuns_(),
     angleOptions: DROP_ANGLE_OPTIONS,
     inspectors: getInspectorList_(),
     shifts: getShiftList_(),
-    openBatches: getOpenBatches_(),
     openRecords: listOpenDropFreezeRecords_(),
   };
+}
+
+/** Drop Freeze test protocols defined for a mold — drives the read-only reference box
+ *  (method/acceptance criteria/sample size/equipment) once a test is picked. */
+function getDropFreezeTestsForMold(moldId) {
+  return getFunctionalTestsForMold_(moldId, 'Drop Freeze');
 }
 
 function listOpenDropFreezeRecords_() {
@@ -46,14 +53,14 @@ function loadDropFreezeRecord(recordKey) {
   if (rows.length === 0) throw new Error('No line items found for record: ' + recordKey);
   return {
     recordKey: recordKey,
-    batchId: rows[0].BatchID || '',
     lineItems: rows.map(r => ({
-      lineNum: r.LineNum, dateOfMfg: r.DateOfMfg, shift: r.Shift, pallet: r.Pallet,
-      toolCode: r.ToolCode, productType: r.ProductType, cavity: r.Cavity, resinId: r.ResinID, testType: r.TestType,
-      itemNo: r.ItemNo, itemDescription: r.ItemDescription,
-      testDate: r.TestDate, testedBy: r.TestedBy, freezerTemp: r.FreezerTemp,
-      dropHeight: r.DropHeight, dropAngle: r.DropAngle, result: r.Result,
-      failureDescription: r.FailureDescription, notes: r.Notes, batchId: r.BatchID,
+      runId: r['Run ID'] || '', line: r['Line #'] || '', shift: r.Shift || '', customerName: r['Customer Name'] || '',
+      moldId: r['Mold ID'] || '', moldDescription: r['Mold Description'] || '', productType: r['Product Type'] || '',
+      resinLot: r['Resin Lot'] || '', itemNo: r['Item No'] || '', itemDescription: r['Item Description'] || '',
+      cavity: r.Cavity || '', testName: r['Test Name'] || '',
+      dateOfMfg: dateToStr_(r.DateOfMfg), testDate: dateToStr_(r.TestDate), testedBy: r.TestedBy || '',
+      freezerTemp: r.FreezerTemp, dropHeight: r.DropHeight, dropAngle: r.DropAngle || '', result: r.Result || '',
+      failureDescription: r.FailureDescription || '', notes: r.Notes || '',
     })),
   };
 }
@@ -78,9 +85,10 @@ function makeDailyRecordKey_(sheet, dateOfMfgDisplay) {
 
 /**
  * Saves (creates or replaces) a Drop Freeze packet.
- * payload: { recordKey (nullable), lineItems: [{lineNum,dateOfMfg,shift,pallet,toolCode,cavity,
- *   resinId,testType,testDate,testedBy,freezerTemp,dropHeight,dropAngle,result,failureDescription,
- *   notes,batchId}] }
+ * payload: { recordKey (nullable), lineItems: [{runId, cavity, testName, dateOfMfg, testDate,
+ *   testedBy, shift, freezerTemp, dropHeight, dropAngle, result, failureDescription, notes}] }
+ * Each line's Run context (Line #, Mold, Product Type, Resin Lot, Item, Customer Name) is
+ * resolved server-side from the Run — never trusted from the client — same as In-Process/Start-Up.
  */
 function saveDropFreezePacket(payload) {
   const lock = LockService.getDocumentLock();
@@ -88,8 +96,8 @@ function saveDropFreezePacket(payload) {
   try {
     const sheet = getDropFreezeLogSheet_();
     const items = payload.lineItems || [];
-    const active = items.filter(li => String(li.toolCode || '').trim());
-    if (active.length === 0) throw new Error('No active line items — Tool Code is required on at least one line.');
+    const active = items.filter(li => String(li.runId || '').trim());
+    if (active.length === 0) throw new Error('No active line items — a Run is required on at least one line.');
 
     let recordKey = String(payload.recordKey || '').trim();
     if (recordKey && !/^QC-\d{8}-\d{3}$/.test(recordKey)) {
@@ -100,20 +108,26 @@ function saveDropFreezePacket(payload) {
     // Replace any existing rows for this record (edit-in-place)
     deleteRowsWhere_(sheet, 'RecordKey', recordKey);
 
+    const tz = getDb_().getSpreadsheetTimeZone();
     const now = new Date();
     const rowsToAppend = active.map((li, idx) => {
+      const run = getRun_(li.runId);
+      if (!run) throw new Error('Run not found: ' + li.runId);
       const resultRaw = String(li.result || '').trim();
       const normalized = resultRaw.replace(/[^\w\s]/g, '').toUpperCase();
       const status = (normalized.includes('PASS') || normalized.includes('FAIL') || normalized.includes('INCONCLUSIVE'))
         ? 'COMPLETE' : 'OPEN';
+      const d = li.dateOfMfg ? new Date(li.dateOfMfg) : now;
       return {
         RecordKey: recordKey, LineItem: idx + 1, Status: status, Created: now, Updated: now,
-        LineNum: li.lineNum, DateOfMfg: li.dateOfMfg, Shift: li.shift, Pallet: li.pallet,
-        ToolCode: li.toolCode, ProductType: li.productType, Cavity: li.cavity, ResinID: li.resinId, TestType: li.testType,
-        ItemNo: li.itemNo, ItemDescription: li.itemDescription,
-        TestDate: li.testDate, TestedBy: li.testedBy, FreezerTemp: li.freezerTemp,
-        DropHeight: li.dropHeight, DropAngle: li.dropAngle, Result: li.result,
-        FailureDescription: li.failureDescription, Notes: li.notes, BatchID: li.batchId || payload.batchId || '',
+        'Run ID': run.runId, 'Line #': run.line, Shift: li.shift || run.shift, 'Customer Name': run.customerName,
+        'Mold ID': run.moldId, 'Mold Description': run.moldDescription, 'Product Type': run.productType,
+        'Resin Lot': run.resinLot, 'Item No': run.item, 'Item Description': run.itemDescription,
+        Cavity: li.cavity || '', 'Test Name': li.testName || '',
+        DateOfMfg: li.dateOfMfg || '', TestDate: li.testDate || '', TestedBy: li.testedBy || '',
+        FreezerTemp: li.freezerTemp, DropHeight: li.dropHeight, DropAngle: li.dropAngle || '', Result: li.result || '',
+        FailureDescription: li.failureDescription || '', Notes: li.notes || '',
+        Month: Utilities.formatDate(d, tz, 'MMMM'), Year: Utilities.formatDate(d, tz, 'yyyy'),
       };
     });
 

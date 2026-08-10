@@ -1,5 +1,6 @@
 <h1 class="page-title">📋 In-Process Inspection</h1>
 <p class="page-sub">Fill in the Inspection Header once. Then work through each Line: pick its Mold once (Product Type & Description auto-fill) — that's the Line Batch — and a row is created automatically for every cavity. Fill in each row's measurements, switch lines any time, and submit everything together at the end.</p>
+<p class="spec-hint" id="ip-spec-citation"></p>
 
 <section class="card">
   <h2>Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
@@ -34,14 +35,9 @@
 
 <script>
   var LINE_NUMBERS = [1,2,3,4,5,6,7,8,9,10];
-  var DIM_KEYS = ['weight','botThick','sw1','sw2','sw3','sw4','topDia','botDia','endPin','height','chimeAMin','chimeAMax','chimeBMin','chimeBMax'];
-  var DIM_LABELS = {
-    weight:'Weight (g)', botThick:'Bottom Thickness (in)', sw1:'SW1 - Top (in)', sw2:'SW2 - Bottom (in)',
-    sw3:'SW3 - Side Right (in)', sw4:'SW4 - Side Left (in)', topDia:'Top Diameter (in)', botDia:'Bottom Diameter (in)',
-    endPin:'End Pin Diameter (in)', height:'Height (in)', chimeAMin:'Chime A Min (in)', chimeAMax:'Chime A Max (in)',
-    chimeBMin:'Chime B Min (in)', chimeBMax:'Chime B Max (in)',
-  };
-  var CAVITY_FIELD_GROUPS = [
+  // Exact register spelling for the 4 sidewall points that feed the wall-thickness-variance check — mirrors InProcess.gs.
+  var WALL_SW_CHARACTERISTICS = ['SW Thickness 1 - Top', 'SW Thickness 2 - Bottom', 'SW Thickness 3 - Side Right', 'SW Thickness 4 - Side Left'];
+  var CAVITY_FIELD_GROUPS_TOP = [
     { title: null, fields: [
       { key:'visual', label:'Visual', type:'text' },
       { key:'dateCode', label:'Date Code', type:'select', optionsKey:'passFail' },
@@ -50,15 +46,31 @@
     ]},
     { title: null, fields: [
       { key:'deltaB', label:'ΔB', type:'number' },
-      { key:'deltaE', label:'ΔE*ab', type:'number' },
+      { key:'deltaE', label:'ΔE*ab', type:'number', spec:true },
     ]},
-    { title: 'DIMENSIONAL', fields: DIM_KEYS.map(function (k) { return { key:k, label:DIM_LABELS[k], type:'number', spec:true }; }) },
+  ];
+  var CAVITY_FIELD_GROUPS_BOTTOM = [
     { title: 'FUNCTIONAL', fields: [
       { key:'nesting', label:'Nesting', type:'select', optionsKey:'passFail' },
       { key:'coverFit', label:'Cover Fit', type:'select', optionsKey:'passFail' },
       { key:'gaugeFit', label:'Gauge Fit', type:'select', optionsKey:'passFail' },
     ]},
   ];
+  function dimKeysFor(line) {
+    var keys = (line.dimFields || []).map(function (f) { return f.key; });
+    if (line.bounds && line.bounds.deltaE) keys.push('deltaE');
+    return keys;
+  }
+
+  /** Text shown under the Color field — which Color Type the register expects and its ΔE* Max, if any. */
+  function colorHintText(line) {
+    if (!line.color) return '';
+    var cs = line.colorSpec;
+    if (!cs) return 'No color spec on file for "' + line.color + '" for this mold — check the Spec Register.';
+    var max = parseFloat(cs.deltaEMax);
+    var maxText = !isNaN(max) ? ('ΔE* Max ' + cs.deltaEMax) : 'visual check only (no ΔE* target on file)';
+    return 'Color Type: ' + (cs.typeNumber || '—') + ' · ' + maxText + (cs.itemNo ? ' (Item ' + cs.itemNo + ' override)' : '');
+  }
 
   var ipData = null;
   var ipLines = {};
@@ -75,6 +87,14 @@
         fillSelect('ip-foreman', ipData.foremen);
         renderLineTabs();
         renderLinePanel();
+
+        // Fetched only after the main form is already up — never a second call in flight at once.
+        google.script.run
+          .withSuccessHandler(function (citation) {
+            document.getElementById('ip-spec-citation').textContent = 'Spec limits pulled from ' + (citation || 'FRM-006-001 Plastics Specification Register');
+          })
+          .withFailureHandler(function () {})
+          .getSpecCitation();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getInProcessFormData();
@@ -88,38 +108,60 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
+  // 3-tier: 'Fail' (beyond LSL/USL with no Reject Limit band, or beyond the band too),
+  // 'NeedsReview' (past LSL/USL but still inside the register's Reject Limit % band), 'Pass'.
   function evalBound(value, bound) {
     if (value === '' || value === null || value === undefined || isNaN(parseFloat(value))) return '';
     var v = parseFloat(value);
-    if (bound && bound.lsl !== null && v < bound.lsl) return 'Fail';
-    if (bound && bound.usl !== null && v > bound.usl) return 'Fail';
+    if (!bound) return 'Pass';
+    if (bound.lsl !== null && bound.lsl !== undefined && v < bound.lsl) {
+      if (bound.rejectLsl !== null && bound.rejectLsl !== undefined && v >= bound.rejectLsl) return 'NeedsReview';
+      return 'Fail';
+    }
+    if (bound.usl !== null && bound.usl !== undefined && v > bound.usl) {
+      if (bound.rejectUsl !== null && bound.rejectUsl !== undefined && v <= bound.rejectUsl) return 'NeedsReview';
+      return 'Fail';
+    }
     return 'Pass';
   }
 
-  function computeRowStatus(row, bounds) {
-    bounds = bounds || {};
-    var hasAny = false, failures = [];
-    if (row.dateCode) { hasAny = true; if (row.dateCode === 'Fail') failures.push('dateCode'); }
-    DIM_KEYS.forEach(function (k) {
+  function statusBadge(status) {
+    if (status === 'FAIL') return '<span class="badge critical">Fail</span>';
+    if (status === 'NEEDS REVIEW') return '<span class="badge serious">Needs Review</span>';
+    if (status === 'PASS') return '<span class="badge good">Pass</span>';
+    return '<span class="badge warning">—</span>';
+  }
+
+  // Row-level status is the worst tier seen across every field — Fail beats Needs Review beats Pass.
+  function computeRowStatus(row, bounds, dimKeys) {
+    bounds = bounds || {}; dimKeys = dimKeys || [];
+    var hasAny = false, worst = '';
+    function escalate(tier) {
+      if (tier === 'Fail') worst = 'FAIL';
+      else if (tier === 'NeedsReview' && worst !== 'FAIL') worst = 'NEEDS REVIEW';
+    }
+    if (row.dateCode) { hasAny = true; if (row.dateCode === 'Fail') escalate('Fail'); }
+    dimKeys.forEach(function (k) {
       if (row[k] !== '' && row[k] !== undefined && row[k] !== null) {
         hasAny = true;
-        if (evalBound(row[k], bounds[k]) === 'Fail') failures.push(k);
+        escalate(evalBound(row[k], bounds[k]));
       }
     });
-    var wallVals = ['sw1','sw2','sw3','sw4'].map(function (k) { return parseFloat(row[k]); });
-    if (wallVals.every(function (v) { return !isNaN(v); })) {
-      var swVar = Math.max.apply(null, wallVals) - Math.min.apply(null, wallVals);
-      if (swVar >= 0.005) failures.push('sw_var');
+    if (WALL_SW_CHARACTERISTICS.every(function (k) { return dimKeys.indexOf(k) >= 0; })) {
+      var wallVals = WALL_SW_CHARACTERISTICS.map(function (k) { return parseFloat(row[k]); });
+      if (wallVals.every(function (v) { return !isNaN(v); })) {
+        var swVar = Math.max.apply(null, wallVals) - Math.min.apply(null, wallVals);
+        if (swVar >= 0.005) escalate('Fail');
+      }
     }
-    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k]) { hasAny = true; if (row[k] === 'Fail') failures.push(k); } });
+    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k]) { hasAny = true; if (row[k] === 'Fail') escalate('Fail'); } });
     if (!hasAny) return '';
-    return failures.length ? 'FAIL' : 'PASS';
+    return worst || 'PASS';
   }
 
   function newCavityRow(cavity) {
     var row = { cavity: cavity || '' };
     ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit'].forEach(function (k) { row[k] = ''; });
-    DIM_KEYS.forEach(function (k) { row[k] = ''; });
     return row;
   }
 
@@ -128,7 +170,7 @@
       ipLines[n] = {
         product:'', mold:'', moldDescription:'', color:'', colorOptions:[], resinLot:'', pallet:'', sampleDate:'', sampleTime:'',
         itemNo:'', itemDescription:'',
-        saveBatch:true, batchId:'', bounds:null, colorSpec:null, cavityRows:[],
+        runId:'', bounds:null, dimFields:[], colorSpec:null, cavityRows:[],
       };
     }
     return ipLines[n];
@@ -140,8 +182,10 @@
     wrap.innerHTML = LINE_NUMBERS.map(function (n) {
       var line = ipLines[n];
       var hasData = line && line.cavityRows.length > 0;
-      var failCount = hasData ? line.cavityRows.filter(function (r) { return computeRowStatus(r, line.bounds) === 'FAIL'; }).length : 0;
-      var dot = hasData ? ('<span class="dot ' + (failCount > 0 ? 'critical' : 'good') + '"></span>') : '';
+      var statuses = hasData ? line.cavityRows.map(function (r) { return computeRowStatus(r, line.bounds, dimKeysFor(line)); }) : [];
+      var failCount = statuses.filter(function (s) { return s === 'FAIL'; }).length;
+      var reviewCount = statuses.filter(function (s) { return s === 'NEEDS REVIEW'; }).length;
+      var dot = hasData ? ('<span class="dot ' + (failCount > 0 ? 'critical' : (reviewCount > 0 ? 'serious' : 'good')) + '"></span>') : '';
       return '<button class="line-tab' + (n === ipActiveLine ? ' active' : '') + '" data-line="' + n + '">' + dot + 'Line ' + n + '</button>';
     }).join('');
     Array.prototype.forEach.call(wrap.querySelectorAll('[data-line]'), function (btn) {
@@ -162,7 +206,8 @@
         return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('') + '</select>';
     } else {
-      var oos = (f.spec && evalBound(value, bound) === 'Fail') ? ' oos' : '';
+      var tier = f.spec ? evalBound(value, bound) : '';
+      var oos = tier === 'Fail' ? ' oos' : (tier === 'NeedsReview' ? ' oos-review' : '');
       input = '<input type="' + (f.type === 'number' ? 'number" step="any' : 'text') + '" class="' + oos + '" data-field="' + f.key + '" value="' + esc(value) + '">';
     }
     var hint = (f.spec && bound && (bound.lsl !== null || bound.usl !== null))
@@ -176,11 +221,15 @@
     return out;
   }
 
-  function cavityRowHtml(idx, row, bounds) {
-    bounds = bounds || {};
-    var status = computeRowStatus(row, bounds);
-    var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
-    var body = CAVITY_FIELD_GROUPS.map(function (g) {
+  function cavityRowHtml(idx, row, bounds, dimFields) {
+    bounds = bounds || {}; dimFields = dimFields || [];
+    var status = computeRowStatus(row, bounds, dimFields.map(function (f) { return f.key; }));
+    var badge = statusBadge(status);
+    var groups = CAVITY_FIELD_GROUPS_TOP.concat(
+      [{ title: 'DIMENSIONAL', fields: dimFields.map(function (f) { return { key: f.key, label: f.label, type: 'number', spec: true }; }) }],
+      CAVITY_FIELD_GROUPS_BOTTOM
+    );
+    var body = groups.map(function (g) {
       var rows = chunk(g.fields, 4).map(function (fs) {
         return '<div class="field-row">' + fs.map(function (f) { return fieldHtml(f, row[f.key], bounds[f.key]); }).join('') + '</div>';
       }).join('');
@@ -197,20 +246,22 @@
     var line = ensureLine(n);
     document.getElementById('ip-line-title').textContent = 'Line ' + n + ' — Line Batch';
 
-    var openBatchOptions = (ipData.openBatches || []).map(function (b) {
-      return '<option value="' + esc(b.batchId) + '">' + esc(b.batchId) + ' — ' + esc(b.mold || b.line || '') + ' / Pallet ' + esc(b.pallet) + '</option>';
+    var runOptions = (ipData.runs || []).map(function (r) {
+      return '<option value="' + esc(r.runId) + '"' + (r.runId === line.runId ? ' selected' : '') + '>' + esc(r.runId) + ' — ' + esc(r.moldId || r.line || '') +
+        (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
     }).join('');
 
     var html =
-      '<div class="field"><label>Load existing Batch into this line (optional)</label>' +
-      '<select id="lb-loadbatch"><option value="">— none —</option>' + openBatchOptions + '</select>' +
-      '<div class="spec-hint">Pulls Mold/Pallet/Resin Lot from a Batch already saved (e.g. by a Drop Freeze test on the same units).</div></div>' +
+      '<div class="field"><label>Load an active Run into this line (optional)</label>' +
+      '<select id="lb-loadrun"><option value="">— none —</option>' + runOptions + '</select>' +
+      '<div class="spec-hint">Pulls Mold/Item/Resin Lot from a Run already set up in Add Run.</div></div>' +
       '<div class="field-row">' +
         '<div class="field"><label>Mold</label><div class="combo"><input id="lb-mold" placeholder="Start typing to search…" value="' + esc(line.mold) + '"></div></div>' +
         fieldSimple('lb-productType', 'Product Type', 'text', null, line.product, true) +
         fieldSimple('lb-moldDescription', 'Mold Description', 'text', null, line.moldDescription, true) +
         fieldSimple('lb-color', 'Color', 'select', line.colorOptions, line.color) +
       '</div>' +
+      (colorHintText(line) ? '<div class="spec-hint">' + esc(colorHintText(line)) + '</div>' : '') +
       '<div class="field-row">' +
         '<div class="field"><label>Item No.</label><div class="combo"><input id="lb-itemNo" placeholder="Start typing to search…" value="' + esc(line.itemNo) + '"></div></div>' +
         fieldSimple('lb-itemDescription', 'Item Description', 'text', null, line.itemDescription, true) +
@@ -221,16 +272,13 @@
         fieldSimple('lb-sampleDate', 'Sample Date', 'date', null, line.sampleDate) +
         fieldSimple('lb-sampleTime', 'Sample Time', 'time', null, line.sampleTime) +
       '</div>' +
-      '<div class="field"><label style="display:flex;align-items:center;gap:6px;">' +
-        '<input type="checkbox" id="lb-saveBatch" style="width:auto;"' + (line.saveBatch ? ' checked' : '') + '> ' +
-        'Save as shared Line Batch (so Drop Freeze can reuse it)</label></div>' +
       '<div style="margin:10px 0;display:flex;gap:8px;">' +
         '<button id="lb-regen-btn" class="ghost">🔄 Regenerate cavity rows from Master Register</button>' +
         '<button id="lb-addrow-btn" class="ghost">+ Add Row Manually</button>' +
       '</div>' +
       '<div id="lb-cavity-rows">' +
       (line.cavityRows.length
-        ? line.cavityRows.map(function (row, idx) { return cavityRowHtml(idx, row, line.bounds); }).join('')
+        ? line.cavityRows.map(function (row, idx) { return cavityRowHtml(idx, row, line.bounds, line.dimFields); }).join('')
         : '<p class="spec-hint">No cavity rows yet — pick a Product + Mold above to auto-generate one row per cavity.</p>') +
       '</div>';
 
@@ -252,15 +300,19 @@
   function wireLinePanelEvents() {
     var n = ipActiveLine;
 
-    document.getElementById('lb-loadbatch').addEventListener('change', function (e) {
-      var batch = (ipData.openBatches || []).find(function (b) { return b.batchId === e.target.value; });
-      if (!batch) return;
+    document.getElementById('lb-loadrun').addEventListener('change', function (e) {
+      var run = (ipData.runs || []).find(function (r) { return r.runId === e.target.value; });
+      if (!run) return;
       var line = ensureLine(n);
-      line.pallet = batch.pallet || ''; line.resinLot = batch.resinLot || ''; line.batchId = batch.batchId;
-      var m = ipData.molds.find(function (x) { return x.moldId === batch.mold; });
-      line.mold = batch.mold || line.mold;
-      line.product = m ? m.productType : (batch.productType || line.product);
-      line.moldDescription = m ? m.description : line.moldDescription;
+      line.runId = run.runId;
+      line.resinLot = run.resinLot || line.resinLot;
+      line.itemNo = run.item || line.itemNo;
+      line.itemDescription = run.itemDescription || line.itemDescription;
+      var m = ipData.molds.find(function (x) { return x.moldId === run.moldId; });
+      line.mold = run.moldId || line.mold;
+      line.product = m ? m.productType : (run.productType || line.product);
+      line.moldDescription = m ? m.description : (run.moldDescription || line.moldDescription);
+      line.color = ''; line.colorOptions = []; line.colorSpec = null;
       renderLinePanel();
       if (line.mold) fetchMoldDependents(n, line.cavityRows.length === 0);
     });
@@ -271,13 +323,13 @@
         var m = ipData.molds.find(function (x) { return x.moldId === moldId; });
         var line = ensureLine(n);
         line.mold = moldId; line.product = m ? m.productType : ''; line.moldDescription = m ? m.description : '';
-        line.color = ''; line.colorOptions = [];
+        line.color = ''; line.colorOptions = []; line.colorSpec = null;
         renderLinePanel();
         fetchMoldDependents(n, false);
       },
       onInvalid: function () {
         var line = ensureLine(n);
-        line.mold = ''; line.product = ''; line.moldDescription = ''; line.bounds = null;
+        line.mold = ''; line.product = ''; line.moldDescription = ''; line.bounds = null; line.dimFields = []; line.colorSpec = null;
         document.getElementById('lb-productType').value = '';
         document.getElementById('lb-moldDescription').value = '';
       },
@@ -289,15 +341,18 @@
         var line = ensureLine(n);
         line.itemNo = itemNo; line.itemDescription = item.sublabel || '';
         document.getElementById('lb-itemDescription').value = line.itemDescription;
+        refetchColorSpec(n);
       },
-      onInvalid: function () { ensureLine(n).itemDescription = ''; document.getElementById('lb-itemDescription').value = ''; },
+      onInvalid: function () { ensureLine(n).itemDescription = ''; document.getElementById('lb-itemDescription').value = ''; refetchColorSpec(n); },
     });
 
-    document.getElementById('lb-color').addEventListener('change', function (e) { ensureLine(n).color = e.target.value; });
+    document.getElementById('lb-color').addEventListener('change', function (e) {
+      ensureLine(n).color = e.target.value;
+      refetchColorSpec(n);
+    });
     ['resinLot','pallet','sampleDate','sampleTime'].forEach(function (key) {
       document.getElementById('lb-' + key).addEventListener('input', function (e) { ensureLine(n)[key] = e.target.value; });
     });
-    document.getElementById('lb-saveBatch').addEventListener('change', function (e) { ensureLine(n).saveBatch = e.target.checked; });
     document.getElementById('lb-regen-btn').addEventListener('click', function () { fetchMoldDependents(n, true); });
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
       ensureLine(n).cavityRows.push(newCavityRow(''));
@@ -324,12 +379,14 @@
     var line = ensureLine(n);
     var idx = parseInt(e.target.closest('.row-card').dataset.idx, 10);
     line.cavityRows[idx][field] = e.target.value;
-    if (DIM_KEYS.indexOf(field) >= 0) {
+    if (dimKeysFor(line).indexOf(field) >= 0) {
       var bound = (line.bounds || {})[field];
-      e.target.classList.toggle('oos', evalBound(e.target.value, bound) === 'Fail');
+      var tier = evalBound(e.target.value, bound);
+      e.target.classList.toggle('oos', tier === 'Fail');
+      e.target.classList.toggle('oos-review', tier === 'NeedsReview');
     }
-    var status = computeRowStatus(line.cavityRows[idx], line.bounds);
-    var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
+    var status = computeRowStatus(line.cavityRows[idx], line.bounds, dimKeysFor(line));
+    var badge = statusBadge(status);
     var slot = e.target.closest('.row-card').querySelector('[data-badge-slot]');
     if (slot) slot.innerHTML = badge + ' <button class="ghost" data-remove-row>Remove</button>';
     renderLineTabs();
@@ -347,6 +404,7 @@
     google.script.run
       .withSuccessHandler(function (specInfo) {
         line.bounds = specInfo.bounds;
+        line.dimFields = specInfo.fields || [];
         line.colorSpec = specInfo.colorSpec;
         if (regenerateRows || line.cavityRows.length === 0) {
           var cavities = specInfo.cavityIds && specInfo.cavityIds.length ? specInfo.cavityIds : [''];
@@ -354,9 +412,32 @@
         }
         renderLinePanel();
         renderLineTabs();
+        if (line.color) refetchColorSpec(n); // bounds was just replaced wholesale — restore the ΔE bound
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .getSpecsForRow(line.product, line.mold, line.color, line.itemNo);
+      .getSpecsForRow(line.mold, line.color, line.itemNo);
+  }
+
+  /** Color spec depends on Mold + Color + Item No. — refetched independently whenever either changes. */
+  function refetchColorSpec(n) {
+    var line = ensureLine(n);
+    if (!line.mold || !line.color) {
+      line.colorSpec = null;
+      if (line.bounds) delete line.bounds.deltaE;
+      renderLinePanel();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (colorSpec) {
+        line.colorSpec = colorSpec;
+        line.bounds = line.bounds || {};
+        var max = colorSpec ? parseFloat(colorSpec.deltaEMax) : NaN;
+        if (!isNaN(max)) line.bounds.deltaE = { lsl: null, usl: max };
+        else delete line.bounds.deltaE;
+        renderLinePanel();
+      })
+      .withFailureHandler(function () {})
+      .getColorSpecForRow(line.mold, line.color, line.itemNo);
   }
 
   // ================= REVIEW & SUBMIT =================
@@ -364,6 +445,19 @@
 
   function activeLinesWithData() {
     return LINE_NUMBERS.filter(function (n) { return ipLines[n] && ipLines[n].mold && ipLines[n].cavityRows.length > 0; });
+  }
+
+  /** What's actually wrong with this row, in plain terms — not just a badge. */
+  function rowIssueDetails(row, bounds, dimFields) {
+    var issues = [];
+    (dimFields || []).forEach(function (f) {
+      var tier = evalBound(row[f.key], bounds[f.key]);
+      if (tier === 'Fail') issues.push(f.label + ' ' + row[f.key] + ' (fail)');
+      else if (tier === 'NeedsReview') issues.push(f.label + ' ' + row[f.key] + ' (needs review)');
+    });
+    if (row.dateCode === 'Fail') issues.push('Date Code fail');
+    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k] === 'Fail') issues.push(k + ' fail'); });
+    return issues;
   }
 
   function renderReview() {
@@ -375,15 +469,17 @@
     area.innerHTML = lines.map(function (n) {
       var line = ipLines[n];
       var rowsHtml = line.cavityRows.map(function (r) {
-        var status = computeRowStatus(r, line.bounds);
-        var badge = status === 'FAIL' ? '<span class="badge critical">Fail</span>' : (status === 'PASS' ? '<span class="badge good">Pass</span>' : '<span class="badge warning">—</span>');
-        return '<tr><td>' + esc(r.cavity) + '</td><td>' + badge + '</td></tr>';
+        var status = computeRowStatus(r, line.bounds, dimKeysFor(line));
+        var issues = rowIssueDetails(r, line.bounds, line.dimFields);
+        var detailText = issues.length ? issues.join('; ') : (status === 'PASS' ? 'All within spec' : '—');
+        return '<tr><td>' + esc(r.cavity) + '</td><td>' + statusBadge(status) + '</td>' +
+          '<td style="font-size:12px;color:var(--text-secondary);">' + esc(detailText) + '</td></tr>';
       }).join('');
       return '<div class="row-card"><div class="row-head"><strong>Line ' + n + '</strong>' +
         '<span class="tag">' + esc(line.product) + ' / ' + esc(line.mold) + (line.color ? ' / ' + esc(line.color) : '') +
         (line.itemNo ? ' / Item ' + esc(line.itemNo) : '') +
         ' — Pallet ' + esc(line.pallet || '—') + ' / Lot ' + esc(line.resinLot || '—') + '</span></div>' +
-        '<table class="qc-table"><thead><tr><th>Cavity</th><th>Status</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+        '<table class="qc-table"><thead><tr><th>Cavity</th><th>Status</th><th>Details</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     }).join('') +
       '<button class="primary" id="ip-submit-all-btn" style="margin-top:10px;">Submit All (' + lines.length + ' line' + (lines.length > 1 ? 's' : '') + ')</button>';
 
@@ -400,21 +496,7 @@
       inspector: document.getElementById('ip-inspector').value,
       foreman: document.getElementById('ip-foreman').value,
     };
-    ensureBatchesThenSubmit(lines, 0, header);
-  }
-
-  function ensureBatchesThenSubmit(lines, i, header) {
-    if (i >= lines.length) { doSubmitAll(lines, header); return; }
-    var n = lines[i];
-    var line = ipLines[n];
-    if (line.saveBatch && !line.batchId) {
-      google.script.run
-        .withSuccessHandler(function (batch) { line.batchId = batch.batchId; ensureBatchesThenSubmit(lines, i + 1, header); })
-        .withFailureHandler(function (err) { showToast('Batch save failed for Line ' + n + ': ' + err.message, true); ensureBatchesThenSubmit(lines, i + 1, header); })
-        .createBatch({ line: String(n), shift: header.shift, productType: line.product, mold: line.mold, pallet: line.pallet, resinLot: line.resinLot, inspector: header.inspector });
-    } else {
-      ensureBatchesThenSubmit(lines, i + 1, header);
-    }
+    doSubmitAll(lines, header);
   }
 
   function doSubmitAll(lines, header) {
@@ -426,7 +508,7 @@
         for (var k in r) row[k] = r[k];
         row.line = String(n); row.product = line.product; row.mold = line.mold; row.color = line.color;
         row.resinLot = line.resinLot; row.pallet = line.pallet; row.sampleDate = line.sampleDate; row.sampleTime = line.sampleTime;
-        row.batchId = line.batchId || ''; row.itemNo = line.itemNo || ''; row.itemDescription = line.itemDescription || '';
+        row.runId = line.runId || ''; row.itemNo = line.itemNo || ''; row.itemDescription = line.itemDescription || '';
         rows.push(row);
       });
     });
@@ -435,7 +517,9 @@
       .withSuccessHandler(function (result) {
         document.getElementById('ip-record-id').value = result.recordId;
         showToast('Saved ' + result.savedRows + ' measurement(s) to ' + result.recordId + ' across ' + lines.length + ' line(s).' +
-          (result.failCount ? ' ' + result.failCount + ' sample(s) failed.' : ''));
+          (result.failCount ? ' ' + result.failCount + ' sample(s) failed.' : '') +
+          (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
+          result.failCount > 0);
         ipLines = {}; ipActiveLine = 1;
         renderLineTabs(); renderLinePanel();
         document.getElementById('ip-review-area').classList.add('hidden');

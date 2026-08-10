@@ -6,14 +6,13 @@ function oneTimeSetup() {
   const ss = SpreadsheetApp.getActive();
   PropertiesService.getScriptProperties().setProperty('DATA_SPREADSHEET_ID', ss.getId());
 
-  ensureSheetWithHeaders_(ss, BATCHES_SHEET_NAME, BATCHES_HEADERS);
   ensureSheetWithHeaders_(ss, DROPFREEZE_LOG_SHEET_NAME, DROPFREEZE_LOG_HEADERS);
   const inProcessSheet = ss.getSheetByName(INPROCESS_LOG_SHEET_NAME);
   ensureColumnExists_(inProcessSheet, 'BatchID');
   ensureColumnExists_(inProcessSheet, 'Item No.');
   ensureColumnExists_(inProcessSheet, 'Item Description');
 
-  const messages = ['DATA_SPREADSHEET_ID set to this spreadsheet.', 'Batches tab ready.'];
+  const messages = ['DATA_SPREADSHEET_ID set to this spreadsheet.'];
   if (!ss.getSheetByName(SETTINGS_SHEET_NAME)) {
     messages.push('⚠️ No "Settings" sheet found — Master Register ID / notification emails / mold & personnel lists will need to be added there.');
   }

@@ -4,23 +4,43 @@
  * (saveQcRecord_ / getSpecsFromMaster_ / updateRowStatus_ / updateWallThickness_)
  *************************************************************/
 
-const DIM_DEFS = [
-  { key: 'weight',    name: 'Weight',                      unit: 'g',  short: 'Wt',     match: ['weight'] },
-  { key: 'botThick',  name: 'Bottom Thickness',            unit: 'in', short: 'BotTh',  match: ['bottom thickness'] },
-  { key: 'sw1',       name: 'SW Thickness 1 - Top',        unit: 'in', short: 'SW1',    match: ['sw thickness 1', 'side wall thickness 1'] },
-  { key: 'sw2',       name: 'SW Thickness 2 - Bottom',     unit: 'in', short: 'SW2',    match: ['sw thickness 2', 'side wall thickness 2'] },
-  { key: 'sw3',       name: 'SW Thickness 3 - Side Right', unit: 'in', short: 'SW3',    match: ['sw thickness 3', 'side wall thickness 3'] },
-  { key: 'sw4',       name: 'SW Thickness 4 - Side Left',  unit: 'in', short: 'SW4',    match: ['sw thickness 4', 'side wall thickness 4'] },
-  { key: 'topDia',    name: 'Top Diameter',                unit: 'in', short: 'TopDia', match: ['top diameter', 'top od'] },
-  { key: 'botDia',    name: 'Bottom Diameter',             unit: 'in', short: 'BotDia', match: ['bottom diameter', 'bottom od'] },
-  { key: 'endPin',    name: 'End Pin Diameter',            unit: 'in', short: 'EndPin', match: ['end pin'] },
-  { key: 'height',    name: 'Height',                      unit: 'in', short: 'Ht',     match: ['height'] },
-  { key: 'chimeAMin', name: 'Chime A Min',                 unit: 'in', short: 'ChA.min', match: ['chime a'] },
-  { key: 'chimeAMax', name: 'Chime A Max',                 unit: 'in', short: 'ChA.max', match: ['chime a'] },
-  { key: 'chimeBMin', name: 'Chime B Min',                 unit: 'in', short: 'ChB.min', match: ['chime b'] },
-  { key: 'chimeBMax', name: 'Chime B Max',                 unit: 'in', short: 'ChB.max', match: ['chime b'] },
+// Chime A/B are each measured at two points (min & max reading) but the register carries
+// only one LSL/USL band per chime — both readings are checked against that same band.
+const CHIME_CHARACTERISTICS = ['Chime A', 'Chime B'];
+// Exact register spelling for the 4 sidewall points that feed the wall-thickness-variance check.
+const WALL_SW_CHARACTERISTICS = [
+  'SW Thickness 1 - Top', 'SW Thickness 2 - Bottom', 'SW Thickness 3 - Side Right', 'SW Thickness 4 - Side Left',
 ];
-const WALL_KEYS = ['sw1', 'sw2', 'sw3', 'sw4'];
+
+/** Builds the mold's dimensional field list straight from its Spec Matrix rows — whatever
+ *  characteristics the register defines for this mold, nothing hardcoded/universal.
+ *  rejectLsl/rejectUsl (derived from the register's optional Reject Limit %) define a soft band
+ *  just outside LSL/USL — an excursion inside that band is "Needs Review", not an automatic Fail.
+ *  Blank Reject Limit % (the common case today) means rejectLsl/rejectUsl are both null, and
+ *  evalSpec_ falls back to the original hard LSL/USL behavior exactly as before. */
+function buildDimFields_(specs) {
+  const fields = [];
+  specs.forEach(spec => {
+    const rejectLsl = (spec.lsl !== null && spec.rejectLimitPct !== null) ? spec.lsl * (1 - spec.rejectLimitPct / 100) : null;
+    const rejectUsl = (spec.usl !== null && spec.rejectLimitPct !== null) ? spec.usl * (1 + spec.rejectLimitPct / 100) : null;
+    if (CHIME_CHARACTERISTICS.indexOf(spec.characteristic) >= 0) {
+      ['Min', 'Max'].forEach(suffix => {
+        const key = spec.characteristic + ' ' + suffix;
+        fields.push({
+          key: key, characteristic: spec.characteristic, label: key + (spec.unit ? ' (' + spec.unit + ')' : ''),
+          unit: spec.unit, lsl: spec.lsl, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
+        });
+      });
+    } else {
+      fields.push({
+        key: spec.characteristic, characteristic: spec.characteristic,
+        label: spec.characteristic + (spec.unit ? ' (' + spec.unit + ')' : ''),
+        unit: spec.unit, lsl: spec.lsl, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
+      });
+    }
+  });
+  return fields;
+}
 
 function getInProcessLogSheet_() {
   const sheet = getDb_().getSheetByName(INPROCESS_LOG_SHEET_NAME);
@@ -38,87 +58,110 @@ function getInProcessFormData() {
     foremen: getForemanList_(),
     shifts: getShiftList_(),
     passFailOptions: getPassFailNAList_(),
-    openBatches: getOpenBatches_(),
+    runs: getActiveRuns_(),
   };
 }
 
 function getColorOptions(mold) { return getColorOptionsForMold_(mold); }
 function getCavityOptions(mold) { return getCavityIds_(mold); }
+/** Re-fetched whenever Color or Item No. changes — colorSpec depends on both, not just the mold. */
+function getColorSpecForRow(mold, color, itemNo) { return color ? getColorSpec_(mold, color, itemNo) : null; }
 
-/** Returns spec info (LSL/USL per dimension + color spec) for a Mold/Color/Item combo, for live client-side highlighting. */
-function getSpecsForRow(productType, mold, color, itemNo) {
-  const specs = getSpecsFromMaster_(productType, mold);
+/** Returns this mold's dimensional field list + LSL/USL bounds + color spec, for the client to render/highlight. */
+function getSpecsForRow(mold, color, itemNo) {
+  const fields = buildDimFields_(getSpecsFromMaster_(mold));
   const bounds = {};
-  DIM_DEFS.forEach(d => {
-    const spec = findSpecForMatch_(specs, d.match);
-    bounds[d.key] = spec ? { lsl: spec.lsl, usl: spec.usl, measureIndex: spec.measureIndex } : null;
-  });
+  fields.forEach(f => { bounds[f.key] = { lsl: f.lsl, usl: f.usl, rejectLsl: f.rejectLsl, rejectUsl: f.rejectUsl, measureIndex: f.measureIndex }; });
   const colorSpec = color ? getColorSpec_(mold, color, itemNo) : null;
-  return { bounds: bounds, colorSpec: colorSpec, cavityIds: getCavityIds_(mold) };
+  return { fields: fields, bounds: bounds, colorSpec: colorSpec, cavityIds: getCavityIds_(mold) };
 }
 
-function findSpecForMatch_(specs, matchTerms) {
-  for (const spec of specs) {
-    const name = String(spec.characteristic).toLowerCase()
-      .replace(/\(.*?\)/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-    for (const term of matchTerms) {
-      if (name === term || name.indexOf(term) === 0 || term.indexOf(name) === 0) return spec;
-    }
-  }
-  return null;
-}
-
-function evalSpec_(v, lsl, usl) {
+/** 3-tier: Fail (beyond LSL/USL with no Reject Limit band, or beyond the band too), NeedsReview
+ *  (past LSL/USL but still inside the register's Reject Limit % band), Pass. */
+function evalSpec_(v, lsl, usl, rejectLsl, rejectUsl) {
   if (v === '' || v === null || v === undefined || isNaN(parseFloat(v))) return { status: '', detail: '' };
   const val = parseFloat(v);
-  if (lsl !== null && !isNaN(lsl) && val < lsl) return { status: 'Fail', detail: val + ' < LSL ' + lsl };
-  if (usl !== null && !isNaN(usl) && val > usl) return { status: 'Fail', detail: val + ' > USL ' + usl };
+  if (lsl !== null && !isNaN(lsl) && val < lsl) {
+    if (rejectLsl !== null && !isNaN(rejectLsl) && val >= rejectLsl) return { status: 'NeedsReview', detail: val + ' < LSL ' + lsl };
+    return { status: 'Fail', detail: val + ' < LSL ' + lsl };
+  }
+  if (usl !== null && !isNaN(usl) && val > usl) {
+    if (rejectUsl !== null && !isNaN(rejectUsl) && val <= rejectUsl) return { status: 'NeedsReview', detail: val + ' > USL ' + usl };
+    return { status: 'Fail', detail: val + ' > USL ' + usl };
+  }
   return { status: 'Pass', detail: '' };
 }
 
-/** Server-side authoritative evaluation of one physical-sample row — mirrors updateRowStatus_/updateWallThickness_. */
-function evaluateInProcessRow_(row, specs) {
-  const bounds = {};
-  DIM_DEFS.forEach(d => { bounds[d.key] = findSpecForMatch_(specs, d.match); });
+function displayStatus_(s) { return s === 'NeedsReview' ? 'Needs Review' : s; }
 
-  const wallVals = WALL_KEYS.map(k => row[k]).map(v => parseFloat(v));
+/** Server-side authoritative evaluation of one physical-sample row — mirrors updateRowStatus_/updateWallThickness_.
+ *  `fields` is this mold's dynamic dimensional field list (see buildDimFields_), not a universal set. */
+function evaluateInProcessRow_(row, specs) {
+  const fields = buildDimFields_(specs);
+  const hasAllWallFields = WALL_SW_CHARACTERISTICS.every(c => fields.some(f => f.key === c));
+
   let swVar = '', swEval = '';
-  if (wallVals.every(v => !isNaN(v))) {
-    swVar = Math.round((Math.max(...wallVals) - Math.min(...wallVals)) * 10000) / 10000;
-    swEval = swVar < 0.005 ? 'Pass' : 'Fail';
+  if (hasAllWallFields) {
+    const wallVals = WALL_SW_CHARACTERISTICS.map(k => parseFloat(row[k]));
+    if (wallVals.every(v => !isNaN(v))) {
+      swVar = Math.round((Math.max(...wallVals) - Math.min(...wallVals)) * 10000) / 10000;
+      swEval = swVar < 0.005 ? 'Pass' : 'Fail';
+    }
   }
 
   const failures = [];
+  const needsReview = [];
   const dateCode = String(row.dateCode || '').toLowerCase();
   if (dateCode === 'fail') failures.push('Date Code Fail');
 
   const dimResults = {};
-  DIM_DEFS.forEach(d => {
-    const spec = bounds[d.key];
-    const raw = row[d.key];
-    if (raw === '' || raw === null || raw === undefined || isNaN(parseFloat(raw))) { dimResults[d.key] = null; return; }
+  fields.forEach(f => {
+    const raw = row[f.key];
+    if (raw === '' || raw === null || raw === undefined || isNaN(parseFloat(raw))) { dimResults[f.key] = null; return; }
     const value = parseFloat(raw);
-    const lsl = spec ? spec.lsl : null, usl = spec ? spec.usl : null;
-    const ev = evalSpec_(value, lsl, usl);
-    dimResults[d.key] = { value: value, lsl: lsl, usl: usl, status: ev.status };
-    if (lsl !== null && !isNaN(lsl) && value < lsl) failures.push(d.short + ' ' + value + ' < LSL ' + lsl);
-    if (usl !== null && !isNaN(usl) && value > usl) failures.push(d.short + ' ' + value + ' > USL ' + usl);
+    const ev = evalSpec_(value, f.lsl, f.usl, f.rejectLsl, f.rejectUsl);
+    dimResults[f.key] = { value: value, lsl: f.lsl, usl: f.usl, status: ev.status };
+    if (ev.status === 'Fail') failures.push(f.key + ' ' + ev.detail);
+    else if (ev.status === 'NeedsReview') needsReview.push(f.key + ' ' + ev.detail);
   });
 
   if (swEval.toLowerCase() === 'fail') failures.push('SW Var. ' + swVar + ' ≥ 0.005');
+
+  // ΔE*ab vs the register's Color Specs ΔE* Max — a magnitude, so USL-only (no LSL).
+  // Only L*/a*/b* deltas are recorded on the form; the target L*/a*/b* themselves aren't shown or used.
+  let colorSpec = null, deltaEMax = null, deltaEStatus = '';
+  if (row.color) {
+    try { colorSpec = getColorSpec_(row.mold, row.color, row.itemNo); } catch (e) { colorSpec = null; }
+    const max = colorSpec ? parseFloat(colorSpec.deltaEMax) : NaN;
+    if (!isNaN(max)) {
+      deltaEMax = max;
+      const de = parseFloat(row.deltaE);
+      if (!isNaN(de)) {
+        deltaEStatus = de > max ? 'Fail' : 'Pass';
+        if (deltaEStatus === 'Fail') failures.push('ΔE*ab ' + de + ' > ' + max);
+      }
+    }
+  }
 
   [['nesting', 'Nesting'], ['coverFit', 'Cover Fit'], ['gaugeFit', 'Gauge Fit']].forEach(([key, label]) => {
     if (String(row[key] || '').toLowerCase() === 'fail') failures.push(label + ' Fail');
   });
 
-  const hasData = DIM_DEFS.some(d => dimResults[d.key] !== null) || dateCode !== '' ||
+  const hasData = fields.some(f => dimResults[f.key] !== null) || dateCode !== '' ||
     row.nesting || row.coverFit || row.gaugeFit;
 
+  // Needs Review never escalates to Fail on its own — only a genuine Fail (beyond any Reject
+  // Limit band, or a characteristic with no band at all) triggers the auto-fail email below.
   let overallStatus = '';
   if (failures.length > 0) overallStatus = 'FAIL: ' + failures.join('; ');
+  else if (needsReview.length > 0) overallStatus = 'NEEDS REVIEW: ' + needsReview.join('; ');
   else if (hasData) overallStatus = 'PASS';
 
-  return { swVar: swVar, swEval: swEval, dimResults: dimResults, overallStatus: overallStatus, failures: failures };
+  return {
+    swVar: swVar, swEval: swEval, dimResults: dimResults, overallStatus: overallStatus,
+    failures: failures, needsReview: needsReview, fields: fields,
+    colorSpec: colorSpec, deltaEMax: deltaEMax, deltaEStatus: deltaEStatus,
+  };
 }
 
 function makeRecordID_(sheet) {
@@ -136,9 +179,9 @@ function makeRecordID_(sheet) {
 /**
  * Saves a full In-Process inspection (one or more physical-sample rows).
  * payload: { recordId (nullable), header: {inspDate,inspTime,shift,inspector,foreman},
- *   rows: [{batchId,line,product,mold,color,resinLot,pallet,sampleDate,sampleTime,cavity,visual,
- *     dateCode,deltaL,deltaA,deltaB,deltaE,weight,botThick,sw1,sw2,sw3,sw4,topDia,botDia,endPin,
- *     height,chimeAMin,chimeAMax,chimeBMin,chimeBMax,nesting,coverFit,gaugeFit}] }
+ *   rows: [{runId,line,product,mold,color,resinLot,pallet,sampleDate,sampleTime,cavity,visual,
+ *     dateCode,deltaL,deltaA,deltaB,deltaE,nesting,coverFit,gaugeFit,
+ *     ...dynamic per-mold dimensional keys from buildDimFields_}] }
  */
 function saveInProcessInspection(payload) {
   const lock = LockService.getDocumentLock();
@@ -156,21 +199,21 @@ function saveInProcessInspection(payload) {
     const month = timestamp.getMonth() + 1;
     const year = timestamp.getFullYear();
     const specCache = {};
-    const getSpecs = (product, mold) => {
-      const key = product + '|' + mold;
-      if (!specCache[key]) {
-        try { specCache[key] = getSpecsFromMaster_(product, mold); } catch (e) { specCache[key] = []; }
+    const getSpecs = (mold) => {
+      if (!specCache[mold]) {
+        try { specCache[mold] = getSpecsFromMaster_(mold); } catch (e) { specCache[mold] = []; }
       }
-      return specCache[key];
+      return specCache[mold];
     };
 
     const dbRows = [];
     const failRows = [];
+    let reviewCount = 0;
     let inspectionId = 0;
 
     rows.forEach(row => {
       inspectionId++;
-      const specs = getSpecs(row.product, row.mold);
+      const specs = getSpecs(row.mold);
       const evalResult = evaluateInProcessRow_(row, specs);
 
       function dbRow(testType, measIdx, charName, unit, lsl, usl, actual, status, detail) {
@@ -183,7 +226,7 @@ function saveInProcessInspection(payload) {
           'Test Type': testType, 'Measure Index': measIdx, 'Characteristic Name': charName, 'Unit': unit,
           'LSL': lsl, 'USL': usl, 'Actual Value': actual, 'Status': status, 'Status Detail': detail,
           'Visual Notes': row.visual, 'Source': 'CSC QC Inspection System', 'Month': month, 'Year': year,
-          'BatchID': row.batchId || payload.batchId || '',
+          'BatchID': row.runId || payload.runId || '',
           'Item No.': row.itemNo || '', 'Item Description': row.itemDescription || '',
         };
       }
@@ -196,16 +239,20 @@ function saveInProcessInspection(payload) {
       }
       if (row.visual) dbRows.push(dbRow('Visual', '', 'Visual Conformance Check', '', '', '', row.visual, '', ''));
 
-      [['deltaL', 'ΔL'], ['deltaA', 'ΔA'], ['deltaB', 'ΔB'], ['deltaE', 'ΔE*ab']].forEach(([key, name]) => {
+      [['deltaL', 'ΔL'], ['deltaA', 'ΔA'], ['deltaB', 'ΔB']].forEach(([key, name]) => {
         if (row[key]) dbRows.push(dbRow('Color', '', name, '', '', '', row[key], '', ''));
       });
+      if (row.deltaE) {
+        dbRows.push(dbRow('Color', '', 'ΔE*ab', '', '', evalResult.deltaEMax !== null ? evalResult.deltaEMax : '',
+          row.deltaE, evalResult.deltaEStatus, evalResult.deltaEStatus === 'Fail' ? 'ΔE*ab exceeds max' : ''));
+      }
 
-      DIM_DEFS.forEach(d => {
-        const v = row[d.key];
+      evalResult.fields.forEach(f => {
+        const v = row[f.key];
         if (!v && v !== 0) return;
-        const r = evalResult.dimResults[d.key];
-        dbRows.push(dbRow('Dimensional', findSpecForMatch_(specs, d.match) ? findSpecForMatch_(specs, d.match).measureIndex : '',
-          d.name, d.unit, r ? r.lsl : '', r ? r.usl : '', v, r ? r.status : '', ''));
+        const r = evalResult.dimResults[f.key];
+        dbRows.push(dbRow('Dimensional', f.measureIndex, f.key, f.unit, r ? r.lsl : '', r ? r.usl : '', v,
+          r ? displayStatus_(r.status) : '', r && r.status === 'NeedsReview' ? 'Within reject limit' : ''));
       });
       if (evalResult.swVar !== '') {
         dbRows.push(dbRow('Dimensional', '', 'Wall Thickness Variance', 'in', '', '', evalResult.swVar, '', ''));
@@ -222,6 +269,8 @@ function saveInProcessInspection(payload) {
 
       if (evalResult.overallStatus.toUpperCase().indexOf('FAIL') === 0) {
         failRows.push({ mold: row.mold, cavity: row.cavity, status: evalResult.overallStatus, product: row.product, line: row.line });
+      } else if (evalResult.overallStatus.toUpperCase().indexOf('NEEDS REVIEW') === 0) {
+        reviewCount++;
       }
     });
 
@@ -232,7 +281,7 @@ function saveInProcessInspection(payload) {
       try { sendInProcessFailNotification_(recordID, header, failRows); } catch (e) { /* best-effort */ }
     }
 
-    return { recordId: recordID, savedRows: dbRows.length, failCount: failRows.length };
+    return { recordId: recordID, savedRows: dbRows.length, failCount: failRows.length, reviewCount: reviewCount };
   } finally {
     lock.releaseLock();
   }

@@ -1,15 +1,16 @@
 /*************************************************************
  * CSC QC INSPECTION SYSTEM — SHARED CONFIG & HELPERS
- * Consolidated Settings / Master Register / Batches access
+ * Consolidated Settings / Master Register / Runs access
  * used by both Drop Freeze and In-Process modules.
  *************************************************************/
 
 // ================= SHEET NAMES =================
 const SETTINGS_SHEET_NAME       = 'Settings';
-const BATCHES_SHEET_NAME        = 'Batches';
 const DROPFREEZE_LOG_SHEET_NAME = 'Test Data';
 const INPROCESS_LOG_SHEET_NAME  = 'QC Database';
 const ALL_ITEMS_LIST_SHEET_NAME = 'All Items List'; // its own tab, not part of Settings
+const SU_ITEMS_SHEET_NAME = 'Start-Up Verification Items List- Plastics';
+const SU_LOG_SHEET_NAME   = 'Start-Up Verification Log- Plastics';
 
 // Spec Register (relinked 2026-08 — Spec Matrix / Color Specs / All Molds List
 // replaced the old per-product tabs). This is the default; Settings' own
@@ -19,20 +20,17 @@ const SPEC_REGISTER_ID = '1rgm9gAnZviUSLKLF1kjbX0P1X5fPvGvKXDg5SvT1htM';
 const ALL_MOLDS_LIST_SHEET = 'All Molds List';
 const SPEC_MATRIX_SHEET    = 'Spec Matrix';
 const COLOR_SPECS_SHEET    = 'Color Specs';
-
-const BATCHES_HEADERS = [
-  'BatchID', 'Date', 'Line', 'Shift', 'ProductType', 'Mold',
-  'Pallet', 'ResinLot', 'Inspector', 'CreatedAt', 'Status',
-];
+const FUNCTIONAL_TESTS_SHEET = 'Functional Tests';
 
 // Clean header row for a brand-new Test Data (Drop Freeze) log — this working
-// copy has no Drop Freeze data yet, so we're free to define it cleanly.
+// copy has no Drop Freeze data yet, so we're free to define it cleanly. Run-driven
+// (2026-08-07): shares its context columns with the QC Database / Start-Up Log pattern.
 const DROPFREEZE_LOG_HEADERS = [
   'RecordKey', 'LineItem', 'Status', 'Created', 'Updated',
-  'LineNum', 'DateOfMfg', 'Shift', 'Pallet', 'ToolCode', 'ProductType', 'Cavity', 'ResinID', 'TestType',
-  'ItemNo', 'ItemDescription',
-  'TestDate', 'TestedBy', 'FreezerTemp', 'DropHeight', 'DropAngle',
-  'Result', 'FailureDescription', 'Notes', 'BatchID',
+  'Run ID', 'Line #', 'Shift', 'Customer Name',
+  'Mold ID', 'Mold Description', 'Product Type', 'Resin Lot', 'Item No', 'Item Description',
+  'Cavity', 'Test Name', 'DateOfMfg', 'TestDate', 'TestedBy',
+  'FreezerTemp', 'DropHeight', 'DropAngle', 'Result', 'FailureDescription', 'Notes', 'Month', 'Year',
 ];
 
 const DROP_ANGLE_OPTIONS = ['Flat- Bottom', '45 deg- Bottom', 'Flat- Top', '45 deg- Top', 'Side Drop'];
@@ -139,10 +137,30 @@ function getNotificationEmails_() {
   return raw.split(',').map(e => e.trim()).filter(e => e.indexOf('@') > 0);
 }
 
-function getInspectorList_()   { return settingsColumnBelow_('Inspected By', 30); }
+function getInspectorList_()   { return settingsColumnBelow_('QC Technician Name', 30); }
 function getForemanList_()     { return settingsColumnBelow_('Shift Foreman', 30); }
 function getShiftList_()       { return settingsColumnBelow_('Shift', 30); }
 function getPassFailNAList_()  { return settingsColumnBelow_('Pass / Fail / N/A', 30); }
+function getStartUpTechList_() { return settingsColumnBelow_('Start-Up Technician Name', 30); }
+function getDeviationAuthList_() { return settingsColumnBelow_('Deviation Authorization List', 30); }
+
+/** Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes}], in sheet order. */
+function getStartUpItemsList_() {
+  const sheet = getDb_().getSheetByName(SU_ITEMS_SHEET_NAME);
+  if (!sheet) throw new Error('"' + SU_ITEMS_SHEET_NAME + '" sheet not found.');
+  const pos = findHeaderRowAndCol_(sheet, 'Verification Item', 3);
+  if (!pos) throw new Error('"Verification Item" header not found in ' + SU_ITEMS_SHEET_NAME + '.');
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= pos.row) return [];
+  const data = sheet.getRange(pos.row + 1, pos.col, lastRow - pos.row, 4).getValues();
+  const out = [];
+  for (const row of data) {
+    const item = String(row[0] || '').trim();
+    if (!item) continue;
+    out.push({ item: item, valueType: String(row[1] || '').trim(), unit: String(row[2] || '').trim(), notes: String(row[3] || '').trim() });
+  }
+  return out;
+}
 
 /** Item No. / Item Description list, for traceability fields on both forms. Its own tab. */
 function getItemList_() {
@@ -225,7 +243,7 @@ function getCavityIds_(mold) {
   } catch (e) { return []; }
 }
 
-function getSpecsFromMaster_(productType, mold) {
+function getSpecsFromMaster_(mold) {
   const mr = SpreadsheetApp.openById(getMasterRegisterId_());
   const tab = mr.getSheetByName(SPEC_MATRIX_SHEET);
   if (!tab) throw new Error('"' + SPEC_MATRIX_SHEET + '" tab not found in Spec Register.');
@@ -238,13 +256,16 @@ function getSpecsFromMaster_(productType, mold) {
   const headers = tab.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
   const idx = function (name) { return headers.indexOf(name); };
   const moldCol = idx('Mold ID'), charCol = idx('Characteristic'), unitCol = idx('Unit'),
-    lslCol = idx('LSL'), nomCol = idx('Nominal'), uslCol = idx('USL'), miCol = idx('Measure Index');
+    lslCol = idx('LSL'), nomCol = idx('Nominal'), uslCol = idx('USL'), miCol = idx('Measure Index'),
+    rejCol = idx('Reject Limit');
   const data = tab.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getValues();
   const target = String(mold).trim();
   const results = [];
   for (const row of data) {
     if (String(row[moldCol] || '').trim() !== target) continue;
     const lsl = row[lslCol], usl = row[uslCol], nom = row[nomCol];
+    const rej = rejCol >= 0 ? row[rejCol] : '';
+    const rejPct = (rej === '' || rej === null || rej === undefined) ? null : parseFloat(String(rej).replace('%', ''));
     results.push({
       characteristic: String(row[charCol] || '').trim(),
       unit: String(row[unitCol] || '').trim(),
@@ -252,10 +273,47 @@ function getSpecsFromMaster_(productType, mold) {
       lsl: (lsl === '' || lsl === null) ? null : parseFloat(lsl),
       nominal: (nom === '' || nom === null) ? null : parseFloat(nom),
       usl: (usl === '' || usl === null) ? null : parseFloat(usl),
+      // Blank Reject Limit = hard LSL/USL only (current behavior). A value (e.g. 1 = 1%) widens
+      // a soft band beyond LSL/USL where an excursion is "Needs Review", not an automatic Fail.
+      rejectLimitPct: (rejPct === null || isNaN(rejPct)) ? null : rejPct,
     });
   }
   return results;
 }
+
+/** Doc No./Revision citation line for spec-driven form headers, read live off the register
+ *  rather than hardcoded — stays correct if the revision ever bumps.
+ *  Cached (6h) and scoped to just the Register tab — this must stay cheap since it's called
+ *  on every page load; a version that scanned every tab in the register once caused the whole
+ *  In-Process form to intermittently fail to load (the citation fetch was blocking the same
+ *  response as the dropdowns/mold list, and pushed an already-slow cross-spreadsheet open over
+ *  the edge). */
+function getSpecRegisterCitation_() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('specRegisterCitation');
+  if (cached) return cached;
+
+  let citation = 'FRM-006-001 Plastics Specification Register';
+  try {
+    const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+    const tab = mr.getSheetByName('Register');
+    const scanRows = tab ? Math.min(6, tab.getLastRow()) : 0;
+    if (scanRows >= 1) {
+      const values = tab.getRange(1, 1, scanRows, tab.getLastColumn()).getValues();
+      outer:
+      for (const row of values) {
+        for (const cell of row) {
+          const s = String(cell || '').trim();
+          if (/FRM-\d{3}-\d{3}/.test(s) && /revision/i.test(s)) { citation = s; break outer; }
+        }
+      }
+    }
+  } catch (e) { /* keep fallback */ }
+
+  cache.put('specRegisterCitation', citation, 21600);
+  return citation;
+}
+function getSpecCitation() { return getSpecRegisterCitation_(); }
 
 /** Reads every Color Specs row for a mold. Each row may carry an Item No. override. */
 function readColorSpecRows_(mold) {
@@ -304,6 +362,42 @@ function getColorSpec_(mold, color, itemNo) {
   return fallback;
 }
 
+/** Functional Tests rows for a mold, optionally filtered to test names containing `nameFilter`
+ *  (case-insensitive substring — e.g. 'Drop Freeze' to exclude the register's other fit tests
+ *  like Gauge Fit/Cover Fit/Handle Fit, which aren't in scope for the Drop Freeze module). */
+function getFunctionalTestsForMold_(mold, nameFilter) {
+  const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+  const tab = mr.getSheetByName(FUNCTIONAL_TESTS_SHEET);
+  if (!tab) return [];
+  const pos = findHeaderRowAndCol_(tab, 'Mold ID', 6);
+  if (!pos) return [];
+  const headerRow = pos.row;
+  const lastRow = tab.getLastRow();
+  if (lastRow <= headerRow) return [];
+  const lastCol = tab.getLastColumn();
+  const headers = tab.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const idx = name => headers.indexOf(name);
+  const moldCol = idx('Mold ID'), nameCol = idx('Test Name'), methodCol = idx('Test Method / Description'),
+    criteriaCol = idx('Acceptance Criteria'), sampleCol = idx('Sample Size'), freqCol = idx('Frequency'),
+    equipCol = idx('Equipment'), resultTypeCol = idx('Result Type');
+  const data = tab.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getValues();
+  const target = String(mold).trim();
+  const filterLower = String(nameFilter || '').toLowerCase();
+  const out = [];
+  for (const row of data) {
+    if (String(row[moldCol] || '').trim() !== target) continue;
+    const testName = String(row[nameCol] || '').trim();
+    if (filterLower && testName.toLowerCase().indexOf(filterLower) < 0) continue;
+    out.push({
+      testName: testName, methodDescription: String(row[methodCol] || '').trim(),
+      acceptanceCriteria: String(row[criteriaCol] || '').trim(), sampleSize: String(row[sampleCol] || '').trim(),
+      frequency: String(row[freqCol] || '').trim(), equipment: String(row[equipCol] || '').trim(),
+      resultType: String(row[resultTypeCol] || '').trim(),
+    });
+  }
+  return out;
+}
+
 function getColorOptionsForMold_(mold) {
   const colors = [];
   for (const r of readColorSpecRows_(mold)) {
@@ -312,15 +406,26 @@ function getColorOptionsForMold_(mold) {
   return colors;
 }
 
-// ================= BATCHES (shared batch-context, fixes double entry) =================
-function getBatchesSheet_() {
-  const sheet = getDb_().getSheetByName(BATCHES_SHEET_NAME);
-  if (!sheet) throw new Error('Batches sheet not found. Run oneTimeSetup() first.');
+// Dates go over google.script.run as plain strings, not Date objects — the client never needs
+// them as real Dates, and many real Date objects in one response is a known flaky spot for
+// Apps Script's client bridge (it silently delivers `null` instead of throwing — see Runs work,
+// 2026-08-06).
+function dateToStr_(v) { return v instanceof Date ? v.toISOString() : String(v || ''); }
+
+// ================= RUNS (replaces the old Batches concept) =================
+// A Run is created once via the Add Run form and stays selectable in In-Process/Drop Freeze
+// for as long as it's Active — across shifts, across days — until explicitly Stopped. It also
+// carries Qualified/Qualified Timestamp, set by a passing Start-Up Verification submission.
+const RUNS_SHEET_NAME = 'Runs';
+
+function getRunsSheet_() {
+  const sheet = getDb_().getSheetByName(RUNS_SHEET_NAME);
+  if (!sheet) throw new Error('"' + RUNS_SHEET_NAME + '" sheet not found.');
   return sheet;
 }
 
-function makeBatchId_() {
-  const sheet = getBatchesSheet_();
+function makeRunId_() {
+  const sheet = getRunsSheet_();
   const tz = getDb_().getSpreadsheetTimeZone();
   const dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
   const lastRow = sheet.getLastRow();
@@ -328,61 +433,84 @@ function makeBatchId_() {
   if (lastRow >= 2) {
     const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat();
     ids.forEach(id => {
-      const m = String(id || '').match(/^B-(\d{8})-(\d{3})$/);
-      if (m && m[1] === dateStr) {
-        const seq = Number(m[2]);
-        if (seq > maxSeq) maxSeq = seq;
-      }
+      const m = String(id || '').match(/^RUN-(\d{8})-(\d{3})$/);
+      if (m && m[1] === dateStr) { const seq = Number(m[2]); if (seq > maxSeq) maxSeq = seq; }
     });
   }
-  return 'B-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
+  return 'RUN-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
 }
 
-/**
- * Creates a new batch record. fields: {line, shift, productType, mold, pallet, resinLot, inspector}
- * Returns the created batch object (including its new BatchID).
- */
-function createBatch_(fields) {
-  const sheet = getBatchesSheet_();
-  const batchId = makeBatchId_();
-  const now = new Date();
-  const row = [
-    batchId, now, fields.line || '', fields.shift || '', fields.productType || '',
-    fields.mold || '', fields.pallet || '', fields.resinLot || '', fields.inspector || '',
-    now, 'Open',
-  ];
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
-  return batchToObject_(row);
-}
-
-function batchToObject_(row) {
+function runRowToObject_(row) {
   return {
-    batchId: row[0], date: row[1], line: row[2], shift: row[3], productType: row[4],
-    mold: row[5], pallet: row[6], resinLot: row[7], inspector: row[8],
-    createdAt: row[9], status: row[10],
+    runId: row['Run ID'] || '', createdAt: dateToStr_(row['Created At']), shift: row['Shift'] || '',
+    status: row['Status'] || '', line: row['Line #'] || '', productType: row['Product Type'] || '',
+    resinLot: row['Resin Lot'] || '', moldId: row['Mold ID'] || '', moldDescription: row['Mold Description'] || '',
+    item: row['Item'] || '', itemDescription: row['Item Description'] || '', customerName: row['Customer Name'] || '',
+    runQty: row['Run Qty'] || '', createdBy: row['Created By'] || '', qualified: row['Qualified'] || '',
+    qualifiedTimestamp: dateToStr_(row['Qualified Timestamp']), stoppedAt: dateToStr_(row['Stopped At']),
+    lastConfirmed: dateToStr_(row['Last Confirmed']), lastConfirmedBy: row['Last Confirmed By'] || '',
   };
 }
 
-/** Returns open batches, most recent first — used to populate the "load existing batch" picker. */
-function getOpenBatches_() {
-  const sheet = getBatchesSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  const rows = sheet.getRange(2, 1, lastRow - 1, BATCHES_HEADERS.length).getValues();
-  return rows
-    .filter(r => String(r[10]).trim().toLowerCase() === 'open')
-    .map(batchToObject_)
-    .reverse();
+/**
+ * Creates a new Run. fields: {shift, line, productType, resinLot, moldId, moldDescription,
+ * item, itemDescription, customerName, runQty, createdBy}. Returns the created Run.
+ */
+function createRun_(fields) {
+  const sheet = getRunsSheet_();
+  const runId = makeRunId_();
+  appendObjectsAsRows_(sheet, [{
+    'Run ID': runId, 'Created At': dateToStr_(new Date()), 'Shift': fields.shift || '', 'Status': 'Active',
+    'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
+    'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '',
+    'Item': fields.item || '', 'Item Description': fields.itemDescription || '',
+    'Customer Name': fields.customerName || '', 'Run Qty': fields.runQty || '', 'Created By': fields.createdBy || '',
+  }]);
+  return getRun_(runId);
 }
 
-function getBatch_(batchId) {
-  const sheet = getBatchesSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-  const rows = sheet.getRange(2, 1, lastRow - 1, BATCHES_HEADERS.length).getValues();
-  const match = rows.find(r => String(r[0]).trim() === String(batchId).trim());
-  return match ? batchToObject_(match) : null;
+function getRun_(runId) {
+  const rows = readSheetObjects_(getRunsSheet_());
+  const match = rows.find(r => String(r['Run ID'] || '').trim() === String(runId).trim());
+  return match ? runRowToObject_(match) : null;
 }
+
+/** Active runs, most recently created first — the pool selectable from In-Process/Drop Freeze. */
+function getActiveRuns_() {
+  const rows = readSheetObjects_(getRunsSheet_());
+  return rows.filter(r => String(r['Status'] || '').trim().toLowerCase() === 'active').map(runRowToObject_).reverse();
+}
+
+function stopRun_(runId) {
+  updateRowWhere_(getRunsSheet_(), 'Run ID', runId, { 'Status': 'Stopped', 'Stopped At': dateToStr_(new Date()) });
+  return getRun_(runId);
+}
+
+/** Stamps Last Confirmed/Last Confirmed By on every currently-Active run. Returns the count touched. */
+function confirmTodaysRuns_(confirmedBy) {
+  const sheet = getRunsSheet_();
+  const rows = readSheetObjects_(sheet);
+  const now = dateToStr_(new Date());
+  let count = 0;
+  rows.forEach(r => {
+    if (String(r['Status'] || '').trim().toLowerCase() === 'active') {
+      updateRowWhere_(sheet, 'Run ID', r['Run ID'], { 'Last Confirmed': now, 'Last Confirmed By': confirmedBy || '' });
+      count++;
+    }
+  });
+  return count;
+}
+
+/** Called when a Start-Up Verification submission passes — marks the Run qualified. */
+function qualifyRun_(runId) {
+  updateRowWhere_(getRunsSheet_(), 'Run ID', runId, { 'Qualified': 'Yes', 'Qualified Timestamp': dateToStr_(new Date()) });
+}
+
+// ================= PUBLIC CLIENT-FACING WRAPPERS (Runs) =================
+function createRun(fields) { return createRun_(fields); }
+function getActiveRuns() { return getActiveRuns_(); }
+function stopRun(runId) { return stopRun_(runId); }
+function confirmTodaysRuns(confirmedBy) { return confirmTodaysRuns_(confirmedBy); }
 
 // ================= GENERIC HEADER-KEYED SHEET I/O =================
 // Reads every data row into a plain object keyed by column header text —
@@ -426,9 +554,27 @@ function deleteRowsWhere_(sheet, keyHeader, keyValue) {
   rowsToDelete.sort((a, b) => b - a).forEach(r => sheet.deleteRow(r));
 }
 
-// ================= PUBLIC CLIENT-FACING WRAPPERS =================
-function createBatch(fields) { return createBatch_(fields); }
-function getOpenBatches() { return getOpenBatches_(); }
+// Finds the row where keyHeader === keyValue and patches only the given columns in place —
+// unlike deleteRowsWhere_+append, this preserves everything else already on that row. Needed
+// for Runs, which get progressively filled in over their lifecycle (create → qualify → stop)
+// rather than written once. Returns false if no matching row was found.
+function updateRowWhere_(sheet, keyHeader, keyValue, patch) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return false;
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const keyCol = headers.indexOf(keyHeader);
+  if (keyCol < 0) return false;
+  const keys = sheet.getRange(2, keyCol + 1, lastRow - 1, 1).getValues().flat();
+  const rowIdx = keys.findIndex(k => String(k || '').trim() === String(keyValue).trim());
+  if (rowIdx < 0) return false;
+  const sheetRow = rowIdx + 2;
+  Object.keys(patch).forEach(h => {
+    const col = headers.indexOf(h);
+    if (col >= 0) sheet.getRange(sheetRow, col + 1).setValue(patch[h]);
+  });
+  return true;
+}
 
 // ================= MISC HELPERS =================
 function isFailValue_(val) {

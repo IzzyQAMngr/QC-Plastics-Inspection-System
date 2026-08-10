@@ -1,0 +1,175 @@
+<h1 class="page-title">🏭 Add Run</h1>
+<p class="page-sub">Set up a Run once — Line, Shift, Mold, Item, Customer, Resin Lot — and it stays selectable in In-Process and Drop Freeze for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
+
+<section class="card">
+  <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
+  <div class="field-row">
+    <div class="field"><label>Confirmed By</label><select id="ar-confirmedBy"></select></div>
+    <div class="field" style="align-self:end;">
+      <button id="ar-confirm-btn" class="ghost">✅ Confirm Today's Runs</button>
+      <div class="spec-hint">Stamps every Active run below as checked/accurate for today — for the record, not a data change.</div>
+    </div>
+  </div>
+  <div id="ar-active-runs-table"></div>
+</section>
+
+<section class="card">
+  <h2>Add a Run</h2>
+  <div id="ar-form"></div>
+</section>
+
+<script>
+  var arData = null;
+
+  function init_addrun() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        arData = data;
+        renderAddRunForm();
+        renderActiveRunsTable();
+        fillSelect('ar-confirmedBy', arData.createdByOptions);
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getAddRunFormData();
+  }
+
+  function fieldSimpleAR(id, label, type, options, value, readonly) {
+    var input;
+    if (type === 'select') {
+      input = '<select id="' + id + '"><option value="">— select —</option>' +
+        (options || []).map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
+    } else {
+      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value || '') + '"' + (readonly ? ' readonly' : '') + '>';
+    }
+    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
+  }
+
+  function renderAddRunForm() {
+    var lineOptions = ['1','2','3','4','5','6','7','8','9','10'];
+    var html =
+      '<div class="field-row">' +
+        fieldSimpleAR('ar-line', 'Line #', 'select', lineOptions) +
+        fieldSimpleAR('ar-shift', 'Shift', 'select', arData.shifts) +
+        '<div class="field"><label>Mold</label><div class="combo"><input id="ar-mold" placeholder="Start typing to search…"></div></div>' +
+        fieldSimpleAR('ar-productType', 'Product Type', 'text', null, '', true) +
+      '</div>' +
+      '<div class="field-row">' +
+        fieldSimpleAR('ar-moldDescription', 'Mold Description', 'text', null, '', true) +
+        '<div class="field"><label>Item</label><div class="combo"><input id="ar-item" placeholder="Start typing to search…"></div></div>' +
+        fieldSimpleAR('ar-itemDescription', 'Item Description', 'text', null, '', true) +
+        fieldSimpleAR('ar-resinLot', 'Resin Lot', 'text') +
+      '</div>' +
+      '<div class="field-row">' +
+        fieldSimpleAR('ar-customerName', 'Customer Name', 'text') +
+        fieldSimpleAR('ar-runQty', 'Run Qty', 'number') +
+        fieldSimpleAR('ar-createdBy', 'Created By', 'select', arData.createdByOptions) +
+        '<div class="field" style="align-self:end;"><button id="ar-add-btn" class="primary">+ Add Run</button></div>' +
+      '</div>';
+    document.getElementById('ar-form').innerHTML = html;
+    wireAddRunForm();
+  }
+
+  function wireAddRunForm() {
+    var moldItems = arData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description + ' — ' + m.productType }; });
+    initCombobox(document.getElementById('ar-mold'), moldItems, {
+      onSelect: function (moldId, item) {
+        var m = arData.molds.find(function (x) { return x.moldId === moldId; });
+        document.getElementById('ar-productType').value = m ? m.productType : '';
+        document.getElementById('ar-moldDescription').value = m ? m.description : '';
+      },
+      onInvalid: function () {
+        document.getElementById('ar-productType').value = '';
+        document.getElementById('ar-moldDescription').value = '';
+      },
+    });
+
+    var itemItems = (arData.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    initCombobox(document.getElementById('ar-item'), itemItems, {
+      onSelect: function (itemNo, item) { document.getElementById('ar-itemDescription').value = item.sublabel || ''; },
+      onInvalid: function () { document.getElementById('ar-itemDescription').value = ''; },
+    });
+
+    document.getElementById('ar-add-btn').addEventListener('click', submitAddRun);
+  }
+
+  function submitAddRun() {
+    var line = document.getElementById('ar-line').value;
+    var moldId = document.getElementById('ar-mold').value;
+    if (!line) { showToast('Pick a Line #.', true); return; }
+    if (!moldId) { showToast('Pick a Mold.', true); return; }
+    var fields = {
+      line: line,
+      shift: document.getElementById('ar-shift').value,
+      productType: document.getElementById('ar-productType').value,
+      moldId: moldId,
+      moldDescription: document.getElementById('ar-moldDescription').value,
+      resinLot: document.getElementById('ar-resinLot').value,
+      item: document.getElementById('ar-item').value,
+      itemDescription: document.getElementById('ar-itemDescription').value,
+      customerName: document.getElementById('ar-customerName').value,
+      runQty: document.getElementById('ar-runQty').value,
+      createdBy: document.getElementById('ar-createdBy').value,
+    };
+    google.script.run
+      .withSuccessHandler(function (run) {
+        arData.activeRuns.unshift(run);
+        renderActiveRunsTable();
+        renderAddRunForm();
+        showToast('Run ' + run.runId + ' created.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .addRun(fields);
+  }
+
+  function renderActiveRunsTable() {
+    var runs = arData.activeRuns || [];
+    var el = document.getElementById('ar-active-runs-table');
+    if (runs.length === 0) { el.innerHTML = '<p class="spec-hint">No active runs yet — add one below.</p>'; return; }
+    var rowsHtml = runs.map(function (r) {
+      var qualifiedBadge = r.qualified === 'Yes' ? '<span class="badge good">Qualified</span>' : '<span class="badge warning">Not Qualified</span>';
+      var confirmedText = r.lastConfirmed ? esc(r.lastConfirmedBy || '') : '<span class="spec-hint">not yet today</span>';
+      return '<tr>' +
+        '<td>' + esc(r.runId) + '</td>' +
+        '<td>' + esc(r.line) + '</td>' +
+        '<td>' + esc(r.shift) + '</td>' +
+        '<td>' + esc(r.moldId) + '</td>' +
+        '<td>' + esc(r.item) + '</td>' +
+        '<td>' + esc(r.customerName) + '</td>' +
+        '<td>' + esc(r.runQty) + '</td>' +
+        '<td>' + qualifiedBadge + '</td>' +
+        '<td>' + confirmedText + '</td>' +
+        '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop</button></td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
+      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Mold</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var runId = btn.dataset.stopRun;
+        google.script.run
+          .withSuccessHandler(function () {
+            arData.activeRuns = arData.activeRuns.filter(function (r) { return r.runId !== runId; });
+            renderActiveRunsTable();
+            showToast('Run ' + runId + ' stopped.');
+          })
+          .withFailureHandler(function (err) { showToast(err.message, true); })
+          .endRun(runId);
+      });
+    });
+  }
+
+  document.getElementById('ar-confirm-btn').addEventListener('click', function () {
+    var confirmedBy = document.getElementById('ar-confirmedBy').value;
+    if (!confirmedBy) { showToast('Pick who is confirming.', true); return; }
+    google.script.run
+      .withSuccessHandler(function (count) {
+        var now = new Date().toISOString();
+        (arData.activeRuns || []).forEach(function (r) { r.lastConfirmed = now; r.lastConfirmedBy = confirmedBy; });
+        renderActiveRunsTable();
+        showToast('Confirmed ' + count + ' active run(s) for today.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .confirmRunsToday(confirmedBy);
+  });
+</script>

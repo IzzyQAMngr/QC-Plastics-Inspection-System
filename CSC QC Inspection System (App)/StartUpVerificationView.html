@@ -1,0 +1,205 @@
+<h1 class="page-title">✅ Start-Up Verification</h1>
+<p class="page-sub">Pick the Run being started up, complete the checklist, and save. If a deviation is reported, the sign-off fields lock and the Deviation Authorization List gets emailed for approval — otherwise sign off the PFA right here to qualify the Run immediately.</p>
+
+<section class="card">
+  <h2>Run &amp; Sign-In</h2>
+  <div class="field-row">
+    <div class="field"><label>Run ID</label><select id="suv-run"></select></div>
+    <div class="field"><label>Verification Date</label><input type="date" id="suv-date"></div>
+    <div class="field"><label>Verification Time</label><input type="time" id="suv-time"></div>
+    <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>QC Technician Name</label><select id="suv-qctech"></select></div>
+    <div class="field"><label>Start-Up Technician Name</label><select id="suv-suptech"></select></div>
+    <div class="field"><label>Foreman</label><select id="suv-foreman"></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Customer Name</label><input id="suv-customer" readonly></div>
+    <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
+    <div class="field"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
+    <div class="field"><label>Item</label><input id="suv-item" readonly></div>
+    <div class="field"><label>Item Description</label><input id="suv-itemdesc" readonly></div>
+    <div class="field"><label>Line #</label><input id="suv-line" readonly></div>
+    <div class="field"><label>Run Qty</label><input id="suv-runqty" readonly></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Checklist</h2>
+  <div id="suv-checklist"></div>
+</section>
+
+<section class="card">
+  <h2>Sign-Off</h2>
+  <div id="suv-selfserve-block" class="field hidden">
+    <label>PFA Signed off by</label>
+    <select id="suv-pfa-direct"></select>
+    <div class="spec-hint">No deviation reported — sign off here to qualify this Run immediately.</div>
+  </div>
+  <div id="suv-locked-block" class="hidden">
+    <div class="field-row">
+      <div class="field"><label>Deviation Approved by</label><input value="— pending approval —" readonly></div>
+      <div class="field"><label>Supervisor Authorization</label><input value="— pending approval —" readonly></div>
+      <div class="field"><label>PFA Signed off by</label><input value="— locked until approved —" readonly></div>
+    </div>
+    <div class="spec-hint">A deviation was reported — saving will email the Deviation Authorization List for approval. Come back to this record afterward (Deviation Approvals) to sign off the PFA once it's approved.</div>
+  </div>
+</section>
+
+<section class="card">
+  <button id="suv-submit-btn" class="primary">Save Verification</button>
+</section>
+
+<script>
+  var suvData = null;
+  var suvItemEls = {};
+  var SUV_BODY_EXCLUDE = [
+    'Run ID', 'Customer Name', 'Item Number', 'Item Description', 'Run Qty', 'Start-up Date', 'Start-up Time',
+    'Line / Machine #', 'Shift', 'Mold ID', 'QC Technician Name', 'Start-Up Technician Name', 'Foreman Name',
+    'Deviation Approved by', 'PFA Signed off by', 'Supervisor Authorization (if deviation)', 'PFA completed (PFA ID)',
+    'Adjustments or Corrections completed if applicable',
+  ];
+
+  function init_startup() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        suvData = data;
+        document.getElementById('suv-date').value = suvTodayStr();
+        document.getElementById('suv-time').value = suvNowTimeStr();
+        renderRunPicker();
+        fillSelect('suv-shift', data.shiftOptions);
+        fillSelect('suv-qctech', data.qcTechOptions);
+        fillSelect('suv-suptech', data.startUpTechOptions);
+        fillSelect('suv-foreman', data.foremanOptions);
+        fillSelect('suv-pfa-direct', data.pfaAuthOptions);
+        renderChecklist();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getStartUpVerificationFormData();
+    document.getElementById('suv-submit-btn').addEventListener('click', submitStartUpVerification);
+  }
+
+  function suvTodayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function suvNowTimeStr() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function suvBodyItems() {
+    return (suvData.items || []).filter(function (it) { return SUV_BODY_EXCLUDE.indexOf(it.item) < 0; });
+  }
+
+  function renderRunPicker() {
+    var sel = document.getElementById('suv-run');
+    sel.innerHTML = '<option value="">— select —</option>' + (suvData.runs || []).map(function (r) {
+      return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.moldId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
+    }).join('');
+    sel.addEventListener('change', function () {
+      var run = (suvData.runs || []).find(function (r) { return r.runId === sel.value; });
+      document.getElementById('suv-customer').value = run ? run.customerName : '';
+      document.getElementById('suv-mold').value = run ? run.moldId : '';
+      document.getElementById('suv-molddesc').value = run ? run.moldDescription : '';
+      document.getElementById('suv-item').value = run ? run.item : '';
+      document.getElementById('suv-itemdesc').value = run ? run.itemDescription : '';
+      document.getElementById('suv-line').value = run ? run.line : '';
+      document.getElementById('suv-runqty').value = run ? run.runQty : '';
+    });
+  }
+
+  function renderChecklist() {
+    var html = '';
+    suvBodyItems().forEach(function (it, idx) {
+      var id = 'suv-item-' + idx;
+      var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
+      var input;
+      if (vt === 'yes/no') {
+        input = '<select id="' + id + '"><option value="">— select —</option><option>Yes</option><option>No</option></select>';
+      } else if (vt === 'number') {
+        input = '<input type="number" step="any" id="' + id + '">';
+      } else if (vt === 'date') {
+        input = '<input type="date" id="' + id + '">';
+      } else {
+        input = '<input type="text" id="' + id + '">';
+      }
+      html += '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+    });
+    document.getElementById('suv-checklist').innerHTML = '<div class="field-row">' + html + '</div>';
+
+    suvItemEls = {};
+    suvBodyItems().forEach(function (it, idx) {
+      var id = 'suv-item-' + idx;
+      suvItemEls[it.item] = { wrap: document.getElementById('wrap-' + id), input: document.getElementById(id), valueType: it.valueType, unit: it.unit };
+    });
+    if (suvItemEls['Was there a deviation?']) {
+      suvItemEls['Was there a deviation?'].input.addEventListener('change', updateDeviationUI);
+    }
+    updateDeviationUI();
+  }
+
+  function updateDeviationUI() {
+    var devInfo = suvItemEls['Was there a deviation?'];
+    var val = devInfo ? devInfo.input.value : '';
+    var descInfo = suvItemEls['Deviation Description / Notes'];
+    if (descInfo) descInfo.wrap.classList.toggle('hidden', val !== 'Yes');
+    document.getElementById('suv-locked-block').classList.toggle('hidden', val !== 'Yes');
+    document.getElementById('suv-selfserve-block').classList.toggle('hidden', val !== 'No');
+  }
+
+  function submitStartUpVerification() {
+    var runId = document.getElementById('suv-run').value;
+    var qcTechName = document.getElementById('suv-qctech').value;
+    var startUpTechName = document.getElementById('suv-suptech').value;
+    if (!runId) { showToast('Pick a Run.', true); return; }
+    if (!qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
+    if (!startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
+
+    var devInfo = suvItemEls['Was there a deviation?'];
+    var devVal = devInfo ? devInfo.input.value : '';
+    var descInfo = suvItemEls['Deviation Description / Notes'];
+    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
+      showToast('Describe the deviation before saving.', true); return;
+    }
+
+    var checklist = suvBodyItems().map(function (it) {
+      var info = suvItemEls[it.item];
+      return { item: it.item, valueType: it.valueType, unit: it.unit, value: info ? info.input.value : '' };
+    });
+
+    var payload = {
+      runId: runId,
+      verificationDate: document.getElementById('suv-date').value,
+      verificationTime: document.getElementById('suv-time').value,
+      qcTechName: qcTechName,
+      startUpTechName: startUpTechName,
+      shift: document.getElementById('suv-shift').value,
+      foreman: document.getElementById('suv-foreman').value,
+      checklist: checklist,
+      pfaDirectSignOff: devVal === 'No' ? document.getElementById('suv-pfa-direct').value : '',
+    };
+
+    document.getElementById('suv-submit-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('suv-submit-btn').disabled = false;
+        showToast(result.qualified ? 'Saved — Run ' + runId + ' is now Qualified.' :
+          (result.hasDeviation ? 'Saved — deviation reported, approval requested.' : 'Verification saved.'));
+        resetStartUpForm();
+      })
+      .withFailureHandler(function (err) { document.getElementById('suv-submit-btn').disabled = false; showToast(err.message, true); })
+      .saveStartUpVerification(payload);
+  }
+
+  function resetStartUpForm() {
+    document.getElementById('suv-run').value = '';
+    ['suv-customer', 'suv-mold', 'suv-molddesc', 'suv-item', 'suv-itemdesc', 'suv-line', 'suv-runqty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('suv-date').value = suvTodayStr();
+    document.getElementById('suv-time').value = suvNowTimeStr();
+    renderChecklist();
+  }
+</script>

@@ -1,0 +1,134 @@
+<h1 class="page-title">🔏 Deviation Approvals</h1>
+<p class="page-sub">Deviations reported during Start-Up Verification land here. Approve first — the PFA can't be signed off until a deviation is approved. Signing off the PFA qualifies the Run.</p>
+
+<section class="card hidden" id="da-focus-card">
+  <h2>From your link</h2>
+  <div id="da-focus-detail"></div>
+</section>
+
+<section class="card">
+  <h2>Pending Deviations</h2>
+  <div id="da-pending-table"></div>
+</section>
+
+<script>
+  var daData = null;
+
+  function init_devapproval() {
+    loadPendingDeviations();
+  }
+
+  function loadPendingDeviations() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        daData = data;
+        renderPendingTable();
+        maybeOpenFromLink();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getDeviationApprovalFormData();
+  }
+
+  function renderPendingTable() {
+    var rows = daData.pending || [];
+    var el = document.getElementById('da-pending-table');
+    if (!rows.length) { el.innerHTML = '<p class="spec-hint">No deviations awaiting action.</p><div id="da-action-panel"></div>'; return; }
+    var body = rows.map(function (r) {
+      var badge = r.status === 'Awaiting Approval' ? '<span class="badge warning">Awaiting Approval</span>' : '<span class="badge serious">Awaiting PFA Sign-off</span>';
+      return '<tr>' +
+        '<td>' + esc(r.recordId) + '</td>' +
+        '<td>' + esc(r.runId) + '</td>' +
+        '<td>' + esc(r.moldId) + '</td>' +
+        '<td>' + esc(r.line) + '</td>' +
+        '<td>' + esc(r.verificationDate) + '</td>' +
+        '<td>' + esc(r.deviationDescription) + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td><button class="ghost" data-act="' + esc(r.recordId) + '">Act</button></td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
+      '<th>Record #</th><th>Run</th><th>Mold</th><th>Line</th><th>Date</th><th>Deviation</th><th>Status</th><th></th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table></div><div id="da-action-panel"></div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-act]'), function (btn) {
+      btn.addEventListener('click', function () { openActionPanel(btn.dataset.act); });
+    });
+  }
+
+  function openActionPanel(recordId) {
+    var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
+    var panel = document.getElementById('da-action-panel');
+    if (!panel || !rec) return;
+    var authOpts = (daData.authOptions || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+    if (rec.status === 'Awaiting Approval') {
+      panel.innerHTML =
+        '<div class="row-card"><div class="row-head"><strong>Approve deviation — ' + esc(recordId) + '</strong></div>' +
+        '<div class="field-row">' +
+        '<div class="field"><label>Deviation Approved by</label><select id="da-approver"><option value="">— select —</option>' + authOpts + '</select></div>' +
+        '<div class="field"><label>Supervisor Authorization (optional)</label><select id="da-supervisor"><option value="">— none —</option>' + authOpts + '</select></div>' +
+        '<div class="field" style="align-self:end;"><button id="da-approve-btn" class="primary">Approve Deviation</button></div>' +
+        '</div></div>';
+      document.getElementById('da-approve-btn').addEventListener('click', function () { doApprove(recordId); });
+    } else {
+      panel.innerHTML =
+        '<div class="row-card"><div class="row-head"><strong>Sign off PFA — ' + esc(recordId) + '</strong></div>' +
+        '<div class="field-row">' +
+        '<div class="field"><label>PFA Signed off by</label><select id="da-pfaby"><option value="">— select —</option>' + authOpts + '</select></div>' +
+        '<div class="field"><label>Adjustments / Corrections completed (optional)</label><input type="text" id="da-adjustments"></div>' +
+        '<div class="field" style="align-self:end;"><button id="da-sign-btn" class="primary">Sign PFA &amp; Qualify Run</button></div>' +
+        '</div></div>';
+      document.getElementById('da-sign-btn').addEventListener('click', function () { doSignPfa(recordId); });
+    }
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function doApprove(recordId) {
+    var approver = document.getElementById('da-approver').value;
+    var supervisor = document.getElementById('da-supervisor').value;
+    if (!approver) { showToast('Pick who is approving.', true); return; }
+    google.script.run
+      .withSuccessHandler(function () {
+        showToast('Deviation approved for ' + recordId + '.');
+        loadPendingDeviations();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .approveDeviation(recordId, approver, supervisor);
+  }
+
+  function doSignPfa(recordId) {
+    var qcName = document.getElementById('da-pfaby').value;
+    var adjustments = document.getElementById('da-adjustments').value;
+    if (!qcName) { showToast('Pick who is signing off.', true); return; }
+    google.script.run
+      .withSuccessHandler(function () {
+        showToast('PFA signed off — Run qualified.');
+        loadPendingDeviations();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .signPfa(recordId, qcName, adjustments);
+  }
+
+  function maybeOpenFromLink() {
+    if (!(window.INITIAL_PARAMS && window.INITIAL_PARAMS.record)) return;
+    var rid = window.INITIAL_PARAMS.record;
+    var rec = (daData.pending || []).find(function (r) { return r.recordId === rid; });
+    if (rec) { openActionPanel(rid); } else { loadFocusedRecord(rid); }
+    window.INITIAL_PARAMS.record = ''; // only auto-open once
+  }
+
+  function loadFocusedRecord(recordId) {
+    google.script.run
+      .withSuccessHandler(function (detail) {
+        var card = document.getElementById('da-focus-card');
+        if (!detail) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        document.getElementById('da-focus-detail').innerHTML =
+          '<p><strong>' + esc(detail.recordId) + '</strong> — Run ' + esc(detail.runId) + ', ' + esc(detail.moldId) + '</p>' +
+          '<p>Deviation: ' + esc(detail.deviationDescription || '—') + '</p>' +
+          '<p>Approved by: ' + esc(detail.deviationApprovedBy || '— pending —') + '</p>' +
+          '<p>PFA Signed off by: ' + esc(detail.pfaSignedOffBy || '— pending —') + (detail.pfaId ? ' (' + esc(detail.pfaId) + ')' : '') + '</p>';
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getDeviationRecordDetail(recordId);
+  }
+</script>

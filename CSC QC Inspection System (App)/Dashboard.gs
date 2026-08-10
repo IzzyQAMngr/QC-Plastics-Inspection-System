@@ -1,7 +1,7 @@
 /*************************************************************
- * HOME DASHBOARD — live KPIs across product families.
+ * HOME DASHBOARD — live KPIs + bar charts across product families.
  * Computed directly from the log sheets (no separate dashboard
- * tabs are written) — deeper drill-down dashboards are Phase 2/3.
+ * tabs are written) — deeper drill-down dashboards are Phase 3.
  *************************************************************/
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -10,7 +10,8 @@ function getHomeDashboardData() {
   return {
     dropFreeze: getDropFreezeKpis_(),
     inProcess: getInProcessKpis_(),
-    generatedAt: new Date().toISOString(),
+    startUp: getStartUpKpis_(),
+    generatedAt: dateToStr_(new Date()),
   };
 }
 
@@ -26,7 +27,7 @@ function getDropFreezeKpis_() {
   const rows = readSheetObjects_(sheet);
 
   let openCount = 0, completeCount = 0, passCount = 0, failCount = 0, failsThisWeek = 0;
-  const byToolCode = {};
+  const byMold = {};
 
   rows.forEach(r => {
     const status = String(r.Status || '').trim().toUpperCase();
@@ -40,11 +41,11 @@ function getDropFreezeKpis_() {
         passCount++;
       }
     }
-    const tc = String(r.ToolCode || '').trim();
-    if (tc) {
-      byToolCode[tc] = byToolCode[tc] || { toolCode: tc, total: 0, fail: 0 };
-      byToolCode[tc].total++;
-      if (isFailValue_(r.Result)) byToolCode[tc].fail++;
+    const mold = String(r['Mold ID'] || '').trim();
+    if (mold) {
+      byMold[mold] = byMold[mold] || { label: mold, total: 0, fail: 0 };
+      byMold[mold].total++;
+      if (isFailValue_(r.Result)) byMold[mold].fail++;
     }
   });
 
@@ -56,7 +57,7 @@ function getDropFreezeKpis_() {
     complete: completeCount,
     passRate: graded ? Math.round((passCount / graded) * 1000) / 10 : null,
     failsThisWeek: failsThisWeek,
-    byToolCode: Object.values(byToolCode).sort((a, b) => b.fail - a.fail).slice(0, 8),
+    byMold: Object.values(byMold).sort((a, b) => b.fail - a.fail).slice(0, 8),
   };
 }
 
@@ -80,7 +81,7 @@ function getInProcessKpis_() {
       if (isRecentDate_(r['Timestamp Saved'], WEEK_MS)) failsThisWeek++;
       const mold = String(r.Mold || '').trim();
       if (mold) {
-        byMold[mold] = byMold[mold] || { mold: mold, fail: 0 };
+        byMold[mold] = byMold[mold] || { label: mold, fail: 0 };
         byMold[mold].fail++;
       }
     }
@@ -92,6 +93,47 @@ function getInProcessKpis_() {
     totalRecords: recordIds.size,
     dimPassRate: graded ? Math.round((dimPass / graded) * 1000) / 10 : null,
     failsThisWeek: failsThisWeek,
+    byMold: Object.values(byMold).sort((a, b) => b.fail - a.fail).slice(0, 8),
+  };
+}
+
+/** Start-Up Verification + Run qualification rollups. */
+function getStartUpKpis_() {
+  const runsSheet = getDb_().getSheetByName(RUNS_SHEET_NAME);
+  const logSheet = getDb_().getSheetByName(SU_LOG_SHEET_NAME);
+  if (!runsSheet || !logSheet) return { available: false };
+
+  const runs = readSheetObjects_(runsSheet);
+  const qualifiedCount = runs.filter(r => String(r.Qualified || '').trim() === 'Yes').length;
+  const runQualRate = runs.length ? Math.round((qualifiedCount / runs.length) * 1000) / 10 : null;
+
+  const logRows = readSheetObjects_(logSheet);
+  const byRecord = {};
+  logRows.forEach(r => {
+    const id = String(r['Verification Record #'] || '').trim();
+    if (!id) return;
+    (byRecord[id] = byRecord[id] || []).push(r);
+  });
+
+  let deviationCount = 0;
+  const byMold = {};
+  Object.keys(byRecord).forEach(id => {
+    const group = byRecord[id];
+    const hasDeviation = group.some(r => r['Verification Item'] === 'Was there a deviation?' && String(r['Actual Value']).trim() === 'Yes');
+    if (!hasDeviation) return;
+    deviationCount++;
+    const mold = String(group[0]['Mold ID'] || '').trim();
+    if (mold) { byMold[mold] = byMold[mold] || { label: mold, fail: 0 }; byMold[mold].fail++; }
+  });
+
+  return {
+    available: true,
+    totalVerifications: Object.keys(byRecord).length,
+    totalRuns: runs.length,
+    qualifiedRuns: qualifiedCount,
+    runQualRate: runQualRate,
+    deviationsReported: deviationCount,
+    pendingApprovals: getPendingDeviations_().length,
     byMold: Object.values(byMold).sort((a, b) => b.fail - a.fail).slice(0, 8),
   };
 }

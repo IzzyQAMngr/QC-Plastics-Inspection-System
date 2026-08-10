@@ -1,0 +1,72 @@
+<h1 class="page-title">🔍 Test Data Review</h1>
+<p class="page-sub">Browse and filter saved records across In-Process, Drop Freeze, and Start-Up Verification.</p>
+
+<section class="card">
+  <div class="line-tabs" id="tdr-module-tabs">
+    <div class="line-tab active" data-module="inprocess">📋 In-Process</div>
+    <div class="line-tab" data-module="dropfreeze">🧊 Drop Freeze</div>
+    <div class="line-tab" data-module="startup">✅ Start-Up Verification</div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="field-row">
+    <div class="field"><label>Mold ID contains</label><input id="tdr-mold"></div>
+    <div class="field"><label>Status / Result contains</label><input id="tdr-status"></div>
+    <div class="field"><label>Date from</label><input type="date" id="tdr-datefrom"></div>
+    <div class="field"><label>Date to</label><input type="date" id="tdr-dateto"></div>
+    <div class="field"><label>Search (any field)</label><input id="tdr-search" placeholder="record #, run ID, name…"></div>
+    <div class="field" style="align-self:end;"><button class="primary" id="tdr-apply-btn">Apply Filters</button></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="spec-hint" id="tdr-summary" style="margin-bottom:10px;"></div>
+  <div style="overflow-x:auto;">
+    <table class="qc-table" id="tdr-table"><thead id="tdr-thead"></thead><tbody id="tdr-tbody"></tbody></table>
+  </div>
+</section>
+
+<script>
+  var tdrModule = 'inprocess';
+
+  function init_testdatareview() {
+    Array.prototype.forEach.call(document.querySelectorAll('#tdr-module-tabs .line-tab'), function (tab) {
+      tab.addEventListener('click', function () {
+        Array.prototype.forEach.call(document.querySelectorAll('#tdr-module-tabs .line-tab'), function (t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        tdrModule = tab.dataset.module;
+        loadTdr();
+      });
+    });
+    document.getElementById('tdr-apply-btn').addEventListener('click', loadTdr);
+    loadTdr();
+  }
+
+  function loadTdr() {
+    var filters = {
+      moldId: document.getElementById('tdr-mold').value,
+      status: document.getElementById('tdr-status').value,
+      dateFrom: document.getElementById('tdr-datefrom').value,
+      dateTo: document.getElementById('tdr-dateto').value,
+      search: document.getElementById('tdr-search').value,
+    };
+    document.getElementById('tdr-summary').textContent = 'Loading…';
+    google.script.run
+      .withSuccessHandler(renderTdr)
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getTestDataReviewRows(tdrModule, filters);
+  }
+
+  function renderTdr(data) {
+    document.getElementById('tdr-thead').innerHTML = '<tr>' + data.columns.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr>';
+    document.getElementById('tdr-tbody').innerHTML = data.rows.length
+      ? data.rows.map(function (row) {
+          return '<tr>' + row.map(function (v) { return '<td>' + esc(v == null ? '' : v) + '</td>'; }).join('') + '</tr>';
+        }).join('')
+      : '<tr><td colspan="' + data.columns.length + '" style="color:var(--text-muted)">No matching records.</td></tr>';
+    var summary = data.totalMatched + ' matching record' + (data.totalMatched === 1 ? '' : 's');
+    if (data.capped) summary += ' — showing the most recent ' + data.rows.length + '. Narrow your filters to see more.';
+    document.getElementById('tdr-summary').textContent = summary;
+  }
+</script>

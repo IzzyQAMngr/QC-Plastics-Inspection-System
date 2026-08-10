@@ -6,19 +6,22 @@
   <section class="card">
     <h2>🧊 Plastics — Drop Freeze Testing</h2>
     <div class="tiles" id="df-tiles"></div>
-    <table class="qc-table">
-      <thead><tr><th>Tool Code</th><th>Tests</th><th>Fails</th></tr></thead>
-      <tbody id="df-table"></tbody>
-    </table>
+    <div class="spec-hint" id="df-chart-label"></div>
+    <div class="barchart" id="df-chart"></div>
   </section>
 
   <section class="card">
     <h2>📋 Plastics — In-Process Inspection</h2>
     <div class="tiles" id="ip-tiles"></div>
-    <table class="qc-table">
-      <thead><tr><th>Mold</th><th>Fails (7d)</th></tr></thead>
-      <tbody id="ip-table"></tbody>
-    </table>
+    <div class="spec-hint" id="ip-chart-label"></div>
+    <div class="barchart" id="ip-chart"></div>
+  </section>
+
+  <section class="card">
+    <h2>✅ Start-Up Verification</h2>
+    <div class="tiles" id="su-tiles"></div>
+    <div class="spec-hint" id="su-chart-label"></div>
+    <div class="barchart" id="su-chart"></div>
   </section>
 
   <section class="card">
@@ -42,6 +45,20 @@
     return '<div class="tile"><div class="label">' + label + '</div><div class="value ' + (cls || '') + '">' + value + '</div></div>';
   }
 
+  function renderBarChart(elId, rows, valueKey, colorVar, emptyText) {
+    var el = document.getElementById(elId);
+    if (!rows || !rows.length) { el.innerHTML = '<p class="spec-hint">' + emptyText + '</p>'; return; }
+    var max = Math.max.apply(null, rows.map(function (r) { return r[valueKey]; })) || 1;
+    el.innerHTML = rows.map(function (r) {
+      var pct = Math.round((r[valueKey] / max) * 100);
+      return '<div class="bar-row">' +
+        '<div class="bar-label">' + esc(r.label) + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:var(' + colorVar + ');"></div></div>' +
+        '<div class="bar-value">' + r[valueKey] + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
   function renderHome(data) {
     document.getElementById('home-loading').classList.add('hidden');
     document.getElementById('home-content').classList.remove('hidden');
@@ -53,10 +70,8 @@
       homeTile('Pass Rate', (df.passRate !== null ? df.passRate + '%' : '—'), 'good'),
       homeTile('Fails (7d)', df.failsThisWeek, df.failsThisWeek > 0 ? 'critical' : ''),
     ].join('') : homeTile('No data yet', '—');
-    document.getElementById('df-table').innerHTML = (df.byToolCode || []).map(function (r) {
-      return '<tr><td>' + r.toolCode + '</td><td>' + r.total + '</td><td>' +
-        (r.fail > 0 ? '<span class="badge critical">' + r.fail + '</span>' : r.fail) + '</td></tr>';
-    }).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No records yet.</td></tr>';
+    document.getElementById('df-chart-label').textContent = df.available && (df.byMold || []).length ? 'Fails by mold' : '';
+    renderBarChart('df-chart', df.byMold, 'fail', '--critical', 'No fails recorded.');
 
     var ip = data.inProcess;
     document.getElementById('ip-tiles').innerHTML = ip.available ? [
@@ -64,8 +79,17 @@
       homeTile('Dim. Pass Rate', (ip.dimPassRate !== null ? ip.dimPassRate + '%' : '—'), 'good'),
       homeTile('Fails (7d)', ip.failsThisWeek, ip.failsThisWeek > 0 ? 'critical' : ''),
     ].join('') : homeTile('No data yet', '—');
-    document.getElementById('ip-table').innerHTML = (ip.byMold || []).map(function (r) {
-      return '<tr><td>' + r.mold + '</td><td><span class="badge critical">' + r.fail + '</span></td></tr>';
-    }).join('') || '<tr><td colspan="2" style="color:var(--text-muted)">No fails recorded.</td></tr>';
+    document.getElementById('ip-chart-label').textContent = ip.available && (ip.byMold || []).length ? 'Fails by mold' : '';
+    renderBarChart('ip-chart', ip.byMold, 'fail', '--critical', 'No fails recorded.');
+
+    var su = data.startUp;
+    document.getElementById('su-tiles').innerHTML = su.available ? [
+      homeTile('Verifications', su.totalVerifications),
+      homeTile('Runs Qualified', su.qualifiedRuns + ' / ' + su.totalRuns, 'good'),
+      homeTile('Deviations Reported', su.deviationsReported, su.deviationsReported > 0 ? 'warning' : ''),
+      homeTile('Pending Approvals', su.pendingApprovals, su.pendingApprovals > 0 ? 'critical' : ''),
+    ].join('') : homeTile('No data yet', '—');
+    document.getElementById('su-chart-label').textContent = su.available && (su.byMold || []).length ? 'Deviations by mold' : '';
+    renderBarChart('su-chart', su.byMold, 'fail', '--warning', 'No deviations recorded.');
   }
 </script>

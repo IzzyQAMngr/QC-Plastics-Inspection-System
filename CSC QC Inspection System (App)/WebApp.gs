@@ -2,8 +2,10 @@
  * WEB APP ENTRY POINT
  *************************************************************/
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  const params = (e && e.parameter) || {};
+  const tmpl = HtmlService.createTemplateFromFile('Index');
+  tmpl.initialParamsJson = JSON.stringify({ view: params.view || '', record: params.record || '' });
+  return tmpl.evaluate()
     .setTitle('CSC QC Inspection System')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -24,8 +26,9 @@ function onOpen() {
 }
 
 function showAppDialog() {
-  const html = HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  const tmpl = HtmlService.createTemplateFromFile('Index');
+  tmpl.initialParamsJson = '{}';
+  const html = tmpl.evaluate()
     .setWidth(1200)
     .setHeight(760);
   SpreadsheetApp.getUi().showModalDialog(html, 'CSC QC Inspection System');
