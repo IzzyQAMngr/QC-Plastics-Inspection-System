@@ -28,18 +28,32 @@ function buildDimFields_(specs) {
         const key = spec.characteristic + ' ' + suffix;
         fields.push({
           key: key, characteristic: spec.characteristic, label: key + (spec.unit ? ' (' + spec.unit + ')' : ''),
-          unit: spec.unit, lsl: spec.lsl, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
+          unit: spec.unit, lsl: spec.lsl, nominal: spec.nominal, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
         });
       });
     } else {
       fields.push({
         key: spec.characteristic, characteristic: spec.characteristic,
         label: spec.characteristic + (spec.unit ? ' (' + spec.unit + ')' : ''),
-        unit: spec.unit, lsl: spec.lsl, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
+        unit: spec.unit, lsl: spec.lsl, nominal: spec.nominal, usl: spec.usl, rejectLsl: rejectLsl, rejectUsl: rejectUsl, measureIndex: spec.measureIndex,
       });
     }
   });
-  return fields;
+  return sortDimFields_(fields);
+}
+
+// Display order requested for the Dimensional section: Weight, Pail Height, Chime A/B Min/Max
+// first (in that order); any other register-defined characteristic keeps its original relative
+// order in the middle; Wall Thickness (the 4 SW sidewall points) always sorts last.
+const DIM_FIELD_PRIORITY_ = ['Weight', 'Pail Height', 'Chime A Min', 'Chime A Max', 'Chime B Min', 'Chime B Max'];
+function sortDimFields_(fields) {
+  const rank = f => {
+    const p = DIM_FIELD_PRIORITY_.indexOf(f.key);
+    if (p >= 0) return p;
+    if (WALL_SW_CHARACTERISTICS.indexOf(f.key) >= 0) return 1000 + WALL_SW_CHARACTERISTICS.indexOf(f.key);
+    return 100;
+  };
+  return fields.map((f, i) => ({ f: f, i: i })).sort((a, b) => (rank(a.f) - rank(b.f)) || (a.i - b.i)).map(x => x.f);
 }
 
 function getInProcessLogSheet_() {
@@ -71,7 +85,7 @@ function getColorSpecForRow(mold, color, itemNo) { return color ? getColorSpec_(
 function getSpecsForRow(mold, color, itemNo) {
   const fields = buildDimFields_(getSpecsFromMaster_(mold));
   const bounds = {};
-  fields.forEach(f => { bounds[f.key] = { lsl: f.lsl, usl: f.usl, rejectLsl: f.rejectLsl, rejectUsl: f.rejectUsl, measureIndex: f.measureIndex }; });
+  fields.forEach(f => { bounds[f.key] = { lsl: f.lsl, nominal: f.nominal, usl: f.usl, rejectLsl: f.rejectLsl, rejectUsl: f.rejectUsl, measureIndex: f.measureIndex }; });
   const colorSpec = color ? getColorSpec_(mold, color, itemNo) : null;
   return { fields: fields, bounds: bounds, colorSpec: colorSpec, cavityIds: getCavityIds_(mold) };
 }
@@ -112,7 +126,7 @@ function evaluateInProcessRow_(row, specs) {
   const failures = [];
   const needsReview = [];
   const dateCode = String(row.dateCode || '').toLowerCase();
-  if (dateCode === 'fail') failures.push('Date Code Fail');
+  if (dateCode === 'needs update') failures.push('Date Code Needs Update');
 
   const dimResults = {};
   fields.forEach(f => {
@@ -233,11 +247,11 @@ function saveInProcessInspection(payload) {
 
       if (row.dateCode) {
         const dc = String(row.dateCode).toLowerCase();
-        const dcStatus = dc === 'fail' ? 'Fail' : (dc === 'pass' ? 'Pass' : '');
+        const dcStatus = dc === 'needs update' ? 'Fail' : (dc === 'current' ? 'Pass' : '');
         dbRows.push(dbRow('Visual', '', 'Date Code Verification', '', '', '', row.dateCode, dcStatus,
-          dcStatus === 'Fail' ? 'Date code incorrect' : ''));
+          dcStatus === 'Fail' ? 'Date code needs update' : ''));
       }
-      if (row.visual) dbRows.push(dbRow('Visual', '', 'Visual Conformance Check', '', '', '', row.visual, '', ''));
+      if (row.visual) dbRows.push(dbRow('Visual', '', 'Visual Observations', '', '', '', row.visual, '', ''));
 
       [['deltaL', 'ΔL'], ['deltaA', 'ΔA'], ['deltaB', 'ΔB']].forEach(([key, name]) => {
         if (row[key]) dbRows.push(dbRow('Color', '', name, '', '', '', row[key], '', ''));

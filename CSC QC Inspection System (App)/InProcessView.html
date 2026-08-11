@@ -1,9 +1,8 @@
 <h1 class="page-title">📋 In-Process Inspection</h1>
-<p class="page-sub">Fill in the Inspection Header once. Then work through each Line: pick its Mold once (Product Type & Description auto-fill) — that's the Line Batch — and a row is created automatically for every cavity. Fill in each row's measurements, switch lines any time, and submit everything together at the end.</p>
 <p class="spec-hint" id="ip-spec-citation"></p>
 
 <section class="card">
-  <h2>Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
+  <h2>1. Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
   <div class="field-row">
     <div class="field"><label>Inspection Date</label><input type="date" id="ip-inspDate"></div>
     <div class="field"><label>Inspection Time</label><input type="time" id="ip-inspTime"></div>
@@ -12,23 +11,24 @@
     <div class="field"><label>Shift Foreman</label><select id="ip-foreman"></select></div>
   </div>
   <div class="field-row">
-    <div class="field"><label>Existing Record #</label><input id="ip-record-id" placeholder="(assigned automatically on save)"></div>
-    <div class="field" style="align-self:end;"><button id="ip-new-btn" class="ghost">Start New Round</button></div>
+    <div class="field"><label>Resume Existing Record #</label><input id="ip-record-id" placeholder="(leave blank to start a new record)"></div>
+    <div class="field" style="align-self:end;"><button id="ip-new-btn" class="ghost">Start New Inspection</button></div>
   </div>
+  <p class="spec-hint">"Start New Inspection" clears this form to begin a brand-new QC Record. You don't need it to keep adding Lines to the inspection you're already working on — just switch Lines below.</p>
 </section>
 
 <section class="card">
-  <h2>Lines</h2>
+  <h2>2. Lines</h2>
   <div class="line-tabs" id="ip-line-tabs"></div>
 </section>
 
 <section class="card">
-  <h2 id="ip-line-title">Line 1 — Line Batch</h2>
+  <h2 id="ip-line-title">3. Line 1 — Line Batch</h2>
   <div id="ip-line-panel-body"></div>
 </section>
 
 <section class="card">
-  <h2>Review &amp; Submit</h2>
+  <h2>4. Review &amp; Submit</h2>
   <button id="ip-review-btn">Review All Lines</button>
   <div id="ip-review-area" class="hidden" style="margin-top:14px;"></div>
 </section>
@@ -37,25 +37,7 @@
   var LINE_NUMBERS = [1,2,3,4,5,6,7,8,9,10];
   // Exact register spelling for the 4 sidewall points that feed the wall-thickness-variance check — mirrors InProcess.gs.
   var WALL_SW_CHARACTERISTICS = ['SW Thickness 1 - Top', 'SW Thickness 2 - Bottom', 'SW Thickness 3 - Side Right', 'SW Thickness 4 - Side Left'];
-  var CAVITY_FIELD_GROUPS_TOP = [
-    { title: null, fields: [
-      { key:'visual', label:'Visual', type:'text' },
-      { key:'dateCode', label:'Date Code', type:'select', optionsKey:'passFail' },
-      { key:'deltaL', label:'ΔL', type:'number' },
-      { key:'deltaA', label:'ΔA', type:'number' },
-    ]},
-    { title: null, fields: [
-      { key:'deltaB', label:'ΔB', type:'number' },
-      { key:'deltaE', label:'ΔE*ab', type:'number', spec:true },
-    ]},
-  ];
-  var CAVITY_FIELD_GROUPS_BOTTOM = [
-    { title: 'FUNCTIONAL', fields: [
-      { key:'nesting', label:'Nesting', type:'select', optionsKey:'passFail' },
-      { key:'coverFit', label:'Cover Fit', type:'select', optionsKey:'passFail' },
-      { key:'gaugeFit', label:'Gauge Fit', type:'select', optionsKey:'passFail' },
-    ]},
-  ];
+  var DATE_CODE_OPTIONS = ['', 'Current', 'Needs Update', 'N/A'];
   function dimKeysFor(line) {
     var keys = (line.dimFields || []).map(function (f) { return f.key; });
     if (line.bounds && line.bounds.deltaE) keys.push('deltaE');
@@ -132,6 +114,15 @@
     return '<span class="badge warning">—</span>';
   }
 
+  // Per-characteristic flag shown in the Dimensional table's Remark column — a compact
+  // Pass/Review/Fail chip, never the word "OOS".
+  function dimFlag(tier) {
+    if (tier === 'Fail') return '<span class="badge critical">Fail</span>';
+    if (tier === 'NeedsReview') return '<span class="badge serious">Review</span>';
+    if (tier === 'Pass') return '<span class="badge good">Pass</span>';
+    return '';
+  }
+
   // Row-level status is the worst tier seen across every field — Fail beats Needs Review beats Pass.
   function computeRowStatus(row, bounds, dimKeys) {
     bounds = bounds || {}; dimKeys = dimKeys || [];
@@ -140,7 +131,7 @@
       if (tier === 'Fail') worst = 'FAIL';
       else if (tier === 'NeedsReview' && worst !== 'FAIL') worst = 'NEEDS REVIEW';
     }
-    if (row.dateCode) { hasAny = true; if (row.dateCode === 'Fail') escalate('Fail'); }
+    if (row.dateCode) { hasAny = true; if (row.dateCode === 'Needs Update') escalate('Fail'); }
     dimKeys.forEach(function (k) {
       if (row[k] !== '' && row[k] !== undefined && row[k] !== null) {
         hasAny = true;
@@ -201,7 +192,7 @@
   function fieldHtml(f, value, bound) {
     var input;
     if (f.type === 'select') {
-      var opts = f.optionsKey === 'passFail' ? PASS_FAIL_OPTIONS : f.options;
+      var opts = f.optionsKey === 'passFail' ? PASS_FAIL_OPTIONS : (f.optionsKey === 'dateCode' ? DATE_CODE_OPTIONS : f.options);
       input = '<select data-field="' + f.key + '">' + opts.map(function (o) {
         return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('') + '</select>';
@@ -215,36 +206,95 @@
     return '<div class="field"><label>' + f.label + '</label>' + input + hint + '</div>';
   }
 
-  function chunk(arr, size) {
-    var out = [];
-    for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-    return out;
+  /** Renders a spec number to 3 decimal places; blank/non-numeric stays as-is (so '—' passes through). */
+  function fmt3(v) {
+    if (v === null || v === undefined || v === '') return '';
+    var n = parseFloat(v);
+    return isNaN(n) ? String(v) : n.toFixed(3);
   }
 
-  function cavityRowHtml(idx, row, bounds, dimFields) {
-    bounds = bounds || {}; dimFields = dimFields || [];
-    var status = computeRowStatus(row, bounds, dimFields.map(function (f) { return f.key; }));
-    var badge = statusBadge(status);
-    var groups = CAVITY_FIELD_GROUPS_TOP.concat(
-      [{ title: 'DIMENSIONAL', fields: dimFields.map(function (f) { return { key: f.key, label: f.label, type: 'number', spec: true }; }) }],
-      CAVITY_FIELD_GROUPS_BOTTOM
-    );
-    var body = groups.map(function (g) {
-      var rows = chunk(g.fields, 4).map(function (fs) {
-        return '<div class="field-row">' + fs.map(function (f) { return fieldHtml(f, row[f.key], bounds[f.key]); }).join('') + '</div>';
-      }).join('');
-      return (g.title ? '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">' + g.title + '</h3>' : '') + rows;
+  /** The Dimensional block as a real table — Characteristic | LSL | Nom | USL | UOM | Actual Value | Remark —
+   *  in the fixed column order requested, with rows in the mold's register order (already
+   *  sorted server-side by sortDimFields_ in InProcess.gs: Weight/Pail Height/Chime first,
+   *  Wall Thickness last). Remark is a compact Pass/Review/Fail flag, never "OOS". Numeric columns
+   *  are 3-decimal formatted; LSL/Nom/USL/UOM/Actual Value stay narrow so Remark gets the room. */
+  function dimensionalTableHtml(row, dimFields, bounds) {
+    var rowsHtml = dimFields.map(function (f) {
+      var b = bounds[f.key] || {};
+      var tier = evalBound(row[f.key], b);
+      var oosClass = tier === 'Fail' ? 'oos' : (tier === 'NeedsReview' ? 'oos-review' : '');
+      return '<tr>' +
+        '<td>' + esc(f.characteristic || f.label) + '</td>' +
+        '<td>' + (b.lsl === null || b.lsl === undefined ? '—' : fmt3(b.lsl)) + '</td>' +
+        '<td>' + (b.nominal === null || b.nominal === undefined ? '—' : fmt3(b.nominal)) + '</td>' +
+        '<td>' + (b.usl === null || b.usl === undefined ? '—' : fmt3(b.usl)) + '</td>' +
+        '<td>' + esc(f.unit || '—') + '</td>' +
+        '<td class="dim-value"><input type="number" step="any" class="' + oosClass + '" data-field="' + f.key + '" value="' + esc(fmt3(row[f.key])) + '"></td>' +
+        '<td class="dim-remark">' + dimFlag(tier) + '</td>' +
+      '</tr>';
     }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table dim-table"><colgroup>' +
+      '<col><col class="dim-narrow"><col class="dim-narrow"><col class="dim-narrow"><col class="dim-narrow"><col class="dim-value-col"><col>' +
+      '</colgroup><thead><tr>' +
+      '<th>Characteristic</th><th>LSL</th><th>Nom</th><th>USL</th><th>UOM</th><th>Actual Value</th><th>Remark</th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+  }
+
+  /** Shown as a faint banner at the top of every cavity card so the Line/Mold/Item context
+   *  stays visible without scrolling back up to the Line Batch section above. */
+  function lineBatchSummaryText(n, line) {
+    var parts = ['Line ' + n];
+    if (line.mold) parts.push(line.mold);
+    if (line.itemNo) parts.push('Item ' + line.itemNo);
+    if (line.color) parts.push(line.color);
+    if (line.sampleDate) parts.push(line.sampleDate);
+    if (line.sampleTime) parts.push(line.sampleTime);
+    if (line.resinLot) parts.push('Lot ' + line.resinLot);
+    return parts.join(' · ');
+  }
+
+  function cavityRowHtml(idx, row, line, n) {
+    var bounds = line.bounds || {};
+    var dimFields = line.dimFields || [];
+    var status = computeRowStatus(row, bounds, dimKeysFor(line));
+    var badge = statusBadge(status);
+
+    var topRow = '<div class="field-row">' +
+      fieldHtml({ key:'dateCode', label:'Date Code Check', type:'select', optionsKey:'dateCode' }, row.dateCode) +
+      '<div class="field field-wide"><label>Visual Observations</label><textarea data-field="visual" rows="2">' + esc(row.visual) + '</textarea></div>' +
+    '</div>';
+
+    var colorHint = colorHintText(line);
+    var labRow = (colorHint ? '<div class="spec-hint">' + esc(colorHint) + '</div>' : '') +
+      '<div class="field-row">' +
+        fieldHtml({ key:'deltaL', label:'ΔL', type:'number' }, row.deltaL) +
+        fieldHtml({ key:'deltaA', label:'ΔA', type:'number' }, row.deltaA) +
+        fieldHtml({ key:'deltaB', label:'ΔB', type:'number' }, row.deltaB) +
+        fieldHtml({ key:'deltaE', label:'ΔE*ab', type:'number', spec:true }, row.deltaE, bounds.deltaE) +
+      '</div>';
+
+    var dimBlock = dimFields.length
+      ? '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">DIMENSIONAL</h3>' + dimensionalTableHtml(row, dimFields, bounds)
+      : '';
+
+    var functionalRow = '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">FUNCTIONAL</h3>' +
+      '<div class="field-row">' +
+        fieldHtml({ key:'nesting', label:'Nesting', type:'select', optionsKey:'passFail' }, row.nesting) +
+        fieldHtml({ key:'coverFit', label:'Cover Fit', type:'select', optionsKey:'passFail' }, row.coverFit) +
+        fieldHtml({ key:'gaugeFit', label:'Gauge Fit', type:'select', optionsKey:'passFail' }, row.gaugeFit) +
+      '</div>';
+
     return '<div class="row-card" data-idx="' + idx + '">' +
+      '<div class="section-divider">' + esc(lineBatchSummaryText(n, line)) + '</div>' +
       '<div class="row-head"><div><strong>Cavity</strong> <input style="display:inline-block;width:90px;" data-field="cavity" value="' + esc(row.cavity) + '"></div>' +
       '<div class="tag" data-badge-slot>' + badge + ' <button class="ghost" data-remove-row>Remove</button></div></div>' +
-      body + '</div>';
+      topRow + labRow + dimBlock + functionalRow + '</div>';
   }
 
   function renderLinePanel() {
     var n = ipActiveLine;
     var line = ensureLine(n);
-    document.getElementById('ip-line-title').textContent = 'Line ' + n + ' — Line Batch';
+    document.getElementById('ip-line-title').textContent = '3. Line ' + n + ' — Line Batch';
 
     var runOptions = (ipData.runs || []).map(function (r) {
       return '<option value="' + esc(r.runId) + '"' + (r.runId === line.runId ? ' selected' : '') + '>' + esc(r.runId) + ' — ' + esc(r.moldId || r.line || '') +
@@ -252,33 +302,35 @@
     }).join('');
 
     var html =
-      '<div class="field"><label>Load an active Run into this line (optional)</label>' +
-      '<select id="lb-loadrun"><option value="">— none —</option>' + runOptions + '</select>' +
-      '<div class="spec-hint">Pulls Mold/Item/Resin Lot from a Run already set up in Add Run.</div></div>' +
+      '<div class="section-divider">MOLD INFO</div>' +
       '<div class="field-row">' +
-        '<div class="field"><label>Mold</label><div class="combo"><input id="lb-mold" placeholder="Start typing to search…" value="' + esc(line.mold) + '"></div></div>' +
+        '<div class="field"><label>Active Run (optional)</label>' +
+          '<select id="lb-loadrun"><option value="">— none —</option>' + runOptions + '</select>' +
+          '<div class="spec-hint">Pulls Mold/Item/Resin Lot from a Run already set up in Add Run.</div>' +
+        '</div>' +
+        '<div class="field"><label>Mold ID</label><div class="combo"><input id="lb-mold" placeholder="Start typing to search…" value="' + esc(line.mold) + '"></div></div>' +
+        '<div class="field field-wide"><label>Mold Description</label>' + fieldSimpleInput('lb-moldDescription', 'text', line.moldDescription, true) + '</div>' +
         fieldSimple('lb-productType', 'Product Type', 'text', null, line.product, true) +
-        fieldSimple('lb-moldDescription', 'Mold Description', 'text', null, line.moldDescription, true) +
-        fieldSimple('lb-color', 'Color', 'select', line.colorOptions, line.color) +
       '</div>' +
-      (colorHintText(line) ? '<div class="spec-hint">' + esc(colorHintText(line)) + '</div>' : '') +
+      '<div class="section-divider">ITEM INFO</div>' +
       '<div class="field-row">' +
         '<div class="field"><label>Item No.</label><div class="combo"><input id="lb-itemNo" placeholder="Start typing to search…" value="' + esc(line.itemNo) + '"></div></div>' +
         fieldSimple('lb-itemDescription', 'Item Description', 'text', null, line.itemDescription, true) +
-        fieldSimple('lb-resinLot', 'LOT of Resin', 'text', null, line.resinLot) +
-        fieldSimple('lb-pallet', 'Pallet Sequence', 'text', null, line.pallet) +
+        fieldSimple('lb-color', 'Color', 'select', line.colorOptions, line.color) +
       '</div>' +
+      '<div class="section-divider">SAMPLE INFO</div>' +
       '<div class="field-row">' +
         fieldSimple('lb-sampleDate', 'Sample Date', 'date', null, line.sampleDate) +
         fieldSimple('lb-sampleTime', 'Sample Time', 'time', null, line.sampleTime) +
+        fieldSimple('lb-resinLot', 'LOT of Resin', 'text', null, line.resinLot) +
+        fieldSimple('lb-pallet', 'Pallet Sequence', 'text', null, line.pallet) +
       '</div>' +
       '<div style="margin:10px 0;display:flex;gap:8px;">' +
-        '<button id="lb-regen-btn" class="ghost">🔄 Regenerate cavity rows from Master Register</button>' +
         '<button id="lb-addrow-btn" class="ghost">+ Add Row Manually</button>' +
       '</div>' +
       '<div id="lb-cavity-rows">' +
       (line.cavityRows.length
-        ? line.cavityRows.map(function (row, idx) { return cavityRowHtml(idx, row, line.bounds, line.dimFields); }).join('')
+        ? line.cavityRows.map(function (row, idx) { return cavityRowHtml(idx, row, line, n); }).join('')
         : '<p class="spec-hint">No cavity rows yet — pick a Product + Mold above to auto-generate one row per cavity.</p>') +
       '</div>';
 
@@ -286,15 +338,16 @@
     wireLinePanelEvents();
   }
 
-  function fieldSimple(id, label, type, options, value, readonly) {
-    var input;
+  function fieldSimpleInput(id, type, value, readonly, options) {
     if (type === 'select') {
-      input = '<select id="' + id + '"><option value="">— select —</option>' +
+      return '<select id="' + id + '"><option value="">— select —</option>' +
         (options || []).map(function (o) { return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
-    } else {
-      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value) + '"' + (readonly ? ' readonly' : '') + '>';
     }
-    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
+    return '<input type="' + type + '" id="' + id + '" value="' + esc(value) + '"' + (readonly ? ' readonly' : '') + '>';
+  }
+
+  function fieldSimple(id, label, type, options, value, readonly) {
+    return '<div class="field"><label>' + label + '</label>' + fieldSimpleInput(id, type, value, readonly, options) + '</div>';
   }
 
   function wireLinePanelEvents() {
@@ -353,7 +406,6 @@
     ['resinLot','pallet','sampleDate','sampleTime'].forEach(function (key) {
       document.getElementById('lb-' + key).addEventListener('input', function (e) { ensureLine(n)[key] = e.target.value; });
     });
-    document.getElementById('lb-regen-btn').addEventListener('click', function () { fetchMoldDependents(n, true); });
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
       ensureLine(n).cavityRows.push(newCavityRow(''));
       renderLinePanel();
@@ -384,6 +436,9 @@
       var tier = evalBound(e.target.value, bound);
       e.target.classList.toggle('oos', tier === 'Fail');
       e.target.classList.toggle('oos-review', tier === 'NeedsReview');
+      var tr = e.target.closest('tr');
+      var remarkCell = tr && tr.querySelector('.dim-remark');
+      if (remarkCell) remarkCell.innerHTML = dimFlag(tier);
     }
     var status = computeRowStatus(line.cavityRows[idx], line.bounds, dimKeysFor(line));
     var badge = statusBadge(status);
@@ -455,7 +510,7 @@
       if (tier === 'Fail') issues.push(f.label + ' ' + row[f.key] + ' (fail)');
       else if (tier === 'NeedsReview') issues.push(f.label + ' ' + row[f.key] + ' (needs review)');
     });
-    if (row.dateCode === 'Fail') issues.push('Date Code fail');
+    if (row.dateCode === 'Needs Update') issues.push('Date Code needs update');
     ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k] === 'Fail') issues.push(k + ' fail'); });
     return issues;
   }
@@ -513,10 +568,14 @@
       });
     });
 
+    var btn = document.getElementById('ip-submit-all-btn');
+    var originalLabel = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
     google.script.run
       .withSuccessHandler(function (result) {
         document.getElementById('ip-record-id').value = result.recordId;
-        showToast('Saved ' + result.savedRows + ' measurement(s) to ' + result.recordId + ' across ' + lines.length + ' line(s).' +
+        showToast('Record ' + result.recordId + ' has been added to Inspection Records (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
           (result.failCount ? ' ' + result.failCount + ' sample(s) failed.' : '') +
           (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
           result.failCount > 0);
@@ -524,7 +583,10 @@
         renderLineTabs(); renderLinePanel();
         document.getElementById('ip-review-area').classList.add('hidden');
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast(err.message, true);
+      })
       .saveInProcessInspection({ recordId: document.getElementById('ip-record-id').value || null, header: header, rows: rows });
   }
 
