@@ -144,7 +144,12 @@ function getPassFailNAList_()  { return settingsColumnBelow_('Pass / Fail / N/A'
 function getStartUpTechList_() { return settingsColumnBelow_('Start-Up Technician Name', 30); }
 function getDeviationAuthList_() { return settingsColumnBelow_('Deviation Authorization List', 30); }
 
-/** Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes}], in sheet order. */
+/**
+ * Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes, category}], in sheet order.
+ * "Category" is an optional column (e.g. Set-Up, Line Clearance, Artwork & KC#s, Material / Silos) used to group
+ * checklist rows on the form — it can live anywhere in the header row, and if it's missing entirely every item
+ * comes back with category: '' so the form falls back to one flat, ungrouped table.
+ */
 function getStartUpItemsList_() {
   const sheet = getDb_().getSheetByName(SU_ITEMS_SHEET_NAME);
   if (!sheet) throw new Error('"' + SU_ITEMS_SHEET_NAME + '" sheet not found.');
@@ -153,11 +158,17 @@ function getStartUpItemsList_() {
   const lastRow = sheet.getLastRow();
   if (lastRow <= pos.row) return [];
   const data = sheet.getRange(pos.row + 1, pos.col, lastRow - pos.row, 4).getValues();
+  const catPos = findHeaderRowAndCol_(sheet, 'Category', 3);
+  const categories = catPos ? sheet.getRange(pos.row + 1, catPos.col, lastRow - pos.row, 1).getValues() : null;
   const out = [];
-  for (const row of data) {
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
     const item = String(row[0] || '').trim();
     if (!item) continue;
-    out.push({ item: item, valueType: String(row[1] || '').trim(), unit: String(row[2] || '').trim(), notes: String(row[3] || '').trim() });
+    out.push({
+      item: item, valueType: String(row[1] || '').trim(), unit: String(row[2] || '').trim(), notes: String(row[3] || '').trim(),
+      category: categories ? String(categories[i][0] || '').trim() : '',
+    });
   }
   return out;
 }

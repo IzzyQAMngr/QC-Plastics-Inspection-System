@@ -189,4 +189,18 @@
     border: 1px dashed var(--border); border-radius: 0; padding: 40px 20px; text-align: center; color: var(--text-muted);
   }
   .hidden { display: none !important; }
+
+  /* ---- Checkbox-driven Pass/Fail/N/A tables (Start-Up Verification checklist) ---- */
+  table.suv-checklist-table th.suv-check-col, table.suv-checklist-table td.suv-check-cell { width: 64px; text-align: center; }
+  table.suv-checklist-table td.suv-check-cell input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--series-1); }
+
+  /* ---- Print: strip nav/chrome so a form can be printed blank and filled by hand ---- */
+  @media print {
+    #sidenav, .toast, .combo-list, button { display: none !important; }
+    #main { padding: 0; max-width: none; }
+    body { background: #fff; }
+    section.card { border: 1px solid #000; box-shadow: none; break-inside: avoid; }
+    input, select, textarea { border: 1px solid #000; color: #000; }
+    .section-divider { border: 1px solid #000; border-left-width: 3px; }
+  }
 </style>

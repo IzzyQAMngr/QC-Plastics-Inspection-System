@@ -70,8 +70,10 @@ function contextFromRow_(row) {
 }
 
 function computeItemStatus_(valueType, value) {
+  const v = String(value || '').trim();
+  if (v === 'Pass' || v === 'Fail') return v;
+  if (v === 'N/A') return '';
   if (String(valueType || '').replace(/\s+/g, '').toLowerCase() === 'yes/no') {
-    const v = String(value || '').trim();
     if (v === 'Yes') return 'Pass';
     if (v === 'No') return 'Fail';
   }
@@ -87,7 +89,6 @@ function getStartUpVerificationFormData() {
     startUpTechOptions: getStartUpTechList_(),
     shiftOptions: getShiftList_(),
     foremanOptions: getForemanList_(),
-    pfaAuthOptions: getDeviationAuthList_(),
   };
 }
 

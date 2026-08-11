@@ -1,37 +1,50 @@
 <h1 class="page-title">✅ Start-Up Verification</h1>
-<p class="page-sub">Pick the Run being started up, complete the checklist, and save. If a deviation is reported, the sign-off fields lock and the Deviation Authorization List gets emailed for approval — otherwise sign off the PFA right here to qualify the Run immediately.</p>
+<p class="page-sub">Pick the Run being started up, work through the Checklist and Key Process Parameters, and save. If a deviation is reported, the sign-off fields lock and the Deviation Authorization List gets emailed for approval — otherwise sign off the PFA right here to qualify the Run immediately.</p>
 
 <section class="card">
-  <h2>Run &amp; Sign-In</h2>
+  <h2>1. Run &amp; Sign-In</h2>
+  <div class="section-divider">RUN SELECTION</div>
   <div class="field-row">
     <div class="field"><label>Run ID</label><select id="suv-run"></select></div>
     <div class="field"><label>Verification Date</label><input type="date" id="suv-date"></div>
     <div class="field"><label>Verification Time</label><input type="time" id="suv-time"></div>
     <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
   </div>
+  <div class="section-divider">PERSONNEL</div>
   <div class="field-row">
     <div class="field"><label>QC Technician Name</label><select id="suv-qctech"></select></div>
     <div class="field"><label>Start-Up Technician Name</label><select id="suv-suptech"></select></div>
-    <div class="field"><label>Foreman</label><select id="suv-foreman"></select></div>
+    <div class="field"><label>Shift Foreman</label><select id="suv-foreman"></select></div>
   </div>
+  <div class="section-divider">MOLD INFO</div>
+  <div class="field-row">
+    <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
+    <div class="field field-wide"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
+    <div class="field"><label>Line #</label><input id="suv-line" readonly></div>
+  </div>
+  <div class="section-divider">ITEM INFO</div>
   <div class="field-row">
     <div class="field"><label>Customer Name</label><input id="suv-customer" readonly></div>
-    <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
-    <div class="field"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
-    <div class="field"><label>Item</label><input id="suv-item" readonly></div>
-    <div class="field"><label>Item Description</label><input id="suv-itemdesc" readonly></div>
-    <div class="field"><label>Line #</label><input id="suv-line" readonly></div>
+    <div class="field"><label>Item No.</label><input id="suv-item" readonly></div>
+    <div class="field field-wide"><label>Item Description</label><input id="suv-itemdesc" readonly></div>
     <div class="field"><label>Run Qty</label><input id="suv-runqty" readonly></div>
   </div>
 </section>
 
 <section class="card">
-  <h2>Checklist</h2>
-  <div id="suv-checklist"></div>
+  <h2>2. Checklist &amp; Key Process Parameters</h2>
+  <div class="section-divider" id="suv-ctx-checklist">RUN CONTEXT</div>
+  <p class="spec-hint">Checklist items: check exactly one box — Pass, Fail, or N/A. Key Process Parameters: enter the reading under Actual Value. Both are grouped below by the Category set on each item in the Start-Up Verification Items List.</p>
+  <div id="suv-checklist-table"></div>
 </section>
 
 <section class="card">
-  <h2>Sign-Off</h2>
+  <h2>3. Deviation</h2>
+  <div id="suv-deviation-fields"></div>
+</section>
+
+<section class="card">
+  <h2>4. Qualification</h2>
   <div id="suv-selfserve-block" class="field hidden">
     <label>PFA Signed off by</label>
     <select id="suv-pfa-direct"></select>
@@ -48,18 +61,28 @@
 </section>
 
 <section class="card">
-  <button id="suv-submit-btn" class="primary">Save Verification</button>
+  <h2>5. Submit</h2>
+  <div style="display:flex;gap:8px;">
+    <button id="suv-submit-btn" class="primary">Save Verification</button>
+    <button id="suv-print-btn" class="ghost">🖨️ Print This Form</button>
+  </div>
+  <p class="spec-hint">Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
 </section>
 
 <script>
   var suvData = null;
   var suvItemEls = {};
+  var suvChecklistItems = [];
+  var suvKppItems = [];
+  var suvDeviationItems = [];
+  var suvPlainItems = [];
   var SUV_BODY_EXCLUDE = [
     'Run ID', 'Customer Name', 'Item Number', 'Item Description', 'Run Qty', 'Start-up Date', 'Start-up Time',
     'Line / Machine #', 'Shift', 'Mold ID', 'QC Technician Name', 'Start-Up Technician Name', 'Foreman Name',
     'Deviation Approved by', 'PFA Signed off by', 'Supervisor Authorization (if deviation)', 'PFA completed (PFA ID)',
     'Adjustments or Corrections completed if applicable',
   ];
+  var SUV_DEVIATION_ITEMS = ['Was there a deviation?', 'Deviation Description / Notes'];
 
   function init_startup() {
     google.script.run
@@ -72,12 +95,13 @@
         fillSelect('suv-qctech', data.qcTechOptions);
         fillSelect('suv-suptech', data.startUpTechOptions);
         fillSelect('suv-foreman', data.foremanOptions);
-        fillSelect('suv-pfa-direct', data.pfaAuthOptions);
+        fillSelect('suv-pfa-direct', data.qcTechOptions);
         renderChecklist();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getStartUpVerificationFormData();
     document.getElementById('suv-submit-btn').addEventListener('click', submitStartUpVerification);
+    document.getElementById('suv-print-btn').addEventListener('click', function () { window.print(); });
   }
 
   function suvTodayStr() {
@@ -91,6 +115,18 @@
 
   function suvBodyItems() {
     return (suvData.items || []).filter(function (it) { return SUV_BODY_EXCLUDE.indexOf(it.item) < 0; });
+  }
+
+  /** Sorts items from the Start-Up Verification Items List into the redesigned form's sections —
+   *  the deviation question/description keep their dedicated routing UI, Yes/No items become
+   *  Pass/Fail/N/A checklist rows, Number items become Key Process Parameter rows, and anything
+   *  else (Date/Text/Drop Down/Autofill) falls back to a plain field so unexpected items don't disappear. */
+  function suvItemKind(it) {
+    if (SUV_DEVIATION_ITEMS.indexOf(it.item) >= 0) return 'deviation';
+    var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
+    if (vt === 'yes/no') return 'checklist';
+    if (vt === 'number') return 'kpp';
+    return 'other';
   }
 
   function renderRunPicker() {
@@ -107,32 +143,151 @@
       document.getElementById('suv-itemdesc').value = run ? run.itemDescription : '';
       document.getElementById('suv-line').value = run ? run.line : '';
       document.getElementById('suv-runqty').value = run ? run.runQty : '';
+      updateContextBanners(run);
     });
   }
 
-  function renderChecklist() {
-    var html = '';
-    suvBodyItems().forEach(function (it, idx) {
-      var id = 'suv-item-' + idx;
-      var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
-      var input;
-      if (vt === 'yes/no') {
-        input = '<select id="' + id + '"><option value="">— select —</option><option>Yes</option><option>No</option></select>';
-      } else if (vt === 'number') {
-        input = '<input type="number" step="any" id="' + id + '">';
-      } else if (vt === 'date') {
-        input = '<input type="date" id="' + id + '">';
-      } else {
-        input = '<input type="text" id="' + id + '">';
-      }
-      html += '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+  function updateContextBanners(run) {
+    var text = run
+      ? ('RUN ' + run.runId + ' · ' + (run.moldId || '—') + (run.moldDescription ? ' (' + run.moldDescription + ')' : '') +
+         ' · ITEM ' + (run.item || '—') + ' · LINE ' + (run.line || '—'))
+      : 'RUN CONTEXT — pick a Run above';
+    document.getElementById('suv-ctx-checklist').textContent = text;
+  }
+
+  /** Buckets items by their (optional) Category column, in first-seen order — uncategorized items land in a
+   *  trailing "Uncategorized" bucket rather than disappearing. */
+  function groupItemsByCategory(items) {
+    var groups = []; var byName = {};
+    items.forEach(function (it) {
+      var cat = (it.category || '').trim() || 'Uncategorized';
+      if (!byName[cat]) { byName[cat] = { name: cat, items: [] }; groups.push(byName[cat]); }
+      byName[cat].items.push(it);
     });
-    document.getElementById('suv-checklist').innerHTML = '<div class="field-row">' + html + '</div>';
+    return groups;
+  }
+
+  /** Checklist table for one category — takes baseIdx so data-idx keeps counting up across every
+   *  category and stays aligned with the flattened suvChecklistItems array built alongside it. */
+  function checklistTableHtml(items, baseIdx) {
+    var rows = items.map(function (it, i) {
+      return '<tr data-idx="' + (baseIdx + i) + '">' +
+        '<td>' + esc(it.item) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="pass"></td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="fail"></td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="na"></td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table suv-checklist-table"><thead><tr>' +
+      '<th>Verification Item</th><th class="suv-check-col">Pass</th><th class="suv-check-col">Fail</th><th class="suv-check-col">N/A</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  /** Key Process Parameter table for one category — same baseIdx convention as checklistTableHtml,
+   *  so it can sit alongside the checklist table under the same category heading (a category can mix
+   *  Pass/Fail checks and measured parameters, e.g. Material Information having both "Correct resin
+   *  ready" and a numeric "Melt" reading). */
+  function kppTableHtml(items, baseIdx) {
+    var rows = items.map(function (it, i) {
+      var idx = baseIdx + i;
+      return '<tr data-idx="' + idx + '">' +
+        '<td>' + esc(it.item) + '</td>' +
+        '<td>' + esc(it.unit || '—') + '</td>' +
+        '<td><input type="number" step="any" data-idx="' + idx + '"></td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table suv-kpp-table"><thead><tr>' +
+      '<th>Key Process Parameter</th><th>UOM</th><th>Actual Value</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function plainFieldHtml(it, idx) {
+    var id = 'suv-plain-' + idx;
+    var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
+    var input;
+    if (vt === 'date') input = '<input type="date" id="' + id + '">';
+    else if (vt === 'decimal') input = '<input type="number" step="0.01" id="' + id + '">';
+    else input = '<input type="text" id="' + id + '">';
+    return '<div class="field"><label>' + esc(it.item) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+  }
+
+  function deviationFieldHtml(it, idx) {
+    var id = 'suv-dev-' + idx;
+    if (it.item === 'Was there a deviation?') {
+      return '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
+        '<select id="' + id + '"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>';
+    }
+    return '<div class="field field-wide hidden" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
+      '<textarea id="' + id + '" rows="3"></textarea></div>';
+  }
+
+  function wireChecklistTable() {
+    document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var boxes = tr.querySelectorAll('input[type=checkbox]');
+      boxes.forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          if (cb.checked) boxes.forEach(function (other) { if (other !== cb) other.checked = false; });
+        });
+      });
+    });
+  }
+
+  function checklistValue(tr) {
+    if (tr.querySelector('[data-role="pass"]').checked) return 'Pass';
+    if (tr.querySelector('[data-role="fail"]').checked) return 'Fail';
+    if (tr.querySelector('[data-role="na"]').checked) return 'N/A';
+    return '';
+  }
+
+  /** Groups everything that isn't the deviation question into one block per category — checklist table,
+   *  Key Process Parameter table, and any plain (Text/Date/etc.) fields for that category all render
+   *  together under a single heading, in that order, so a category can freely mix row types (e.g.
+   *  Material Information having both a "Correct resin ready" Pass/Fail row and a numeric "Melt" reading)
+   *  and still show up as one block instead of split across separate page sections. */
+  function renderChecklist() {
+    var items = suvBodyItems();
+    var bodyRaw = items.filter(function (it) { return suvItemKind(it) !== 'deviation'; });
+    var groups = groupItemsByCategory(bodyRaw);
+    var showHeadings = !(groups.length === 1 && groups[0].name === 'Uncategorized');
+
+    suvChecklistItems = [];
+    suvKppItems = [];
+    suvPlainItems = [];
+    var html = groups.map(function (g) {
+      var checklistSub = g.items.filter(function (it) { return suvItemKind(it) === 'checklist'; });
+      var kppSub = g.items.filter(function (it) { return suvItemKind(it) === 'kpp'; });
+      var plainSub = g.items.filter(function (it) { return suvItemKind(it) === 'other'; });
+      var block = showHeadings ? '<div class="section-divider">' + esc(g.name.toUpperCase()) + '</div>' : '';
+      if (checklistSub.length) {
+        block += checklistTableHtml(checklistSub, suvChecklistItems.length);
+        suvChecklistItems = suvChecklistItems.concat(checklistSub);
+      }
+      if (kppSub.length) {
+        block += kppTableHtml(kppSub, suvKppItems.length);
+        suvKppItems = suvKppItems.concat(kppSub);
+      }
+      if (plainSub.length) {
+        block += '<div class="field-row">' + plainSub.map(function (it) {
+          var fieldHtml = plainFieldHtml(it, suvPlainItems.length);
+          suvPlainItems.push(it);
+          return fieldHtml;
+        }).join('') + '</div>';
+      }
+      return block;
+    }).join('');
+
+    document.getElementById('suv-checklist-table').innerHTML = html ||
+      '<p class="spec-hint">No checklist items or Key Process Parameters configured in the Start-Up Verification Items List.</p>';
+
+    suvDeviationItems = items.filter(function (it) { return suvItemKind(it) === 'deviation'; });
+    document.getElementById('suv-deviation-fields').innerHTML = suvDeviationItems.map(function (it, idx) { return deviationFieldHtml(it, idx); }).join('');
+
+    wireChecklistTable();
+    updateContextBanners(null);
 
     suvItemEls = {};
-    suvBodyItems().forEach(function (it, idx) {
-      var id = 'suv-item-' + idx;
-      suvItemEls[it.item] = { wrap: document.getElementById('wrap-' + id), input: document.getElementById(id), valueType: it.valueType, unit: it.unit };
+    suvDeviationItems.forEach(function (it, idx) {
+      suvItemEls[it.item] = { wrap: document.getElementById('wrap-suv-dev-' + idx), input: document.getElementById('suv-dev-' + idx) };
     });
     if (suvItemEls['Was there a deviation?']) {
       suvItemEls['Was there a deviation?'].input.addEventListener('change', updateDeviationUI);
@@ -164,9 +319,22 @@
       showToast('Describe the deviation before saving.', true); return;
     }
 
-    var checklist = suvBodyItems().map(function (it) {
-      var info = suvItemEls[it.item];
-      return { item: it.item, valueType: it.valueType, unit: it.unit, value: info ? info.input.value : '' };
+    var checklist = [];
+    document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var it = suvChecklistItems[Number(tr.getAttribute('data-idx'))];
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: checklistValue(tr) });
+    });
+    document.querySelectorAll('#suv-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
+      var it = suvKppItems[Number(tr.getAttribute('data-idx'))];
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: tr.querySelector('input').value });
+    });
+    suvPlainItems.forEach(function (it, idx) {
+      var el = document.getElementById('suv-plain-' + idx);
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: el ? el.value : '' });
+    });
+    suvDeviationItems.forEach(function (it, idx) {
+      var el = document.getElementById('suv-dev-' + idx);
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: el ? el.value : '' });
     });
 
     var payload = {
