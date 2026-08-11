@@ -1,56 +1,78 @@
-<h1 class="page-title">🧊 Drop Freeze Test</h1>
-<p class="page-sub">Log drop freeze test results by packet. Pick the Run being tested — Line #, Mold, Product Type, Resin Lot, Item and Customer all come from it automatically. Picking a Drop Freeze test protocol below shows the register's method, acceptance criteria and sample size for reference.</p>
+<div class="page-title-row">
+  <h1 class="page-title">🧊 Drop Freeze Test</h1>
+  <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0 &nbsp;·&nbsp; Revision Date: 8/10/2026</div>
+</div>
+<p class="page-sub">Log drop freeze test results, one line item per drop.</p>
 
 <section class="card">
-  <h2>Edit an existing open packet</h2>
+  <h2>1. Resume an Open Test</h2>
+  <p class="spec-hint">Only needed to continue an Open Test — one you already saved but didn't finish. Starting fresh? Skip to Section 2 — a Record # is assigned automatically when you save.</p>
   <div class="field-row">
-    <div class="field"><label>Open Record #</label><select id="df-load-select"><option value="">— select —</option></select></div>
+    <div class="field"><label>Open Test #</label><select id="df-load-select"><option value="">— select —</option></select></div>
     <div class="field" style="align-self:end;"><button id="df-load-btn">Load</button></div>
-    <div class="field" style="align-self:end;"><button id="df-new-btn" class="ghost">Start New Packet</button></div>
+    <div class="field" style="align-self:end;"><button id="df-new-btn" class="ghost">Start New Test</button></div>
   </div>
   <div class="field"><label>Current Record #</label><input id="df-record-key" readonly placeholder="(assigned automatically on save)"></div>
 </section>
 
 <section class="card">
-  <h2>Add Line Item</h2>
+  <h2>2. Add Line Item</h2>
+  <p class="spec-hint">Fill in one drop test below, then click "+ Add Line" at the bottom — it's added to the Pending Lines list in Section 3, not saved yet. Repeat this whole section for every additional drop (e.g. each cavity) before saving all of them together as one test.</p>
+  <div class="section-divider">RUN INFO</div>
+  <p class="spec-hint">Pick the Run being tested — Line #, Mold, Product Type, Resin Lot, Item, and Customer all auto-fill from it.</p>
   <div class="field-row">
     <div class="field"><label>Run</label><select id="df-run"></select></div>
     <div class="field"><label>Shift</label><select id="df-shift"></select></div>
     <div class="field"><label>Line #</label><input id="df-line" readonly></div>
     <div class="field"><label>Customer Name</label><input id="df-customer" readonly></div>
   </div>
+
+  <div class="section-divider">MOLD INFO</div>
   <div class="field-row">
     <div class="field"><label>Mold ID</label><input id="df-moldId" readonly></div>
-    <div class="field"><label>Mold Description</label><input id="df-moldDesc" readonly></div>
+    <div class="field field-wide"><label>Mold Description</label><input id="df-moldDesc" readonly></div>
     <div class="field"><label>Product Type</label><input id="df-productType" readonly></div>
     <div class="field"><label>Resin Lot</label><input id="df-resinLot" readonly></div>
   </div>
+
+  <div class="section-divider">ITEM INFO</div>
   <div class="field-row">
     <div class="field"><label>Item</label><input id="df-item" readonly></div>
-    <div class="field"><label>Item Description</label><input id="df-itemDescription" readonly></div>
+    <div class="field field-wide"><label>Item Description</label><input id="df-itemDescription" readonly></div>
   </div>
 
+  <div class="section-divider">TEST PROTOCOL</div>
   <div class="field">
     <label>Drop Freeze Test</label>
     <select id="df-testName"><option value="">— select —</option></select>
     <div class="spec-hint" id="df-test-hint">Pick a Run above to see the drop freeze tests defined for its mold.</div>
   </div>
-  <div class="field-row hidden" id="df-test-reference">
-    <div class="field"><label>Method / Description</label><input id="df-test-method" readonly></div>
-    <div class="field"><label>Acceptance Criteria</label><input id="df-test-criteria" readonly></div>
-    <div class="field"><label>Sample Size</label><input id="df-test-sample" readonly></div>
-    <div class="field"><label>Equipment</label><input id="df-test-equipment" readonly></div>
+  <div class="hidden" id="df-test-reference">
+    <div class="field-row">
+      <div class="field"><label>Method / Description</label><input id="df-test-method" readonly></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Acceptance Criteria</label><input id="df-test-criteria" readonly></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Sample Size</label><input id="df-test-sample" readonly></div>
+      <div class="field"><label>Equipment</label><input id="df-test-equipment" readonly></div>
+    </div>
   </div>
 
+  <div class="section-divider">SAMPLE &amp; TEST DETAILS</div>
+  <p class="spec-hint">Cavity options come from the register's cavity list for the Mold selected above.</p>
   <div class="field-row">
     <div class="field"><label>Date / Time of Mfg</label><input type="datetime-local" id="df-dateOfMfg"></div>
-    <div class="field"><label>Cavity</label><input id="df-cavity"></div>
+    <div class="field"><label>Cavity</label><select id="df-cavity"><option value="">— select —</option></select></div>
     <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="df-testDate"></div>
     <div class="field"><label>Tested By</label><select id="df-testedBy"></select></div>
   </div>
+
+  <div class="section-divider" id="df-results-banner">RESULTS — pick a Run, Test, and Cavity above</div>
   <div class="field-row">
     <div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp"></div>
-    <div class="field"><label>Drop Height (in)</label><input type="number" step="any" id="df-dropHeight"></div>
+    <div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight" value="36" readonly></div>
     <div class="field"><label>Drop Angle</label><select id="df-dropAngle"></select></div>
     <div class="field"><label>Pass / Fail Result</label>
       <select id="df-result"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select>
@@ -62,12 +84,13 @@
 </section>
 
 <section class="card">
-  <h2>Pending Lines</h2>
+  <h2>3. Pending Lines</h2>
+  <p class="spec-hint">Review every line item before saving — Save Test writes all of them together under one Record #.</p>
   <table class="qc-table">
     <thead><tr><th>#</th><th>Run</th><th>Mold</th><th>Test</th><th>Cavity</th><th>Result</th><th></th></tr></thead>
     <tbody id="df-lines-body"><tr><td colspan="7" style="color:var(--text-muted)">No lines added yet.</td></tr></tbody>
   </table>
-  <div style="margin-top:14px;"><button class="primary" id="df-save-btn">Save Packet</button></div>
+  <div style="margin-top:14px;"><button class="primary" id="df-save-btn">Save Test</button></div>
 </section>
 
 <script>
@@ -117,7 +140,35 @@
     document.getElementById('df-itemDescription').value = run ? run.itemDescription : '';
     if (run && run.shift) document.getElementById('df-shift').value = run.shift;
     loadDropFreezeTests(run ? run.moldId : '');
+    loadDropFreezeCavities(run ? run.moldId : '');
+    updateDfResultsBanner();
   });
+
+  /** Cavity options come straight from the register's cavity list for the mold — same lookup
+   *  In-Process uses to auto-generate its per-cavity rows, just presented as a picker here since
+   *  Drop Freeze logs one line item at a time instead of a fixed grid of rows. */
+  function loadDropFreezeCavities(moldId) {
+    var sel = document.getElementById('df-cavity');
+    sel.innerHTML = '<option value="">— select —</option>';
+    if (!moldId) return;
+    google.script.run
+      .withSuccessHandler(function (cavities) {
+        (cavities || []).forEach(function (c) { sel.appendChild(opt(c)); });
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getCavityIdsForMold(moldId);
+  }
+
+  /** Keeps the Results banner showing exactly what the pending line will be recorded against. */
+  function updateDfResultsBanner() {
+    var run = (dfData && dfData.runs || []).find(function (r) { return r.runId === document.getElementById('df-run').value; });
+    var el = document.getElementById('df-results-banner');
+    if (!run) { el.textContent = 'RESULTS — pick a Run, Test, and Cavity above'; return; }
+    var testName = document.getElementById('df-testName').value;
+    var cavity = document.getElementById('df-cavity').value;
+    el.textContent = 'RESULTS · RUN ' + run.runId + (run.moldId ? ' · ' + run.moldId : '') +
+      ' · TEST ' + (testName || '—') + ' · CAVITY ' + (cavity || '—');
+  }
 
   function loadDropFreezeTests(moldId) {
     dfTests = [];
@@ -142,12 +193,15 @@
   document.getElementById('df-testName').addEventListener('change', function (e) {
     var t = dfTests.find(function (x) { return x.testName === e.target.value; });
     document.getElementById('df-test-reference').classList.toggle('hidden', !t);
+    updateDfResultsBanner();
     if (!t) return;
     document.getElementById('df-test-method').value = t.methodDescription;
     document.getElementById('df-test-criteria').value = t.acceptanceCriteria;
     document.getElementById('df-test-sample').value = t.sampleSize;
     document.getElementById('df-test-equipment').value = t.equipment;
   });
+
+  document.getElementById('df-cavity').addEventListener('change', updateDfResultsBanner);
 
   document.getElementById('df-add-line-btn').addEventListener('click', function () {
     var runId = document.getElementById('df-run').value;
@@ -171,6 +225,7 @@
     renderDfLines();
     ['df-cavity', 'df-failDesc', 'df-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
     document.getElementById('df-result').value = '';
+    updateDfResultsBanner();
   });
 
   function renderDfLines() {
@@ -196,7 +251,7 @@
     dfLines = [];
     document.getElementById('df-record-key').value = '';
     renderDfLines();
-    showToast('Started a new packet.');
+    showToast('Started a new test.');
   });
 
   document.getElementById('df-load-btn').addEventListener('click', function () {

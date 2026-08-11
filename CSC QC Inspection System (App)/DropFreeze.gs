@@ -30,6 +30,11 @@ function getDropFreezeTestsForMold(moldId) {
   return getFunctionalTestsForMold_(moldId, 'Drop Freeze');
 }
 
+/** Cavity picker options for a mold — same register lookup In-Process uses to auto-generate its cavity rows. */
+function getCavityIdsForMold(moldId) {
+  return getCavityIds_(moldId);
+}
+
 function listOpenDropFreezeRecords_() {
   const sheet = getDropFreezeLogSheet_();
   const rows = readSheetObjects_(sheet);

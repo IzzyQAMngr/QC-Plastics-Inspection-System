@@ -1,8 +1,12 @@
-<h1 class="page-title">✅ Start-Up Verification</h1>
-<p class="page-sub">Pick the Run being started up, work through the Checklist and Key Process Parameters, and save. If a deviation is reported, the sign-off fields lock and the Deviation Authorization List gets emailed for approval — otherwise sign off the PFA right here to qualify the Run immediately.</p>
+<div class="page-title-row">
+  <h1 class="page-title">✅ Start-Up Verification</h1>
+  <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0 &nbsp;·&nbsp; Revision Date: 8/10/2026</div>
+</div>
+<p class="page-sub">Qualification is required to release the line for production.</p>
 
 <section class="card">
   <h2>1. Run &amp; Sign-In</h2>
+  <p class="spec-hint">Pick the Run being started up — Mold, Item, and Line details auto-fill from the Run record.</p>
   <div class="section-divider">RUN SELECTION</div>
   <div class="field-row">
     <div class="field"><label>Run ID</label><select id="suv-run"></select></div>
@@ -40,11 +44,13 @@
 
 <section class="card">
   <h2>3. Deviation</h2>
+  <p class="spec-hint">If anything above didn't pass as expected, report it here — approval and PFA sign-off happen through the Deviation Approvals workflow before the Run can qualify.</p>
   <div id="suv-deviation-fields"></div>
 </section>
 
 <section class="card">
   <h2>4. Qualification</h2>
+  <p class="spec-hint">Answer the Deviation question above to see the sign-off path that applies to this Run.</p>
   <div id="suv-selfserve-block" class="field hidden">
     <label>PFA Signed off by</label>
     <select id="suv-pfa-direct"></select>
