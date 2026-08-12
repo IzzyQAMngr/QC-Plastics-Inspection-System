@@ -56,11 +56,17 @@ const INPROCESS_LOG_HEADERS = [
 ];
 
 // ================= DATA SPREADSHEET ACCESS =================
+// Memoized per execution — SpreadsheetApp.openById() is one of the slowest calls available,
+// and every helper in this file used to call getDb_() independently, re-opening the same
+// spreadsheet many times over during a single form load. Globals reset on every fresh
+// execution, so this can't leak stale data across requests.
+let _dbCache_ = null;
 function getDb_() {
+  if (_dbCache_) return _dbCache_;
   const id = PropertiesService.getScriptProperties().getProperty('DATA_SPREADSHEET_ID');
-  if (id) return SpreadsheetApp.openById(id);
+  if (id) { _dbCache_ = SpreadsheetApp.openById(id); return _dbCache_; }
   const active = SpreadsheetApp.getActive();
-  if (active) return active;
+  if (active) { _dbCache_ = active; return _dbCache_; }
   throw new Error('DATA_SPREADSHEET_ID script property is not set. Run oneTimeSetup() from the script editor first.');
 }
 
@@ -107,11 +113,16 @@ function settingsColumnBelow_(label, maxScan, fromRow) {
   const pos = findSettingsLabel_(label, fromRow);
   if (!pos) return [];
   const st = getSettingsSheet_();
+  const scan = Math.min(maxScan || 30, Math.max(st.getLastRow() - pos.row, 0));
+  if (scan <= 0) return [];
+  // One bulk read instead of up to `scan` individual getValue() round trips — this backed
+  // every dropdown list (Shift, QC Tech, Foreman, etc.) on nearly every form and was the
+  // single biggest source of page-load lag.
+  const values = st.getRange(pos.row + 1, pos.col, scan, 1).getValues();
   const out = [];
   let blanks = 0;
-  for (let i = 1; i <= (maxScan || 30) && blanks < 6; i++) {
-    const v = st.getRange(pos.row + i, pos.col).getValue();
-    const s = String(v || '').trim();
+  for (let i = 0; i < values.length && blanks < 6; i++) {
+    const s = String(values[i][0] || '').trim();
     if (!s) { blanks++; continue; }
     blanks = 0;
     out.push(s);
@@ -139,15 +150,32 @@ function settingsTableBelow_(label, numCols, maxScan) {
 }
 
 // ================= MASTER REGISTER LINK (consolidated) =================
+// Memoized per execution, per department — resolving the ID re-scans the Settings sheet, and
+// SpreadsheetApp.openById() on the (separate, external) Spec Register is one of the slowest
+// calls available. A single In-Process cavity/spec/color/functional-test lookup used to reopen
+// the register up to 4 times over; now it opens once and every helper below reuses it.
+const _registerCache_ = {};
 function getMasterRegisterId_(department) {
+  const key = department === 'Metals' ? 'Metals' : 'Plastics';
+  if (_registerCache_[key] && _registerCache_[key].id) return _registerCache_[key].id;
+  let id;
   if (department === 'Metals') {
-    const id = settingsValueRightOf_('Master Register ID (Spec Register)- Metals:');
+    id = settingsValueRightOf_('Master Register ID (Spec Register)- Metals:');
     if (!id) throw new Error('Metals Master Register ID not set in Settings yet.');
-    return id;
+  } else {
+    id = settingsValueRightOf_('Master Register ID (Spec Register):') ||
+      settingsValueRightOf_('Master Register ID:') || SPEC_REGISTER_ID;
   }
-  const fromSheet = settingsValueRightOf_('Master Register ID (Spec Register):') ||
-    settingsValueRightOf_('Master Register ID:');
-  return fromSheet || SPEC_REGISTER_ID;
+  _registerCache_[key] = { id: id };
+  return id;
+}
+
+function getMasterRegister_(department) {
+  const key = department === 'Metals' ? 'Metals' : 'Plastics';
+  const id = getMasterRegisterId_(department);
+  if (_registerCache_[key].ss) return _registerCache_[key].ss;
+  _registerCache_[key].ss = SpreadsheetApp.openById(id);
+  return _registerCache_[key].ss;
 }
 
 function setMasterRegisterId_(idOrUrl) {
@@ -271,7 +299,7 @@ function findHeaderRowAndCol_(sheet, label, maxRows) {
  * every caller now shows Mold ID / Product Type only.
  */
 function getAllMoldsList_() {
-  const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+  const mr = getMasterRegister_();
   const tab = mr.getSheetByName(ALL_MOLDS_LIST_SHEET);
   if (!tab) throw new Error('"' + ALL_MOLDS_LIST_SHEET + '" tab not found in Spec Register.');
   const pos = findHeaderRowAndCol_(tab, 'Unique Mold List', 5);
@@ -296,7 +324,7 @@ function getAllMoldsList() { return getAllMoldsList_(); }
  * of the Item Description already captured separately on Add Run.
  */
 function getAllSizeCansList_() {
-  const mr = SpreadsheetApp.openById(getMasterRegisterId_('Metals'));
+  const mr = getMasterRegister_('Metals');
   const tab = mr.getSheetByName(ALL_CANS_SIZE_LIST_SHEET);
   if (!tab) throw new Error('"' + ALL_CANS_SIZE_LIST_SHEET + '" tab not found in Metals Spec Register.');
   const pos = findHeaderRowAndCol_(tab, 'Unique Can Size List', 5);
@@ -316,7 +344,7 @@ function getAllSizeCansList() { return getAllSizeCansList_(); }
 
 function getCavityIds_(mold) {
   try {
-    const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+    const mr = getMasterRegister_();
     const tab = mr.getSheetByName(ALL_MOLDS_LIST_SHEET);
     if (!tab) return [];
     const idPos = findHeaderRowAndCol_(tab, 'Mold ID', 5);
@@ -339,7 +367,7 @@ function getCavityIds_(mold) {
 }
 
 function getSpecsFromMaster_(mold) {
-  const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+  const mr = getMasterRegister_();
   const tab = mr.getSheetByName(SPEC_MATRIX_SHEET);
   if (!tab) throw new Error('"' + SPEC_MATRIX_SHEET + '" tab not found in Spec Register.');
   const pos = findHeaderRowAndCol_(tab, 'Mold ID', 6);
@@ -390,7 +418,7 @@ function getSpecRegisterCitation_() {
 
   let citation = 'FRM-006-001 Plastics Specification Register';
   try {
-    const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+    const mr = getMasterRegister_();
     const tab = mr.getSheetByName('Register');
     const scanRows = tab ? Math.min(6, tab.getLastRow()) : 0;
     if (scanRows >= 1) {
@@ -412,7 +440,7 @@ function getSpecCitation() { return getSpecRegisterCitation_(); }
 
 /** Reads every Color Specs row for a mold. Each row may carry an Item No. override. */
 function readColorSpecRows_(mold) {
-  const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+  const mr = getMasterRegister_();
   const tab = mr.getSheetByName(COLOR_SPECS_SHEET);
   if (!tab) return [];
   const pos = findHeaderRowAndCol_(tab, 'Mold ID', 6);
@@ -461,7 +489,7 @@ function getColorSpec_(mold, color, itemNo) {
  *  (case-insensitive substring — e.g. 'Drop Freeze' to exclude the register's other fit tests
  *  like Gauge Fit/Cover Fit/Handle Fit, which aren't in scope for the Drop Freeze module). */
 function getFunctionalTestsForMold_(mold, nameFilter) {
-  const mr = SpreadsheetApp.openById(getMasterRegisterId_());
+  const mr = getMasterRegister_();
   const tab = mr.getSheetByName(FUNCTIONAL_TESTS_SHEET);
   if (!tab) return [];
   const pos = findHeaderRowAndCol_(tab, 'Mold ID', 6);
