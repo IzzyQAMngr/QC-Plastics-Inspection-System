@@ -4,6 +4,7 @@
 <div class="dash-summary">
   <div class="stat"><div class="num" id="dash-summary-count">—</div><div class="lbl">Lines Active</div></div>
   <div class="stat"><div class="num" id="dash-summary-qualified">—</div><div class="lbl">Qualified</div></div>
+  <div class="spec-hint" id="dash-updated" style="align-self:center;"></div>
 </div>
 
 <p id="dash-loading" style="color:var(--text-muted);font-size:13px;">Loading dashboard…</p>
@@ -11,13 +12,32 @@
 <div class="line-cards-grid hidden" id="dash-line-cards"></div>
 
 <script>
+  var dashRefreshTimer_ = null;
+  var DASH_REFRESH_MS_ = 60000;
+
   function init_dashboard() {
-    document.getElementById('dash-loading').classList.remove('hidden');
-    document.getElementById('dash-line-cards').classList.add('hidden');
-    document.getElementById('dash-empty').classList.add('hidden');
+    loadDashboard_(true);
+    if (!dashRefreshTimer_) {
+      dashRefreshTimer_ = setInterval(function () { loadDashboard_(false); }, DASH_REFRESH_MS_);
+    }
+  }
+
+  /** showLoadingState is true for the initial load (shows the loading text / toasts on
+   *  failure); background auto-refreshes skip the loading flash and fail silently — a
+   *  wall-mounted monitor shouldn't flicker or pop up an error toast every minute, it just
+   *  tries again on the next tick. Skips entirely if the user has navigated to another view
+   *  in this tab, so it's not silently polling the server for a page nobody's looking at. */
+  function loadDashboard_(showLoadingState) {
+    var view = document.getElementById('view-dashboard');
+    if (!showLoadingState && view && !view.classList.contains('active')) return;
+    if (showLoadingState) {
+      document.getElementById('dash-loading').classList.remove('hidden');
+      document.getElementById('dash-line-cards').classList.add('hidden');
+      document.getElementById('dash-empty').classList.add('hidden');
+    }
     google.script.run
       .withSuccessHandler(renderDashboard)
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) { if (showLoadingState) showToast(err.message, true); })
       .getPlasticsLineDashboardData();
   }
 
@@ -43,13 +63,19 @@
       '</div>';
   }
 
+  function startedDateText_(createdAt) {
+    var d = createdAt ? new Date(createdAt) : null;
+    return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : '—';
+  }
+
   function lineCardHtml_(c) {
     var qualBadge = c.qualified ? '<span class="badge good">&check; Qualified</span>' : '<span class="badge critical">Not Qualified</span>';
     var meta =
       'Mold <strong>' + esc(c.moldId || '—') + '</strong>' + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '') + '<br>' +
       'Item ' + esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '') + '<br>' +
       esc(c.customerName || 'No customer on file') + '<br>' +
-      '<span class="spec-hint">Run ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') + '</span>';
+      '<span class="spec-hint">Run ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') +
+      ' &middot; Started ' + startedDateText_(c.createdAt) + '</span>';
     return '<div class="line-card' + (c.qualified ? '' : ' not-qualified') + '">' +
       '<div class="line-card-head">' +
       '<div class="line-card-linenum"><small>Line</small>' + esc(c.line || '—') + '</div>' +
@@ -69,6 +95,10 @@
     var qualifiedCount = cards.filter(function (c) { return c.qualified; }).length;
     document.getElementById('dash-summary-count').textContent = cards.length;
     document.getElementById('dash-summary-qualified').textContent = cards.length ? (qualifiedCount + ' / ' + cards.length) : '—';
+    var updatedAt = data.generatedAt ? new Date(data.generatedAt) : null;
+    document.getElementById('dash-updated').textContent = updatedAt && !isNaN(updatedAt.getTime())
+      ? 'Updated ' + updatedAt.toLocaleTimeString() + ' · refreshes every 60s'
+      : '';
 
     var grid = document.getElementById('dash-line-cards');
     if (!cards.length) {
