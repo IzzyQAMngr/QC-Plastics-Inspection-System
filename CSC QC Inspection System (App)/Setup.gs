@@ -195,12 +195,66 @@ function setupLineConfiguration() {
 }
 
 /** One-time: creates the "Runs - Metals" sheet with headers, mirroring the Plastics
- *  "Runs - Plastic" sheet but with Material Lot / Size ID / Can Description in place of
+ *  "Runs - Plastics" sheet but with Material Lot / Size ID / Can Description in place of
  *  Resin Lot / Mold ID / Mold Description. No-ops if the sheet already exists. */
 function setupMetalsRunsSheet() {
   const ss = getDb_();
   ensureSheetWithHeaders_(ss, RUNS_SHEET_NAME_METALS, METALS_RUNS_HEADERS);
   SpreadsheetApp.getActive().toast('"' + RUNS_SHEET_NAME_METALS + '" is ready.');
+}
+
+/**
+ * ONE-TIME: imports historical Drop Freeze records from the old system's spreadsheet
+ * ("Test Data" tab) into this system's Drop Freeze Test Data log, mapping the old column
+ * names onto the current DROPFREEZE_LOG_HEADERS schema. Fields the old system never tracked
+ * (Run ID, Customer Name, Mold Description, Product Type, Item No, Item Description) come in
+ * blank — those are populated going forward by the Run-driven Drop Freeze form.
+ * Refuses to run if the destination sheet already has real rows, to avoid double-importing.
+ * Run once from the Apps Script editor (select migrateOldDropFreezeData, click Run).
+ */
+function migrateOldDropFreezeData() {
+  const OLD_SPREADSHEET_ID = '1kxqvqPVA7l5-EgkyqyXqf4xmOI7oukNfTjnq_GTkrAo';
+  const OLD_SHEET_NAME = 'Test Data';
+
+  const newSheet = getDb_().getSheetByName(DROPFREEZE_LOG_SHEET_NAME);
+  if (!newSheet) throw new Error('"' + DROPFREEZE_LOG_SHEET_NAME + '" sheet not found — run oneTimeSetup first.');
+  const existingDataRows = newSheet.getLastRow() - 1;
+  if (existingDataRows > 0) {
+    throw new Error('"' + DROPFREEZE_LOG_SHEET_NAME + '" already has ' + existingDataRows + ' row(s) — refusing to ' +
+      'risk a duplicate import. Clear the data rows (keep the header) first if you want to re-run this.');
+  }
+
+  const oldSheet = SpreadsheetApp.openById(OLD_SPREADSHEET_ID).getSheetByName(OLD_SHEET_NAME);
+  if (!oldSheet) throw new Error('"' + OLD_SHEET_NAME + '" sheet not found in the old spreadsheet.');
+  const oldRows = readSheetObjects_(oldSheet);
+
+  const mapped = oldRows.map(r => ({
+    'RecordKey': r['QC Record #'] || '',
+    'LineItem': r['Line Item No.'] || '',
+    'Status': r['Status'] || '',
+    'Created': r['Created TS'] || '',
+    'Updated': r['Last Updated TS'] || '',
+    'Line #': r['Line #'] || '',
+    'Shift': r['Shift'] || '',
+    'Mold ID': r['Tool Code'] || '',
+    'Resin Lot': r['Resin ID'] || '',
+    'Cavity': r['Cavity'] || '',
+    'Test Name': r['Test Type'] || '',
+    'DateOfMfg': r['Date of Mfg'] || '',
+    'TestDate': r['Test Date'] || '',
+    'TestedBy': r['Tested By'] || '',
+    'FreezerTemp': r['Freezer Temp. ( deg f)'] || '',
+    'DropHeight': r['Drop Height'] || '',
+    'DropAngle': r['Drop Angle'] || '',
+    'Result': r['Pass/ Fail/In Freezer'] || '',
+    'FailureDescription': r['Failure Description (Indicate wall side, any other observations)'] || '',
+    'Notes': r['Other Notes/ Observations'] || '',
+    'Month': r['Month'] || '',
+    'Year': r['Year'] || '',
+  }));
+
+  appendObjectsAsRows_(newSheet, mapped);
+  SpreadsheetApp.getActive().toast('Imported ' + mapped.length + ' Drop Freeze records from the old system into "' + DROPFREEZE_LOG_SHEET_NAME + '".');
 }
 
 /** One-off cleanup: removes the empty "ITEM LIST" placeholder section a previous
