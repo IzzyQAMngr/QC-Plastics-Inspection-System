@@ -6,8 +6,8 @@
 
 // ================= SHEET NAMES =================
 const SETTINGS_SHEET_NAME       = 'Settings';
-const DROPFREEZE_LOG_SHEET_NAME = 'Test Data';
-const INPROCESS_LOG_SHEET_NAME  = 'QC Database';
+const DROPFREEZE_LOG_SHEET_NAME = 'Drop Freeze Test Data';
+const INPROCESS_LOG_SHEET_NAME  = 'QC Inspection Data- Plastics';
 const ALL_ITEMS_LIST_SHEET_NAME = 'All Items List- Plastics'; // its own tab, not part of Settings
 const ALL_ITEMS_LIST_SHEET_NAME_METALS = 'All Items List- Metals';
 const SU_ITEMS_SHEET_NAME = 'Start-Up Verification Items List- Plastics';
@@ -33,9 +33,8 @@ const SPEC_MATRIX_SHEET    = 'Spec Matrix';
 const COLOR_SPECS_SHEET    = 'Color Specs';
 const FUNCTIONAL_TESTS_SHEET = 'Functional Tests';
 
-// Clean header row for a brand-new Test Data (Drop Freeze) log — this working
-// copy has no Drop Freeze data yet, so we're free to define it cleanly. Run-driven
-// (2026-08-07): shares its context columns with the QC Database / Start-Up Log pattern.
+// Header row for the Drop Freeze Test Data log. Run-driven (2026-08-07): shares its
+// context columns with the QC Inspection Data / Start-Up Log pattern.
 const DROPFREEZE_LOG_HEADERS = [
   'RecordKey', 'LineItem', 'Status', 'Created', 'Updated',
   'Run ID', 'Line #', 'Shift', 'Customer Name',
@@ -46,7 +45,7 @@ const DROPFREEZE_LOG_HEADERS = [
 
 const DROP_ANGLE_OPTIONS = ['Flat- Bottom', '45 deg- Bottom', 'Flat- Top', '45 deg- Top', 'Side Drop'];
 
-// Literal existing header row of the QC Database (In-Process) log — preserved as-is.
+// Literal existing header row of the QC Inspection Data- Plastics (In-Process) log — preserved as-is.
 const INPROCESS_LOG_HEADERS = [
   'QC Record #', 'Timestamp Saved', 'Inspection ID', 'Inspection Date', 'Inspection Time',
   'Inspected By', 'Shift', 'Shift Foreman', 'Line #', 'Product Type', 'Mold', 'Color',

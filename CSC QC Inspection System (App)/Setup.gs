@@ -31,10 +31,10 @@ function ensureSheetWithHeaders_(ss, name, headers) {
 }
 
 /**
- * Test Data has no real production rows yet (working copy) — safe to just
- * rewrite its header row to the current DROPFREEZE_LOG_HEADERS whenever that
- * list changes (e.g. adding ProductType/ItemNo/ItemDescription). Run once
- * after any such change.
+ * Safe to run only while Drop Freeze Test Data has no real rows yet — rewrites its header
+ * row to the current DROPFREEZE_LOG_HEADERS whenever that list changes (e.g. adding
+ * ProductType/ItemNo/ItemDescription). Throws once real rows exist; migrate by hand after
+ * that point instead. Run once after any header-list change.
  */
 function migrateDropFreezeHeaders() {
   const sheet = getDb_().getSheetByName(DROPFREEZE_LOG_SHEET_NAME);
@@ -45,7 +45,7 @@ function migrateDropFreezeHeaders() {
   }
   sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).clearContent();
   sheet.getRange(1, 1, 1, DROPFREEZE_LOG_HEADERS.length).setValues([DROPFREEZE_LOG_HEADERS]).setFontWeight('bold');
-  SpreadsheetApp.getActive().toast('Test Data headers updated: ' + DROPFREEZE_LOG_HEADERS.join(', '));
+  SpreadsheetApp.getActive().toast(DROPFREEZE_LOG_SHEET_NAME + ' headers updated: ' + DROPFREEZE_LOG_HEADERS.join(', '));
 }
 
 function ensureColumnExists_(sheet, headerName) {

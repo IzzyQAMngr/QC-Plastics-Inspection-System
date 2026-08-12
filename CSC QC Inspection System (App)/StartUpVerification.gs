@@ -1,7 +1,7 @@
 /*************************************************************
  * START-UP VERIFICATION — Run-linked checklist that qualifies a Run.
  * The Log is a flat/long sheet: one row per checklist item per submission, all sharing the
- * same Verification Record # and header context (mirrors the existing QC Database pattern).
+ * same Verification Record # and header context (mirrors the existing QC Inspection Data pattern).
  * Deviation sign-off (Deviation Approved by / PFA Signed off by / Supervisor Authorization /
  * PFA ID) is never written by the submitter directly — it's appended later by the Deviation
  * Approvals flow below, and a PFA cannot be signed off until the deviation is approved first.
