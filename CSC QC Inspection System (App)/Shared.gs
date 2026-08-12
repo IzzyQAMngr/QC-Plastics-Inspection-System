@@ -538,7 +538,7 @@ function dateToStr_(v) { return v instanceof Date ? v.toISOString() : String(v |
 // A Run is created once via the Add Run form and stays selectable in In-Process/Drop Freeze
 // for as long as it's Active — across shifts, across days — until explicitly Stopped. It also
 // carries Qualified/Qualified Timestamp, set by a passing Start-Up Verification submission.
-const RUNS_SHEET_NAME = 'Runs';
+const RUNS_SHEET_NAME = 'Runs - Plastics';
 const RUNS_SHEET_NAME_METALS = 'Runs - Metals';
 const METALS_RUNS_HEADERS = [
   'Run ID', 'Created At', 'Shift', 'Status', 'Line #', 'Product Type', 'Material Lot',

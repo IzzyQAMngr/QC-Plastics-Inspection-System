@@ -194,9 +194,9 @@ function setupLineConfiguration() {
   SpreadsheetApp.getActive().toast('Line Configuration created and seeded with Plastics Line 1-10. Add Metals rows by hand.');
 }
 
-/** One-time: creates the "Runs - Metals" sheet with headers, mirroring the Plastics "Runs"
- *  sheet but with Material Lot / Size ID / Can Description in place of Resin Lot / Mold ID /
- *  Mold Description. No-ops if the sheet already exists. */
+/** One-time: creates the "Runs - Metals" sheet with headers, mirroring the Plastics
+ *  "Runs - Plastic" sheet but with Material Lot / Size ID / Can Description in place of
+ *  Resin Lot / Mold ID / Mold Description. No-ops if the sheet already exists. */
 function setupMetalsRunsSheet() {
   const ss = getDb_();
   ensureSheetWithHeaders_(ss, RUNS_SHEET_NAME_METALS, METALS_RUNS_HEADERS);
