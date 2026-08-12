@@ -71,21 +71,9 @@ function loadDropFreezeRecord(recordKey) {
 }
 
 function makeDailyRecordKey_(sheet, dateOfMfgDisplay) {
-  const tz = getDb_().getSpreadsheetTimeZone();
-  let baseDate = new Date();
   const parsed = new Date(dateOfMfgDisplay);
-  if (!isNaN(parsed.getTime())) baseDate = parsed;
-  const dateStr = Utilities.formatDate(baseDate, tz, 'yyyyMMdd');
-  const rows = readSheetObjects_(sheet);
-  let maxSeq = 0;
-  rows.forEach(r => {
-    const m = String(r.RecordKey || '').match(/^QC-(\d{8})-(\d{3})$/);
-    if (m && m[1] === dateStr) {
-      const seq = Number(m[2]);
-      if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
-    }
-  });
-  return 'QC-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
+  const baseDate = isNaN(parsed.getTime()) ? new Date() : parsed;
+  return makeSequentialId_(sheet, 'RecordKey', 'QC', baseDate);
 }
 
 /**
@@ -105,7 +93,7 @@ function saveDropFreezePacket(payload) {
     if (active.length === 0) throw new Error('No active line items — a Run is required on at least one line.');
 
     let recordKey = String(payload.recordKey || '').trim();
-    if (recordKey && !/^QC-\d{8}-\d{3}$/.test(recordKey)) {
+    if (recordKey && !/^QC-\d{6}-\d+$/.test(recordKey)) {
       throw new Error('Invalid QC Record #: "' + recordKey + '"');
     }
     if (!recordKey) recordKey = makeDailyRecordKey_(sheet, active[0].dateOfMfg);

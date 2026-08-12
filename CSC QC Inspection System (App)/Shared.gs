@@ -45,13 +45,20 @@ const DROPFREEZE_LOG_HEADERS = [
 
 const DROP_ANGLE_OPTIONS = ['Flat- Bottom', '45 deg- Bottom', 'Flat- Top', '45 deg- Top', 'Side Drop'];
 
+// In-Process Inspection: choices for resolving a deviation (a measurement outside spec) before
+// a record can be submitted — required alongside a written Justification.
+const RELEASE_DECISION_OPTIONS = ['Release as is', 'Release with minor deviation', 'Hold', 'Reject'];
+
 // Literal existing header row of the QC Inspection Data- Plastics (In-Process) log — preserved as-is.
+// Release Decision/Justification were appended (2026-08) so deviation sign-off gets its own
+// columns instead of riding along as fake "Deviation" Characteristic Name rows.
 const INPROCESS_LOG_HEADERS = [
   'QC Record #', 'Timestamp Saved', 'Inspection ID', 'Inspection Date', 'Inspection Time',
   'Inspected By', 'Shift', 'Shift Foreman', 'Line #', 'Product Type', 'Mold', 'Color',
   'LOT of Resin', 'Pallet Sequence', 'Sample Date', 'Sample Time', 'Cavity ID', 'Test Type',
   'Measure Index', 'Characteristic Name', 'Unit', 'LSL', 'USL', 'Actual Value', 'Status',
   'Status Detail', 'Visual Notes', 'Source', 'Month', 'Year', 'BatchID', 'Item No.', 'Item Description',
+  'Release Decision', 'Justification',
 ];
 
 // ================= DATA SPREADSHEET ACCESS =================
@@ -556,19 +563,7 @@ function getRunsSheet_(department) {
 }
 
 function makeRunId_(department) {
-  const sheet = getRunsSheet_(department);
-  const tz = getDb_().getSpreadsheetTimeZone();
-  const dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
-  const lastRow = sheet.getLastRow();
-  let maxSeq = 0;
-  if (lastRow >= 2) {
-    const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat();
-    ids.forEach(id => {
-      const m = String(id || '').match(/^RUN-(\d{8})-(\d{3})$/);
-      if (m && m[1] === dateStr) { const seq = Number(m[2]); if (seq > maxSeq) maxSeq = seq; }
-    });
-  }
-  return 'RUN-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
+  return makeSequentialId_(getRunsSheet_(department), 'Run ID', 'RUN');
 }
 
 // Reads both Plastics' and Metals' domain-specific columns — whichever set the row's sheet
@@ -647,6 +642,35 @@ function createRun(fields) { return createRun_(fields); }
 function getActiveRuns() { return getActiveRuns_(); }
 function stopRun(runId) { return stopRun_(runId); }
 function confirmTodaysRuns(confirmedBy) { return confirmTodaysRuns_(confirmedBy); }
+
+// ================= SEQUENTIAL RECORD IDs (Run/QC/SUV/PFA) =================
+// Shared by makeRunId_ (here), InProcess.gs's makeRecordID_, DropFreeze.gs's
+// makeDailyRecordKey_, and StartUpVerification.gs's makeVerificationRecordId_/makePfaId_ —
+// one PREFIX-yyMMdd-N scheme instead of four near-identical copies. The sequence resets each
+// calendar year (not daily): scans `column` on `sheet` for existing PREFIX IDs whose embedded
+// 2-digit year matches baseDate's, and returns one past the highest sequence number found.
+// baseDate defaults to now; Drop Freeze backdates it to the sample's Date of Mfg.
+function makeSequentialId_(sheet, column, prefix, baseDate) {
+  const tz = getDb_().getSpreadsheetTimeZone();
+  const when = (baseDate instanceof Date && !isNaN(baseDate.getTime())) ? baseDate : new Date();
+  const dateStr = Utilities.formatDate(when, tz, 'yyMMdd');
+  const yy = dateStr.substring(0, 2);
+  const lastRow = sheet.getLastRow();
+  let maxSeq = 0;
+  if (lastRow >= 2) {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    const col = headers.indexOf(column);
+    if (col >= 0) {
+      const re = new RegExp('^' + prefix + '-(\\d{2})\\d{4}-(\\d+)$');
+      const ids = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues().flat();
+      ids.forEach(id => {
+        const m = String(id || '').match(re);
+        if (m && m[1] === yy) { const seq = Number(m[2]); if (seq > maxSeq) maxSeq = seq; }
+      });
+    }
+  }
+  return prefix + '-' + dateStr + '-' + (maxSeq + 1);
+}
 
 // ================= GENERIC HEADER-KEYED SHEET I/O =================
 // Reads every data row into a plain object keyed by column header text —

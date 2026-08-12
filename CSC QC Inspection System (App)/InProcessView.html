@@ -111,17 +111,20 @@
     return 'Pass';
   }
 
+  // "Fail" internally (status codes, the saved Status column, computeRowStatus/evalBound) stays
+  // as-is — Dashboard/Inspection Records key off that literal value. Only what the QC tech reads
+  // is relabeled "Deviation".
   function statusBadge(status) {
-    if (status === 'FAIL') return '<span class="badge critical">Fail</span>';
+    if (status === 'FAIL') return '<span class="badge critical">Deviation</span>';
     if (status === 'NEEDS REVIEW') return '<span class="badge serious">Needs Review</span>';
     if (status === 'PASS') return '<span class="badge good">Pass</span>';
     return '<span class="badge warning">—</span>';
   }
 
   // Per-characteristic flag shown in the Dimensional table's Remark column — a compact
-  // Pass/Review/Fail chip, never the word "OOS".
+  // Pass/Review/Deviation chip, never the word "OOS".
   function dimFlag(tier) {
-    if (tier === 'Fail') return '<span class="badge critical">Fail</span>';
+    if (tier === 'Fail') return '<span class="badge critical">Deviation</span>';
     if (tier === 'NeedsReview') return '<span class="badge serious">Review</span>';
     if (tier === 'Pass') return '<span class="badge good">Pass</span>';
     return '';
@@ -156,7 +159,7 @@
 
   function newCavityRow(cavity) {
     var row = { cavity: cavity || '' };
-    ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit'].forEach(function (k) { row[k] = ''; });
+    ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit','releaseDecision','releaseJustification'].forEach(function (k) { row[k] = ''; });
     return row;
   }
 
@@ -511,12 +514,42 @@
     var issues = [];
     (dimFields || []).forEach(function (f) {
       var tier = evalBound(row[f.key], bounds[f.key]);
-      if (tier === 'Fail') issues.push(f.label + ' ' + row[f.key] + ' (fail)');
+      if (tier === 'Fail') issues.push(f.label + ' ' + row[f.key] + ' (deviation)');
       else if (tier === 'NeedsReview') issues.push(f.label + ' ' + row[f.key] + ' (needs review)');
     });
     if (row.dateCode === 'Needs Update') issues.push('Date Code needs update');
-    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k] === 'Fail') issues.push(k + ' fail'); });
+    ['nesting','coverFit','gaugeFit'].forEach(function (k) { if (row[k] === 'Fail') issues.push(k + ' deviation'); });
     return issues;
+  }
+
+  /** Opens a small inline form (below the review tables) to record the Release Decision +
+   *  Justification for one deviating cavity row. Saving re-renders the whole review section,
+   *  which both reflects the new value and re-checks whether Submit can unlock. */
+  function openReleaseDecisionForm(n, idx) {
+    var row = ipLines[n].cavityRows[idx];
+    var panel = document.getElementById('ip-release-panel');
+    if (!panel) return;
+    var opts = (ipData.releaseDecisionOptions || []).map(function (o) {
+      return '<option' + (o === row.releaseDecision ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('');
+    panel.innerHTML =
+      '<div class="row-card"><div class="row-head"><strong>Release Decision — Line ' + n + ', Cavity ' + esc(row.cavity || '—') + '</strong></div>' +
+      '<div class="field-row">' +
+      '<div class="field"><label>Release Decision</label><select id="ip-rd-decision"><option value="">— select —</option>' + opts + '</select></div>' +
+      '<div class="field field-wide"><label>Justification</label><textarea id="ip-rd-justification" rows="2">' + esc(row.releaseJustification) + '</textarea></div>' +
+      '<div class="field" style="align-self:end;"><button class="primary" id="ip-rd-save-btn">Save</button></div>' +
+      '</div></div>';
+    document.getElementById('ip-rd-decision').value = row.releaseDecision || '';
+    document.getElementById('ip-rd-save-btn').addEventListener('click', function () {
+      var decision = document.getElementById('ip-rd-decision').value;
+      var justification = document.getElementById('ip-rd-justification').value.trim();
+      if (!decision) { showToast('Pick a Release Decision.', true); return; }
+      if (!justification) { showToast('Justification is required.', true); return; }
+      row.releaseDecision = decision;
+      row.releaseJustification = justification;
+      renderReview();
+    });
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function renderReview() {
@@ -525,24 +558,52 @@
     var lines = activeLinesWithData();
     if (lines.length === 0) { area.innerHTML = '<p class="spec-hint">No lines have data yet.</p>'; return; }
 
-    area.innerHTML = lines.map(function (n) {
+    var unresolvedCount = 0;
+
+    var cardsHtml = lines.map(function (n) {
       var line = ipLines[n];
-      var rowsHtml = line.cavityRows.map(function (r) {
+      var rowsHtml = line.cavityRows.map(function (r, idx) {
         var status = computeRowStatus(r, line.bounds, dimKeysFor(line));
         var issues = rowIssueDetails(r, line.bounds, line.dimFields);
         var detailText = issues.length ? issues.join('; ') : (status === 'PASS' ? 'All within spec' : '—');
+        var releaseCell;
+        if (status !== 'FAIL') {
+          releaseCell = '<span class="spec-hint">—</span>';
+        } else if (r.releaseDecision && r.releaseJustification) {
+          releaseCell = '<strong>' + esc(r.releaseDecision) + '</strong><div class="spec-hint">' + esc(r.releaseJustification) + '</div>' +
+            '<button class="ghost" data-release="' + n + ':' + idx + '" style="margin-top:4px;">Edit</button>';
+        } else {
+          unresolvedCount++;
+          releaseCell = '<span class="badge warning">Needs Decision</span><br>' +
+            '<button class="ghost" data-release="' + n + ':' + idx + '" style="margin-top:4px;">Add Release Decision</button>';
+        }
         return '<tr><td>' + esc(r.cavity) + '</td><td>' + statusBadge(status) + '</td>' +
-          '<td style="font-size:12px;color:var(--text-secondary);">' + esc(detailText) + '</td></tr>';
+          '<td style="font-size:12px;color:var(--text-secondary);">' + esc(detailText) + '</td>' +
+          '<td>' + releaseCell + '</td></tr>';
       }).join('');
       return '<div class="row-card"><div class="row-head"><strong>Line ' + n + '</strong>' +
         '<span class="tag">' + esc(line.product) + ' / ' + esc(line.mold) + (line.color ? ' / ' + esc(line.color) : '') +
         (line.itemNo ? ' / Item ' + esc(line.itemNo) : '') +
         ' — Pallet ' + esc(line.pallet || '—') + ' / Lot ' + esc(line.resinLot || '—') + '</span></div>' +
-        '<table class="qc-table"><thead><tr><th>Cavity</th><th>Status</th><th>Details</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
-    }).join('') +
-      '<button class="primary" id="ip-submit-all-btn" style="margin-top:10px;">Submit All (' + lines.length + ' line' + (lines.length > 1 ? 's' : '') + ')</button>';
+        '<table class="qc-table"><thead><tr><th>Cavity</th><th>Status</th><th>Details</th><th>Release Decision</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+    }).join('');
 
-    document.getElementById('ip-submit-all-btn').addEventListener('click', submitAllLines);
+    var footerHtml = unresolvedCount > 0
+      ? '<p class="spec-hint" style="color:var(--critical);font-weight:600;margin-top:10px;">' +
+        unresolvedCount + ' deviation(s) above still need a Release Decision + Justification before you can submit.</p>'
+      : '<button class="primary" id="ip-submit-all-btn" style="margin-top:10px;">Submit All (' + lines.length + ' line' + (lines.length > 1 ? 's' : '') + ')</button>';
+
+    area.innerHTML = cardsHtml + '<div id="ip-release-panel"></div>' + footerHtml;
+
+    Array.prototype.forEach.call(area.querySelectorAll('[data-release]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var parts = btn.dataset.release.split(':');
+        openReleaseDecisionForm(parseInt(parts[0], 10), parseInt(parts[1], 10));
+      });
+    });
+
+    var submitBtn = document.getElementById('ip-submit-all-btn');
+    if (submitBtn) submitBtn.addEventListener('click', submitAllLines);
   }
 
   function submitAllLines() {
@@ -580,7 +641,7 @@
       .withSuccessHandler(function (result) {
         document.getElementById('ip-record-id').value = result.recordId;
         showToast('Record ' + result.recordId + ' has been added to Inspection Records (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
-          (result.failCount ? ' ' + result.failCount + ' sample(s) failed.' : '') +
+          (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
           (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
           result.failCount > 0);
         ipLines = {}; ipActiveLine = 1;

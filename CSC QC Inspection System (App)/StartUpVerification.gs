@@ -17,43 +17,14 @@ function getSuLogSheet_(department) {
 }
 
 function makeVerificationRecordId_(department) {
-  const sheet = getSuLogSheet_(department);
-  const tz = getDb_().getSpreadsheetTimeZone();
-  const dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
-  const lastRow = sheet.getLastRow();
-  let maxSeq = 0;
-  if (lastRow >= 2) {
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
-    const col = headers.indexOf('Verification Record #');
-    if (col >= 0) {
-      const ids = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues().flat();
-      ids.forEach(id => {
-        const m = String(id || '').match(/^SUV-(\d{8})-(\d{3})$/);
-        if (m && m[1] === dateStr) { const seq = Number(m[2]); if (seq > maxSeq) maxSeq = seq; }
-      });
-    }
-  }
-  return 'SUV-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
+  return makeSequentialId_(getSuLogSheet_(department), 'Verification Record #', 'SUV');
 }
 
+// PFA IDs live inside the flat log's 'Actual Value' column (alongside every other
+// Verification Item's value) rather than their own column — makeSequentialId_ just regex-scans
+// whatever's in that column, so mixing in non-PFA values there is harmless.
 function makePfaId_(department) {
-  const sheet = getSuLogSheet_(department);
-  const tz = getDb_().getSpreadsheetTimeZone();
-  const dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
-  const lastRow = sheet.getLastRow();
-  let maxSeq = 0;
-  if (lastRow >= 2) {
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
-    const col = headers.indexOf('Actual Value');
-    if (col >= 0) {
-      const vals = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues().flat();
-      vals.forEach(v => {
-        const m = String(v || '').match(/^PFA-(\d{8})-(\d{3})$/);
-        if (m && m[1] === dateStr) { const seq = Number(m[2]); if (seq > maxSeq) maxSeq = seq; }
-      });
-    }
-  }
-  return 'PFA-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
+  return makeSequentialId_(getSuLogSheet_(department), 'Actual Value', 'PFA');
 }
 
 function getRecordRows_(recordId, department) {

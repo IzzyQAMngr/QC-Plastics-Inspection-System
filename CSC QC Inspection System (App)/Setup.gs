@@ -11,6 +11,8 @@ function oneTimeSetup() {
   ensureColumnExists_(inProcessSheet, 'BatchID');
   ensureColumnExists_(inProcessSheet, 'Item No.');
   ensureColumnExists_(inProcessSheet, 'Item Description');
+  ensureColumnExists_(inProcessSheet, 'Release Decision');
+  ensureColumnExists_(inProcessSheet, 'Justification');
 
   const messages = ['DATA_SPREADSHEET_ID set to this spreadsheet.'];
   if (!ss.getSheetByName(SETTINGS_SHEET_NAME)) {
@@ -272,4 +274,132 @@ function removeEmptyItemListSectionFromSettings() {
   if (startRow === -1) { SpreadsheetApp.getActive().toast('No leftover ITEM LIST section found — already clean.'); return; }
   sheet.deleteRows(startRow, lastRow - startRow + 1);
   SpreadsheetApp.getActive().toast('Removed empty ITEM LIST placeholder from Settings.');
+}
+
+/**
+ * ONE-TIME: adds the Release Decision / Justification columns to the Plastics QC Inspection
+ * Data log (if missing — oneTimeSetup also does this going forward), then migrates every
+ * already-saved deviation sign-off that's still riding along as a fake "Deviation" row
+ * (Test Type = "Deviation", Characteristic Name = "Release Decision"/"Justification") onto
+ * the real columns for its matching sample (same QC Record # + Inspection ID), and removes
+ * those pseudo-rows. Safe to re-run — a clean run after the first just no-ops.
+ * Run once from the Apps Script editor (select migrateInProcessReleaseDecision, click Run).
+ */
+function migrateInProcessReleaseDecision() {
+  const sheet = getDb_().getSheetByName(INPROCESS_LOG_SHEET_NAME);
+  if (!sheet) throw new Error('"' + INPROCESS_LOG_SHEET_NAME + '" sheet not found.');
+  ensureColumnExists_(sheet, 'Release Decision');
+  ensureColumnExists_(sheet, 'Justification');
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) { SpreadsheetApp.getActive().toast('No data rows — nothing to migrate.'); return; }
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const rdCol = headers.indexOf('Release Decision');
+  const jCol = headers.indexOf('Justification');
+  const recordCol = headers.indexOf('QC Record #');
+  const idCol = headers.indexOf('Inspection ID');
+  const typeCol = headers.indexOf('Test Type');
+  const charCol = headers.indexOf('Characteristic Name');
+  const valCol = headers.indexOf('Actual Value');
+
+  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const bySample = {}; // 'QC Record #|Inspection ID' -> {decision, justification}
+  const pseudoRows = []; // 1-based sheet row numbers to remove afterward
+  data.forEach((row, i) => {
+    if (String(row[typeCol]) !== 'Deviation') return;
+    const charName = String(row[charCol]);
+    if (charName !== 'Release Decision' && charName !== 'Justification') return;
+    const key = row[recordCol] + '|' + row[idCol];
+    bySample[key] = bySample[key] || {};
+    bySample[key][charName === 'Release Decision' ? 'decision' : 'justification'] = row[valCol];
+    pseudoRows.push(i + 2);
+  });
+
+  if (pseudoRows.length === 0) {
+    SpreadsheetApp.getActive().toast('No legacy Deviation pseudo-rows found — nothing to migrate.');
+    return;
+  }
+
+  const rdValues = [];
+  const jValues = [];
+  let stamped = 0;
+  data.forEach(row => {
+    const key = row[recordCol] + '|' + row[idCol];
+    const info = bySample[key];
+    if (info && String(row[typeCol]) !== 'Deviation') {
+      rdValues.push([info.decision !== undefined ? info.decision : row[rdCol]]);
+      jValues.push([info.justification !== undefined ? info.justification : row[jCol]]);
+      stamped++;
+    } else {
+      rdValues.push([row[rdCol]]);
+      jValues.push([row[jCol]]);
+    }
+  });
+  sheet.getRange(2, rdCol + 1, rdValues.length, 1).setValues(rdValues);
+  sheet.getRange(2, jCol + 1, jValues.length, 1).setValues(jValues);
+
+  // Bottom-up so row numbers stay valid as each delete shifts everything below it up.
+  pseudoRows.sort((a, b) => b - a).forEach(r => sheet.deleteRow(r));
+
+  const msg = 'Migrated ' + Object.keys(bySample).length + ' sample(s): stamped ' + stamped +
+    ' data row(s), removed ' + pseudoRows.length + ' legacy pseudo-row(s).';
+  Logger.log(msg);
+  try { SpreadsheetApp.getActive().toast(msg); } catch (e) { /* running headless */ }
+}
+
+/**
+ * ONE-TIME: replaces the Plastics QC Inspection Data log's legacy Month/Year
+ * ARRAYFORMULAs (=ARRAYFORMULA(IF(D2:D="","",MONTH(D2:D))) and its YEAR() counterpart, both
+ * living only in row 2) with plain per-row values computed from Inspection Date — matching
+ * what saveInProcessInspection() now writes in code for every new row (see InProcess.gs). The
+ * array formula silently stopped covering the whole column the moment any row below it got a
+ * literal value from the code (Sheets refuses to let an ARRAYFORMULA's spill range overwrite
+ * existing data), which is why Month/Year currently read blank for most existing rows — this
+ * backfills every row at once and leaves no formula behind to break again.
+ * Run once from the Apps Script editor (select fixInProcessMonthYear, click Run).
+ */
+function fixInProcessMonthYear() {
+  const sheet = getDb_().getSheetByName(INPROCESS_LOG_SHEET_NAME);
+  if (!sheet) throw new Error('"' + INPROCESS_LOG_SHEET_NAME + '" sheet not found.');
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) { SpreadsheetApp.getActive().toast('No data rows — nothing to fix.'); return; }
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const dateCol = headers.indexOf('Inspection Date');
+  const monthCol = headers.indexOf('Month');
+  const yearCol = headers.indexOf('Year');
+  if (dateCol < 0 || monthCol < 0 || yearCol < 0) {
+    throw new Error('Missing one of Inspection Date/Month/Year columns.');
+  }
+
+  const dates = sheet.getRange(2, dateCol + 1, lastRow - 1, 1).getValues();
+  const monthValues = [];
+  const yearValues = [];
+  let fixed = 0;
+  dates.forEach(([raw]) => {
+    let y = '', m = '';
+    if (raw instanceof Date && !isNaN(raw.getTime())) {
+      y = raw.getFullYear(); m = raw.getMonth() + 1;
+    } else {
+      const s = String(raw || '').trim();
+      const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
+      const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // m/d/yyyy
+      if (iso) { y = Number(iso[1]); m = Number(iso[2]); }
+      else if (slash) { y = Number(slash[3]); m = Number(slash[1]); }
+    }
+    if (y !== '') fixed++;
+    monthValues.push([m]);
+    yearValues.push([y]);
+  });
+
+  // setValues overwrites row 2's ARRAYFORMULA cell too — no formula survives this.
+  sheet.getRange(2, monthCol + 1, monthValues.length, 1).setValues(monthValues);
+  sheet.getRange(2, yearCol + 1, yearValues.length, 1).setValues(yearValues);
+
+  const msg = 'Recomputed Month/Year for ' + fixed + ' of ' + dates.length + ' row(s) from Inspection Date.';
+  Logger.log(msg);
+  try { SpreadsheetApp.getActive().toast(msg); } catch (e) { /* running headless */ }
 }

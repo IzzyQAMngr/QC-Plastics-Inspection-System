@@ -72,6 +72,7 @@ function getInProcessFormData() {
     foremen: getForemanList_(),
     shifts: getShiftList_(),
     passFailOptions: getPassFailNAList_(),
+    releaseDecisionOptions: RELEASE_DECISION_OPTIONS,
     runs: getActiveRuns_(),
   };
 }
@@ -179,15 +180,7 @@ function evaluateInProcessRow_(row, specs) {
 }
 
 function makeRecordID_(sheet) {
-  const tz = getDb_().getSpreadsheetTimeZone();
-  const today = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
-  const rows = readSheetObjects_(sheet);
-  let max = 0;
-  rows.forEach(r => {
-    const m = String(r['QC Record #'] || '').match(/^QC-(\d{8})-(\d{3})$/);
-    if (m && m[1] === today) { const s = Number(m[2]); if (s > max) max = s; }
-  });
-  return 'QC-' + today + '-' + String(max + 1).padStart(3, '0');
+  return makeSequentialId_(sheet, 'QC Record #', 'QC');
 }
 
 /**
@@ -207,11 +200,17 @@ function saveInProcessInspection(payload) {
     if (rows.length === 0) throw new Error('No inspection rows with a Mold selected.');
 
     let recordID = String(payload.recordId || '').trim();
-    if (!/^QC-\d{8}-\d{3}$/.test(recordID)) recordID = makeRecordID_(db);
+    if (!/^QC-\d{6}-\d+$/.test(recordID)) recordID = makeRecordID_(db);
 
     const timestamp = new Date();
-    const month = timestamp.getMonth() + 1;
-    const year = timestamp.getFullYear();
+    // Month/Year reflect the Inspection Date (matches the sheet's old MONTH()/YEAR() formulas —
+    // and what you'd actually want for monthly/yearly rollups), not the moment the save button
+    // was clicked. Parsed by splitting the "yyyy-mm-dd" <input type=date> string directly rather
+    // than `new Date(header.inspDate)`, which would shift by a day around UTC midnight in some
+    // timezones. Falls back to the save timestamp if Inspection Date is missing/malformed.
+    const inspDateParts = String(header.inspDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const month = inspDateParts ? Number(inspDateParts[2]) : timestamp.getMonth() + 1;
+    const year = inspDateParts ? Number(inspDateParts[1]) : timestamp.getFullYear();
     const specCache = {};
     const getSpecs = (mold) => {
       if (!specCache[mold]) {
@@ -220,15 +219,31 @@ function saveInProcessInspection(payload) {
       return specCache[mold];
     };
 
+    // Evaluate every row up front — a deviating cavity (server-side FAIL) missing its Release
+    // Decision + Justification blocks the entire save, never a partial write. Mirrors the
+    // client-side gate in InProcessView.html's renderReview(), which is what a QC tech actually
+    // sees; this is the authoritative backstop in case that client check is ever bypassed.
+    const evalResults = rows.map(row => evaluateInProcessRow_(row, getSpecs(row.mold)));
+    const unresolved = [];
+    rows.forEach((row, i) => {
+      if (evalResults[i].overallStatus.toUpperCase().indexOf('FAIL') === 0) {
+        if (!String(row.releaseDecision || '').trim() || !String(row.releaseJustification || '').trim()) {
+          unresolved.push('Line ' + row.line + ' Cavity ' + (row.cavity || '—'));
+        }
+      }
+    });
+    if (unresolved.length > 0) {
+      throw new Error('Release Decision + Justification required before saving: ' + unresolved.join(', ') + '.');
+    }
+
     const dbRows = [];
     const failRows = [];
     let reviewCount = 0;
     let inspectionId = 0;
 
-    rows.forEach(row => {
+    rows.forEach((row, i) => {
       inspectionId++;
-      const specs = getSpecs(row.mold);
-      const evalResult = evaluateInProcessRow_(row, specs);
+      const evalResult = evalResults[i];
 
       function dbRow(testType, measIdx, charName, unit, lsl, usl, actual, status, detail) {
         return {
@@ -242,6 +257,7 @@ function saveInProcessInspection(payload) {
           'Visual Notes': row.visual, 'Source': 'CSC QC Inspection System', 'Month': month, 'Year': year,
           'BatchID': row.runId || payload.runId || '',
           'Item No.': row.itemNo || '', 'Item Description': row.itemDescription || '',
+          'Release Decision': row.releaseDecision || '', 'Justification': row.releaseJustification || '',
         };
       }
 
@@ -282,7 +298,10 @@ function saveInProcessInspection(payload) {
       });
 
       if (evalResult.overallStatus.toUpperCase().indexOf('FAIL') === 0) {
-        failRows.push({ mold: row.mold, cavity: row.cavity, status: evalResult.overallStatus, product: row.product, line: row.line });
+        failRows.push({
+          mold: row.mold, cavity: row.cavity, status: evalResult.overallStatus, product: row.product, line: row.line,
+          releaseDecision: row.releaseDecision || '', releaseJustification: row.releaseJustification || '',
+        });
       } else if (evalResult.overallStatus.toUpperCase().indexOf('NEEDS REVIEW') === 0) {
         reviewCount++;
       }
@@ -307,7 +326,7 @@ function sendInProcessFailNotification_(recordID, header, failRows) {
 
   let html = '<div style="font-family:Calibri,sans-serif;max-width:700px;">';
   html += '<div style="background:#1A3A3A;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">';
-  html += '<h2 style="margin:0;font-size:18px;">⚠️ QC FAIL NOTIFICATION</h2>';
+  html += '<h2 style="margin:0;font-size:18px;">⚠️ QC DEVIATION NOTIFICATION</h2>';
   html += '<p style="margin:4px 0 0;font-size:13px;opacity:0.8;">CSC QC Inspection System — Plastics In-Process</p></div>';
   html += '<div style="background:#f8f9fa;padding:16px 20px;border:1px solid #dee2e6;">';
   html += '<table style="font-size:13px;margin-bottom:12px;">';
@@ -319,20 +338,23 @@ function sendInProcessFailNotification_(recordID, header, failRows) {
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
   html += '<tr style="background:#d9534f;color:white;"><th style="padding:8px;text-align:left;">Line</th>' +
     '<th style="padding:8px;text-align:left;">Mold</th><th style="padding:8px;text-align:left;">Cavity</th>' +
-    '<th style="padding:8px;text-align:left;">Failure Details</th></tr>';
+    '<th style="padding:8px;text-align:left;">Deviation Details</th>' +
+    '<th style="padding:8px;text-align:left;">Release Decision</th><th style="padding:8px;text-align:left;">Justification</th></tr>';
   failRows.forEach((f, i) => {
     const bg = i % 2 === 0 ? '#fff' : '#f8f8f8';
     const detail = f.status.replace(/^FAIL:\s*/i, '');
     html += '<tr style="background:' + bg + ';"><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + (f.line || '') +
       '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + f.mold +
       '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + f.cavity +
-      '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;color:#d9534f;font-weight:bold;">' + detail + '</td></tr>';
+      '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;color:#d9534f;font-weight:bold;">' + detail +
+      '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + (f.releaseDecision || '—') +
+      '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + (f.releaseJustification || '—') + '</td></tr>';
   });
   html += '</table></div>';
   html += '<div style="background:#eee;padding:10px 20px;border-radius:0 0 8px 8px;font-size:11px;color:#888;">' +
     'Sent automatically by the CSC QC Inspection System.</div></div>';
 
   const moldList = [...new Set(failRows.map(f => f.mold))].join(', ');
-  const subject = '⚠️ QC PLASTICS INSP. FAIL — ' + recordID + ' | ' + moldList;
+  const subject = '⚠️ QC PLASTICS INSP. DEVIATION — ' + recordID + ' | ' + moldList;
   emails.forEach(to => MailApp.sendEmail({ to: to, subject: subject, htmlBody: html }));
 }
