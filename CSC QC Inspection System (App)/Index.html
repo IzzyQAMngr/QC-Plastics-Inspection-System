@@ -6,25 +6,26 @@
 
     <div class="nav-group-label">Plastics</div>
     <div class="nav-group">
-      <div class="nav-item active" data-view="dashboard"><span class="icon">📊</span> Dashboard</div>
-      <div class="nav-item" data-view="addrun"><span class="icon">🏭</span> Daily Run Setup</div>
-      <div class="nav-item" data-view="startup"><span class="icon">✅</span> Start-Up Verification</div>
-      <div class="nav-item" data-view="devapproval"><span class="icon">🔏</span> Deviation Approvals</div>
-      <div class="nav-item" data-view="inprocess"><span class="icon">📋</span> In-Process Inspection</div>
-      <div class="nav-item" data-view="dropfreeze"><span class="icon">🧊</span> Drop Freeze Test</div>
-      <div class="nav-item" data-view="testdatareview"><span class="icon">🔍</span> Inspection Records</div>
+      <div class="nav-item active" data-view="dashboard" data-dept="Plastics"><span class="icon">📊</span> Dashboard</div>
+      <div class="nav-item" data-view="addrun" data-dept="Plastics"><span class="icon">🏭</span> Daily Run Setup</div>
+      <div class="nav-item" data-view="startup" data-dept="Plastics"><span class="icon">✅</span> Start-Up Verification</div>
+      <div class="nav-item" data-view="devapproval" data-dept="Plastics"><span class="icon">🔏</span> Deviation Approvals</div>
+      <div class="nav-item" data-view="inprocess" data-dept="Plastics"><span class="icon">📋</span> In-Process Inspection</div>
+      <div class="nav-item" data-view="dropfreeze" data-dept="Plastics"><span class="icon">🧊</span> Drop Freeze Test</div>
+      <div class="nav-item" data-view="testdatareview" data-dept="Plastics"><span class="icon">🔍</span> Inspection Records</div>
     </div>
 
     <div class="nav-group-label">Metals</div>
     <div class="nav-group">
-      <div class="nav-item" data-view="metalsdashboard"><span class="icon">📊</span> Dashboard</div>
-      <div class="nav-item" data-view="metalsaddrun"><span class="icon">🏭</span> Daily Run Setup</div>
-      <div class="nav-item" data-view="metalsstartup"><span class="icon">✅</span> Start-Up Verification</div>
-      <div class="nav-item" data-view="devapproval"><span class="icon">🔏</span> Deviation Approvals</div>
-      <div class="nav-item" data-view="metals"><span class="icon">⚙️</span> Metals Inspection</div>
+      <div class="nav-item" data-view="metalsdashboard" data-dept="Metals"><span class="icon">📊</span> Dashboard</div>
+      <div class="nav-item" data-view="metalsaddrun" data-dept="Metals"><span class="icon">🏭</span> Daily Run Setup</div>
+      <div class="nav-item" data-view="metalsstartup" data-dept="Metals"><span class="icon">✅</span> Start-Up Verification</div>
+      <div class="nav-item" data-view="devapproval" data-dept="Metals"><span class="icon">🔏</span> Deviation Approvals</div>
+      <div class="nav-item" data-view="metals" data-dept="Metals"><span class="icon">⚙️</span> Metals Inspection</div>
     </div>
   </nav>
   <main id="main">
+    <div class="dept-banner plastics" id="dept-banner">Plastics Department</div>
     <div class="view active" id="view-dashboard"><?!= include('DashboardView'); ?></div>
     <div class="view" id="view-addrun"><?!= include('AddRunView'); ?></div>
     <div class="view" id="view-startup"><?!= include('StartUpVerificationView'); ?></div>
@@ -45,14 +46,32 @@
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 
+  // Fallback department per view, used only when there's no clicked nav-item to read from
+  // (initial page load, or a deep link) — Deviation Approvals is shared by both departments'
+  // menus, so its default here is overridden by ?dept= on a deep link when present.
+  var VIEW_DEPT = {
+    dashboard: 'Plastics', addrun: 'Plastics', startup: 'Plastics', devapproval: 'Plastics',
+    inprocess: 'Plastics', dropfreeze: 'Plastics', testdatareview: 'Plastics',
+    metalsdashboard: 'Metals', metalsaddrun: 'Metals', metalsstartup: 'Metals', metals: 'Metals',
+  };
+
   document.querySelectorAll('.nav-item').forEach(function (item) {
-    item.addEventListener('click', function () { showView(item.dataset.view); });
+    item.addEventListener('click', function () { showView(item.dataset.view, item.dataset.dept); });
   });
 
-  function showView(name) {
+  function showView(name, dept) {
     document.querySelectorAll('.nav-item').forEach(function (i) { i.classList.toggle('active', i.dataset.view === name); });
     VIEWS.forEach(function (v) { document.getElementById('view-' + v).classList.toggle('active', v === name); });
     if (!VIEWS_LOADED[name] && window['init_' + name]) { VIEWS_LOADED[name] = true; window['init_' + name](); }
+    updateDeptBanner_(dept || VIEW_DEPT[name] || 'Plastics');
+  }
+
+  function updateDeptBanner_(dept) {
+    var banner = document.getElementById('dept-banner');
+    var isMetals = dept === 'Metals';
+    banner.classList.toggle('metals', isMetals);
+    banner.classList.toggle('plastics', !isMetals);
+    banner.textContent = (isMetals ? 'Metals' : 'Plastics') + ' Department';
   }
 
   var toastTimer;
@@ -68,7 +87,7 @@
     VIEWS_LOADED.dashboard = true;
     if (window.init_dashboard) init_dashboard();
     if (window.INITIAL_PARAMS && VIEWS.indexOf(window.INITIAL_PARAMS.view) >= 0) {
-      showView(window.INITIAL_PARAMS.view);
+      showView(window.INITIAL_PARAMS.view, window.INITIAL_PARAMS.dept);
     }
   });
 </script>
