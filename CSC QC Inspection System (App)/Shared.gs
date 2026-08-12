@@ -8,9 +8,19 @@
 const SETTINGS_SHEET_NAME       = 'Settings';
 const DROPFREEZE_LOG_SHEET_NAME = 'Test Data';
 const INPROCESS_LOG_SHEET_NAME  = 'QC Database';
-const ALL_ITEMS_LIST_SHEET_NAME = 'All Items List'; // its own tab, not part of Settings
+const ALL_ITEMS_LIST_SHEET_NAME = 'All Items List- Plastics'; // its own tab, not part of Settings
+const ALL_ITEMS_LIST_SHEET_NAME_METALS = 'All Items List- Metals';
 const SU_ITEMS_SHEET_NAME = 'Start-Up Verification Items List- Plastics';
 const SU_LOG_SHEET_NAME   = 'Start-Up Verification Log- Plastics';
+const SU_ITEMS_SHEET_NAME_METALS = 'Start-Up Verification Items List- Metals';
+const SU_LOG_SHEET_NAME_METALS   = 'Start-Up Verification Log- Metals';
+const METALS_SU_LOG_HEADERS = [
+  'Verification Record #', 'Timestamp saved', 'Run ID', 'Verification Date', 'Verification Time',
+  'QC Tech Name', 'Shift', 'Foreman', 'Start-Up Tech', 'Line #', 'Run Qty', 'Customer Name',
+  'Size ID', 'Item', 'Item Description', 'Month', 'Year',
+  'Verification Item', 'Value Type', 'Unit', 'Actual Value', 'Status', 'Notes',
+];
+const LINE_CONFIG_SHEET_NAME = 'Line Configuration';
 
 // Spec Register (relinked 2026-08 — Spec Matrix / Color Specs / All Molds List
 // replaced the old per-product tabs). This is the default; Settings' own
@@ -18,6 +28,7 @@ const SU_LOG_SHEET_NAME   = 'Start-Up Verification Log- Plastics';
 const SPEC_REGISTER_ID = '1rgm9gAnZviUSLKLF1kjbX0P1X5fPvGvKXDg5SvT1htM';
 
 const ALL_MOLDS_LIST_SHEET = 'All Molds List';
+const ALL_CANS_SIZE_LIST_SHEET = 'All Cans Size List'; // Metals register — Size ID | Can Description
 const SPEC_MATRIX_SHEET    = 'Spec Matrix';
 const COLOR_SPECS_SHEET    = 'Color Specs';
 const FUNCTIONAL_TESTS_SHEET = 'Functional Tests';
@@ -62,13 +73,17 @@ function getSettingsSheet_() {
 // ================= SETTINGS — dynamic label lookup =================
 // The redesigned Settings sheet is read by label text, not fixed cells/columns —
 // so it can be reorganized again later without breaking these.
-function findSettingsLabel_(label) {
+// fromRow lets a caller skip past an earlier section that reuses the same label text
+// (e.g. "QC Technician Name" appears once under Plastics' dropdown lists, again under Metals').
+function findSettingsLabel_(label, fromRow) {
   const st = getSettingsSheet_();
+  const startRow = fromRow || 1;
   const lastRow = st.getLastRow(), lastCol = st.getLastColumn();
-  const values = st.getRange(1, 1, lastRow, lastCol).getValues();
+  if (startRow > lastRow) return null;
+  const values = st.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
   for (let r = 0; r < values.length; r++) {
     for (let c = 0; c < values[r].length; c++) {
-      if (String(values[r][c]).trim() === label) return { row: r + 1, col: c + 1 };
+      if (String(values[r][c]).trim() === label) return { row: startRow + r, col: c + 1 };
     }
   }
   return null;
@@ -80,8 +95,16 @@ function settingsValueRightOf_(label) {
   return String(getSettingsSheet_().getRange(pos.row, pos.col + 1).getValue() || '').trim();
 }
 
-function settingsColumnBelow_(label, maxScan) {
-  const pos = findSettingsLabel_(label);
+/** Row of the "Drop Down Lists- Metals" section header — Metals' dropdown lists (same
+ *  column labels as Plastics') live below this, so lookups need to start searching there. */
+function getMetalsDropdownSectionRow_() {
+  const pos = findSettingsLabel_('Drop Down Lists- Metals');
+  if (!pos) throw new Error('"Drop Down Lists- Metals" section header not found in Settings.');
+  return pos.row;
+}
+
+function settingsColumnBelow_(label, maxScan, fromRow) {
+  const pos = findSettingsLabel_(label, fromRow);
   if (!pos) return [];
   const st = getSettingsSheet_();
   const out = [];
@@ -116,7 +139,12 @@ function settingsTableBelow_(label, numCols, maxScan) {
 }
 
 // ================= MASTER REGISTER LINK (consolidated) =================
-function getMasterRegisterId_() {
+function getMasterRegisterId_(department) {
+  if (department === 'Metals') {
+    const id = settingsValueRightOf_('Master Register ID (Spec Register)- Metals:');
+    if (!id) throw new Error('Metals Master Register ID not set in Settings yet.');
+    return id;
+  }
   const fromSheet = settingsValueRightOf_('Master Register ID (Spec Register):') ||
     settingsValueRightOf_('Master Register ID:');
   return fromSheet || SPEC_REGISTER_ID;
@@ -137,12 +165,12 @@ function getNotificationEmails_() {
   return raw.split(',').map(e => e.trim()).filter(e => e.indexOf('@') > 0);
 }
 
-function getInspectorList_()   { return settingsColumnBelow_('QC Technician Name', 30); }
-function getForemanList_()     { return settingsColumnBelow_('Shift Foreman', 30); }
-function getShiftList_()       { return settingsColumnBelow_('Shift', 30); }
-function getPassFailNAList_()  { return settingsColumnBelow_('Pass / Fail / N/A', 30); }
-function getStartUpTechList_() { return settingsColumnBelow_('Start-Up Technician Name', 30); }
-function getDeviationAuthList_() { return settingsColumnBelow_('Deviation Authorization List', 30); }
+function getInspectorList_(department)   { return settingsColumnBelow_('QC Technician Name', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
+function getForemanList_(department)     { return settingsColumnBelow_('Shift Foreman', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
+function getShiftList_(department)       { return settingsColumnBelow_('Shift', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
+function getPassFailNAList_(department)  { return settingsColumnBelow_('Pass / Fail / N/A', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
+function getStartUpTechList_(department) { return settingsColumnBelow_('Start-Up Technician Name', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
+function getDeviationAuthList_(department) { return settingsColumnBelow_('Deviation Authorization List', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
 
 /**
  * Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes, category}], in sheet order.
@@ -150,11 +178,12 @@ function getDeviationAuthList_() { return settingsColumnBelow_('Deviation Author
  * checklist rows on the form — it can live anywhere in the header row, and if it's missing entirely every item
  * comes back with category: '' so the form falls back to one flat, ungrouped table.
  */
-function getStartUpItemsList_() {
-  const sheet = getDb_().getSheetByName(SU_ITEMS_SHEET_NAME);
-  if (!sheet) throw new Error('"' + SU_ITEMS_SHEET_NAME + '" sheet not found.');
+function getStartUpItemsList_(department) {
+  const sheetName = department === 'Metals' ? SU_ITEMS_SHEET_NAME_METALS : SU_ITEMS_SHEET_NAME;
+  const sheet = getDb_().getSheetByName(sheetName);
+  if (!sheet) throw new Error('"' + sheetName + '" sheet not found.');
   const pos = findHeaderRowAndCol_(sheet, 'Verification Item', 3);
-  if (!pos) throw new Error('"Verification Item" header not found in ' + SU_ITEMS_SHEET_NAME + '.');
+  if (!pos) throw new Error('"Verification Item" header not found in ' + sheetName + '.');
   const lastRow = sheet.getLastRow();
   if (lastRow <= pos.row) return [];
   const data = sheet.getRange(pos.row + 1, pos.col, lastRow - pos.row, 4).getValues();
@@ -173,11 +202,37 @@ function getStartUpItemsList_() {
   return out;
 }
 
-/** Item No. / Item Description list, for traceability fields on both forms. Its own tab. */
-function getItemList_() {
-  const sheet = getDb_().getSheetByName(ALL_ITEMS_LIST_SHEET_NAME);
+/**
+ * Distinct Line # values for a department, from the Line Configuration sheet
+ * (Department | Line # | Equipment Code | Equipment Description — one row per piece of
+ * equipment, so a line with several equipment rows still only yields one Line # here).
+ * Admin-managed by hand for now; sorted numerically when the Line # is a plain number.
+ */
+function getLinesForDepartment_(department) {
+  const sheet = getDb_().getSheetByName(LINE_CONFIG_SHEET_NAME);
   if (!sheet) return [];
-  const pos = findHeaderRowAndCol_(sheet, 'Item No.', 3);
+  const seen = {};
+  const out = [];
+  readSheetObjects_(sheet).forEach(row => {
+    const dept = String(row['Department'] || '').trim();
+    const line = String(row['Line #'] || '').trim();
+    if (!line || dept !== department || seen[line]) return;
+    seen[line] = true;
+    out.push(line);
+  });
+  out.sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.localeCompare(b);
+  });
+  return out;
+}
+
+/** Item No. / Item Description list, for traceability fields on both forms. Its own tab per department. */
+function getItemList_(department) {
+  const sheetName = department === 'Metals' ? ALL_ITEMS_LIST_SHEET_NAME_METALS : ALL_ITEMS_LIST_SHEET_NAME;
+  const sheet = getDb_().getSheetByName(sheetName);
+  if (!sheet) return [];
+  const pos = findHeaderRowAndCol_(sheet, 'Item No.', 3) || findHeaderRowAndCol_(sheet, 'Item No', 3);
   if (!pos) return [];
   const lastRow = sheet.getLastRow();
   if (lastRow <= pos.row) return [];
@@ -210,7 +265,11 @@ function findHeaderRowAndCol_(sheet, label, maxRows) {
   return null;
 }
 
-/** Full deduped mold list — reads the register's own "Unique Mold List" helper columns. */
+/**
+ * Full deduped mold list — reads the register's "Unique Mold List" helper column plus
+ * Product Type right next to it. No description column anymore (removed from the register) —
+ * every caller now shows Mold ID / Product Type only.
+ */
 function getAllMoldsList_() {
   const mr = SpreadsheetApp.openById(getMasterRegisterId_());
   const tab = mr.getSheetByName(ALL_MOLDS_LIST_SHEET);
@@ -219,16 +278,41 @@ function getAllMoldsList_() {
   if (!pos) throw new Error('"Unique Mold List" helper column not found in "' + ALL_MOLDS_LIST_SHEET + '".');
   const lastRow = tab.getLastRow();
   if (lastRow <= pos.row) return [];
-  const data = tab.getRange(pos.row + 1, pos.col, lastRow - pos.row, 3).getValues();
+  const data = tab.getRange(pos.row + 1, pos.col, lastRow - pos.row, 2).getValues();
   const out = [];
   for (const row of data) {
     const moldId = String(row[0] || '').trim();
     if (!moldId) continue;
-    out.push({ moldId: moldId, description: String(row[1] || '').trim(), productType: String(row[2] || '').trim() });
+    out.push({ moldId: moldId, productType: String(row[1] || '').trim() });
   }
   return out;
 }
 function getAllMoldsList() { return getAllMoldsList_(); }
+
+/**
+ * Metals equivalent of getAllMoldsList_ — reads the deduped "Unique Can Size List" helper
+ * column (Size ID repeats in the raw list due to customer-specific Spec Matrix rows) plus
+ * Product Type right next to it. No description column here — too specific/near-duplicate
+ * of the Item Description already captured separately on Add Run.
+ */
+function getAllSizeCansList_() {
+  const mr = SpreadsheetApp.openById(getMasterRegisterId_('Metals'));
+  const tab = mr.getSheetByName(ALL_CANS_SIZE_LIST_SHEET);
+  if (!tab) throw new Error('"' + ALL_CANS_SIZE_LIST_SHEET + '" tab not found in Metals Spec Register.');
+  const pos = findHeaderRowAndCol_(tab, 'Unique Can Size List', 5);
+  if (!pos) throw new Error('"Unique Can Size List" helper column not found in "' + ALL_CANS_SIZE_LIST_SHEET + '".');
+  const lastRow = tab.getLastRow();
+  if (lastRow <= pos.row) return [];
+  const data = tab.getRange(pos.row + 1, pos.col, lastRow - pos.row, 2).getValues();
+  const out = [];
+  for (const row of data) {
+    const sizeId = String(row[0] || '').trim();
+    if (!sizeId) continue;
+    out.push({ sizeId: sizeId, productType: String(row[1] || '').trim() });
+  }
+  return out;
+}
+function getAllSizeCansList() { return getAllSizeCansList_(); }
 
 function getCavityIds_(mold) {
   try {
@@ -428,15 +512,24 @@ function dateToStr_(v) { return v instanceof Date ? v.toISOString() : String(v |
 // for as long as it's Active — across shifts, across days — until explicitly Stopped. It also
 // carries Qualified/Qualified Timestamp, set by a passing Start-Up Verification submission.
 const RUNS_SHEET_NAME = 'Runs';
+const RUNS_SHEET_NAME_METALS = 'Runs - Metals';
+const METALS_RUNS_HEADERS = [
+  'Run ID', 'Created At', 'Shift', 'Status', 'Line #', 'Product Type', 'Material Lot',
+  'Size ID', 'Can Description', 'Item', 'Item Description', 'Customer Name', 'Run Qty', 'Created By',
+  'Qualified', 'Qualified Timestamp', 'Stopped At', 'Last Confirmed', 'Last Confirmed By',
+];
 
-function getRunsSheet_() {
-  const sheet = getDb_().getSheetByName(RUNS_SHEET_NAME);
-  if (!sheet) throw new Error('"' + RUNS_SHEET_NAME + '" sheet not found.');
+function getRunsSheetName_(department) { return department === 'Metals' ? RUNS_SHEET_NAME_METALS : RUNS_SHEET_NAME; }
+
+function getRunsSheet_(department) {
+  const name = getRunsSheetName_(department);
+  const sheet = getDb_().getSheetByName(name);
+  if (!sheet) throw new Error('"' + name + '" sheet not found.');
   return sheet;
 }
 
-function makeRunId_() {
-  const sheet = getRunsSheet_();
+function makeRunId_(department) {
+  const sheet = getRunsSheet_(department);
   const tz = getDb_().getSpreadsheetTimeZone();
   const dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
   const lastRow = sheet.getLastRow();
@@ -451,11 +544,14 @@ function makeRunId_() {
   return 'RUN-' + dateStr + '-' + String(maxSeq + 1).padStart(3, '0');
 }
 
+// Reads both Plastics' and Metals' domain-specific columns — whichever set the row's sheet
+// doesn't have simply comes back blank, so this stays a single function for both departments.
 function runRowToObject_(row) {
   return {
     runId: row['Run ID'] || '', createdAt: dateToStr_(row['Created At']), shift: row['Shift'] || '',
     status: row['Status'] || '', line: row['Line #'] || '', productType: row['Product Type'] || '',
     resinLot: row['Resin Lot'] || '', moldId: row['Mold ID'] || '', moldDescription: row['Mold Description'] || '',
+    materialLot: row['Material Lot'] || '', sizeId: row['Size ID'] || '', canDescription: row['Can Description'] || '',
     item: row['Item'] || '', itemDescription: row['Item Description'] || '', customerName: row['Customer Name'] || '',
     runQty: row['Run Qty'] || '', createdBy: row['Created By'] || '', qualified: row['Qualified'] || '',
     qualifiedTimestamp: dateToStr_(row['Qualified Timestamp']), stoppedAt: dateToStr_(row['Stopped At']),
@@ -465,41 +561,43 @@ function runRowToObject_(row) {
 
 /**
  * Creates a new Run. fields: {shift, line, productType, resinLot, moldId, moldDescription,
- * item, itemDescription, customerName, runQty, createdBy}. Returns the created Run.
+ * materialLot, sizeId, canDescription, item, itemDescription, customerName, runQty, createdBy}.
+ * Returns the created Run. department defaults to Plastics.
  */
-function createRun_(fields) {
-  const sheet = getRunsSheet_();
-  const runId = makeRunId_();
+function createRun_(fields, department) {
+  const sheet = getRunsSheet_(department);
+  const runId = makeRunId_(department);
   appendObjectsAsRows_(sheet, [{
     'Run ID': runId, 'Created At': dateToStr_(new Date()), 'Shift': fields.shift || '', 'Status': 'Active',
     'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
     'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '',
+    'Material Lot': fields.materialLot || '', 'Size ID': fields.sizeId || '', 'Can Description': fields.canDescription || '',
     'Item': fields.item || '', 'Item Description': fields.itemDescription || '',
     'Customer Name': fields.customerName || '', 'Run Qty': fields.runQty || '', 'Created By': fields.createdBy || '',
   }]);
-  return getRun_(runId);
+  return getRun_(runId, department);
 }
 
-function getRun_(runId) {
-  const rows = readSheetObjects_(getRunsSheet_());
+function getRun_(runId, department) {
+  const rows = readSheetObjects_(getRunsSheet_(department));
   const match = rows.find(r => String(r['Run ID'] || '').trim() === String(runId).trim());
   return match ? runRowToObject_(match) : null;
 }
 
 /** Active runs, most recently created first — the pool selectable from In-Process/Drop Freeze. */
-function getActiveRuns_() {
-  const rows = readSheetObjects_(getRunsSheet_());
+function getActiveRuns_(department) {
+  const rows = readSheetObjects_(getRunsSheet_(department));
   return rows.filter(r => String(r['Status'] || '').trim().toLowerCase() === 'active').map(runRowToObject_).reverse();
 }
 
-function stopRun_(runId) {
-  updateRowWhere_(getRunsSheet_(), 'Run ID', runId, { 'Status': 'Stopped', 'Stopped At': dateToStr_(new Date()) });
-  return getRun_(runId);
+function stopRun_(runId, department) {
+  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Status': 'Stopped', 'Stopped At': dateToStr_(new Date()) });
+  return getRun_(runId, department);
 }
 
 /** Stamps Last Confirmed/Last Confirmed By on every currently-Active run. Returns the count touched. */
-function confirmTodaysRuns_(confirmedBy) {
-  const sheet = getRunsSheet_();
+function confirmTodaysRuns_(confirmedBy, department) {
+  const sheet = getRunsSheet_(department);
   const rows = readSheetObjects_(sheet);
   const now = dateToStr_(new Date());
   let count = 0;
@@ -513,8 +611,8 @@ function confirmTodaysRuns_(confirmedBy) {
 }
 
 /** Called when a Start-Up Verification submission passes — marks the Run qualified. */
-function qualifyRun_(runId) {
-  updateRowWhere_(getRunsSheet_(), 'Run ID', runId, { 'Qualified': 'Yes', 'Qualified Timestamp': dateToStr_(new Date()) });
+function qualifyRun_(runId, department) {
+  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Qualified': 'Yes', 'Qualified Timestamp': dateToStr_(new Date()) });
 }
 
 // ================= PUBLIC CLIENT-FACING WRAPPERS (Runs) =================

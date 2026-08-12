@@ -37,8 +37,9 @@
       var badge = r.status === 'Awaiting Approval' ? '<span class="badge warning">Awaiting Approval</span>' : '<span class="badge serious">Awaiting PFA Sign-off</span>';
       return '<tr>' +
         '<td>' + esc(r.recordId) + '</td>' +
+        '<td>' + esc(r.department) + '</td>' +
         '<td>' + esc(r.runId) + '</td>' +
-        '<td>' + esc(r.moldId) + '</td>' +
+        '<td>' + esc(r.moldId || r.sizeId) + '</td>' +
         '<td>' + esc(r.line) + '</td>' +
         '<td>' + esc(r.verificationDate) + '</td>' +
         '<td>' + esc(r.deviationDescription) + '</td>' +
@@ -47,7 +48,7 @@
         '</tr>';
     }).join('');
     el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
-      '<th>Record #</th><th>Run</th><th>Mold</th><th>Line</th><th>Date</th><th>Deviation</th><th>Status</th><th></th>' +
+      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Status</th><th></th>' +
       '</tr></thead><tbody>' + body + '</tbody></table></div><div id="da-action-panel"></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-act]'), function (btn) {
       btn.addEventListener('click', function () { openActionPanel(btn.dataset.act); });
@@ -58,7 +59,8 @@
     var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
     var panel = document.getElementById('da-action-panel');
     if (!panel || !rec) return;
-    var authOpts = (daData.authOptions || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+    var authList = rec.department === 'Metals' ? daData.authOptionsMetals : daData.authOptionsPlastics;
+    var authOpts = (authList || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
     if (rec.status === 'Awaiting Approval') {
       panel.innerHTML =
         '<div class="row-card"><div class="row-head"><strong>Approve deviation — ' + esc(recordId) + '</strong></div>' +
@@ -82,6 +84,7 @@
   }
 
   function doApprove(recordId) {
+    var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
     var approver = document.getElementById('da-approver').value;
     var supervisor = document.getElementById('da-supervisor').value;
     if (!approver) { showToast('Pick who is approving.', true); return; }
@@ -91,10 +94,11 @@
         loadPendingDeviations();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .approveDeviation(recordId, approver, supervisor);
+      .approveDeviation(recordId, approver, supervisor, rec ? rec.department : '');
   }
 
   function doSignPfa(recordId) {
+    var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
     var qcName = document.getElementById('da-pfaby').value;
     var adjustments = document.getElementById('da-adjustments').value;
     if (!qcName) { showToast('Pick who is signing off.', true); return; }
@@ -104,31 +108,32 @@
         loadPendingDeviations();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .signPfa(recordId, qcName, adjustments);
+      .signPfa(recordId, qcName, adjustments, rec ? rec.department : '');
   }
 
   function maybeOpenFromLink() {
     if (!(window.INITIAL_PARAMS && window.INITIAL_PARAMS.record)) return;
     var rid = window.INITIAL_PARAMS.record;
+    var dept = window.INITIAL_PARAMS.dept || '';
     var rec = (daData.pending || []).find(function (r) { return r.recordId === rid; });
-    if (rec) { openActionPanel(rid); } else { loadFocusedRecord(rid); }
+    if (rec) { openActionPanel(rid); } else { loadFocusedRecord(rid, dept); }
     window.INITIAL_PARAMS.record = ''; // only auto-open once
   }
 
-  function loadFocusedRecord(recordId) {
+  function loadFocusedRecord(recordId, department) {
     google.script.run
       .withSuccessHandler(function (detail) {
         var card = document.getElementById('da-focus-card');
         if (!detail) { card.classList.add('hidden'); return; }
         card.classList.remove('hidden');
         document.getElementById('da-focus-detail').innerHTML =
-          '<p><strong>' + esc(detail.recordId) + '</strong> — Run ' + esc(detail.runId) + ', ' + esc(detail.moldId) + '</p>' +
+          '<p><strong>' + esc(detail.recordId) + '</strong> — Run ' + esc(detail.runId) + ', ' + esc(detail.moldId || detail.sizeId) + '</p>' +
           '<p>Deviation: ' + esc(detail.deviationDescription || '—') + '</p>' +
           '<p>Approved by: ' + esc(detail.deviationApprovedBy || '— pending —') + '</p>' +
           '<p>PFA Signed off by: ' + esc(detail.pfaSignedOffBy || '— pending —') + (detail.pfaId ? ' (' + esc(detail.pfaId) + ')' : '') + '</p>';
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .getDeviationRecordDetail(recordId);
+      .getDeviationRecordDetail(recordId, department);
   }
 </script>

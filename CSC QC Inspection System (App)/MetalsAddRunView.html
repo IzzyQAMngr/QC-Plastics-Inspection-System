@@ -1,0 +1,171 @@
+<h1 class="page-title">⚙️ Add Run — Metals</h1>
+<p class="page-sub">Set up a Run once — Line, Shift, Can Size, Item, Customer, Material Lot — and it stays selectable for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
+
+<section class="card">
+  <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
+  <div class="field-row">
+    <div class="field"><label>Confirmed By</label><select id="mar-confirmedBy"></select></div>
+    <div class="field" style="align-self:end;">
+      <button id="mar-confirm-btn" class="ghost">✅ Confirm Today's Runs</button>
+      <div class="spec-hint">Stamps every Active run below as checked/accurate for today — for the record, not a data change.</div>
+    </div>
+  </div>
+  <div id="mar-active-runs-table"></div>
+</section>
+
+<section class="card">
+  <h2>Add a Run</h2>
+  <div id="mar-form"></div>
+</section>
+
+<script>
+  var marData = null;
+
+  function init_metalsaddrun() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        marData = data;
+        renderMetalsAddRunForm();
+        renderMetalsActiveRunsTable();
+        fillSelect('mar-confirmedBy', marData.createdByOptions);
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getAddMetalsRunFormData();
+  }
+
+  function fieldSimpleMAR(id, label, type, options, value, readonly, placeholder) {
+    var input;
+    if (type === 'select') {
+      input = '<select id="' + id + '"><option value="">— select —</option>' +
+        (options || []).map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
+    } else {
+      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value || '') + '"' +
+        (readonly ? ' readonly' : '') + (placeholder ? ' placeholder="' + esc(placeholder) + '"' : '') + '>';
+    }
+    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
+  }
+
+  function renderMetalsAddRunForm() {
+    var html =
+      '<div class="field-row">' +
+        fieldSimpleMAR('mar-line', 'Line #', 'select', marData.lines) +
+        fieldSimpleMAR('mar-shift', 'Shift', 'select', marData.shifts) +
+        '<div class="field"><label>Can Size</label><div class="combo"><input id="mar-cansize" placeholder="Start typing to search…"></div></div>' +
+        fieldSimpleMAR('mar-productType', 'Product Type', 'text', null, '', true) +
+      '</div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>Item</label><div class="combo"><input id="mar-item" placeholder="Start typing to search…"></div></div>' +
+        fieldSimpleMAR('mar-itemDescription', 'Item Description', 'text', null, '', true) +
+        fieldSimpleMAR('mar-materialLot', 'Material Lot', 'text', null, '', false, 'Control Tag #') +
+      '</div>' +
+      '<div class="field-row">' +
+        fieldSimpleMAR('mar-customerName', 'Customer Name', 'text') +
+        fieldSimpleMAR('mar-runQty', 'Run Qty', 'number') +
+        fieldSimpleMAR('mar-createdBy', 'Created By', 'select', marData.createdByOptions) +
+        '<div class="field" style="align-self:end;"><button id="mar-add-btn" class="primary">+ Add Run</button></div>' +
+      '</div>';
+    document.getElementById('mar-form').innerHTML = html;
+    wireMetalsAddRunForm();
+  }
+
+  function wireMetalsAddRunForm() {
+    var sizeItems = (marData.sizeCans || []).map(function (s) { return { value: s.sizeId, label: s.sizeId, sublabel: s.productType }; });
+    initCombobox(document.getElementById('mar-cansize'), sizeItems, {
+      onSelect: function (sizeId, item) {
+        var s = marData.sizeCans.find(function (x) { return x.sizeId === sizeId; });
+        document.getElementById('mar-productType').value = s ? s.productType : '';
+      },
+      onInvalid: function () {
+        document.getElementById('mar-productType').value = '';
+      },
+    });
+
+    var itemItems = (marData.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    initCombobox(document.getElementById('mar-item'), itemItems, {
+      onSelect: function (itemNo, item) { document.getElementById('mar-itemDescription').value = item.sublabel || ''; },
+      onInvalid: function () { document.getElementById('mar-itemDescription').value = ''; },
+    });
+
+    document.getElementById('mar-add-btn').addEventListener('click', submitMetalsAddRun);
+  }
+
+  function submitMetalsAddRun() {
+    var line = document.getElementById('mar-line').value;
+    var sizeId = document.getElementById('mar-cansize').value;
+    if (!line) { showToast('Pick a Line #.', true); return; }
+    if (!sizeId) { showToast('Pick a Can Size.', true); return; }
+    var fields = {
+      line: line,
+      shift: document.getElementById('mar-shift').value,
+      productType: document.getElementById('mar-productType').value,
+      sizeId: sizeId,
+      materialLot: document.getElementById('mar-materialLot').value,
+      item: document.getElementById('mar-item').value,
+      itemDescription: document.getElementById('mar-itemDescription').value,
+      customerName: document.getElementById('mar-customerName').value,
+      runQty: document.getElementById('mar-runQty').value,
+      createdBy: document.getElementById('mar-createdBy').value,
+    };
+    google.script.run
+      .withSuccessHandler(function (run) {
+        marData.activeRuns.unshift(run);
+        renderMetalsActiveRunsTable();
+        renderMetalsAddRunForm();
+        showToast('Run ' + run.runId + ' created.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .addMetalsRun(fields);
+  }
+
+  function renderMetalsActiveRunsTable() {
+    var runs = marData.activeRuns || [];
+    var el = document.getElementById('mar-active-runs-table');
+    if (runs.length === 0) { el.innerHTML = '<p class="spec-hint">No active runs yet — add one below.</p>'; return; }
+    var rowsHtml = runs.map(function (r) {
+      var qualifiedBadge = r.qualified === 'Yes' ? '<span class="badge good">Qualified</span>' : '<span class="badge warning">Not Qualified</span>';
+      var confirmedText = r.lastConfirmed ? esc(r.lastConfirmedBy || '') : '<span class="spec-hint">not yet today</span>';
+      return '<tr>' +
+        '<td>' + esc(r.runId) + '</td>' +
+        '<td>' + esc(r.line) + '</td>' +
+        '<td>' + esc(r.shift) + '</td>' +
+        '<td>' + esc(r.sizeId) + '</td>' +
+        '<td>' + esc(r.item) + '</td>' +
+        '<td>' + esc(r.customerName) + '</td>' +
+        '<td>' + esc(r.runQty) + '</td>' +
+        '<td>' + qualifiedBadge + '</td>' +
+        '<td>' + confirmedText + '</td>' +
+        '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop</button></td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
+      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Can Size</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var runId = btn.dataset.stopRun;
+        google.script.run
+          .withSuccessHandler(function () {
+            marData.activeRuns = marData.activeRuns.filter(function (r) { return r.runId !== runId; });
+            renderMetalsActiveRunsTable();
+            showToast('Run ' + runId + ' stopped.');
+          })
+          .withFailureHandler(function (err) { showToast(err.message, true); })
+          .endMetalsRun(runId);
+      });
+    });
+  }
+
+  document.getElementById('mar-confirm-btn').addEventListener('click', function () {
+    var confirmedBy = document.getElementById('mar-confirmedBy').value;
+    if (!confirmedBy) { showToast('Pick who is confirming.', true); return; }
+    google.script.run
+      .withSuccessHandler(function (count) {
+        var now = new Date().toISOString();
+        (marData.activeRuns || []).forEach(function (r) { r.lastConfirmed = now; r.lastConfirmedBy = confirmedBy; });
+        renderMetalsActiveRunsTable();
+        showToast('Confirmed ' + count + ' active run(s) for today.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .confirmMetalsRunsToday(confirmedBy);
+  });
+</script>

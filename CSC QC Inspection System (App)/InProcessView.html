@@ -367,18 +367,18 @@
       var m = ipData.molds.find(function (x) { return x.moldId === run.moldId; });
       line.mold = run.moldId || line.mold;
       line.product = m ? m.productType : (run.productType || line.product);
-      line.moldDescription = m ? m.description : (run.moldDescription || line.moldDescription);
+      line.moldDescription = run.moldDescription || line.moldDescription;
       line.color = ''; line.colorOptions = []; line.colorSpec = null;
       renderLinePanel();
       if (line.mold) fetchMoldDependents(n, line.cavityRows.length === 0);
     });
 
-    var moldItems = ipData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description + ' — ' + m.productType }; });
+    var moldItems = ipData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
     initCombobox(document.getElementById('lb-mold'), moldItems, {
       onSelect: function (moldId, item) {
         var m = ipData.molds.find(function (x) { return x.moldId === moldId; });
         var line = ensureLine(n);
-        line.mold = moldId; line.product = m ? m.productType : ''; line.moldDescription = m ? m.description : '';
+        line.mold = moldId; line.product = m ? m.productType : ''; line.moldDescription = '';
         line.color = ''; line.colorOptions = []; line.colorSpec = null;
         renderLinePanel();
         fetchMoldDependents(n, false);

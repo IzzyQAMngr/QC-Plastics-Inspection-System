@@ -4,7 +4,7 @@
 function doGet(e) {
   const params = (e && e.parameter) || {};
   const tmpl = HtmlService.createTemplateFromFile('Index');
-  tmpl.initialParamsJson = JSON.stringify({ view: params.view || '', record: params.record || '' });
+  tmpl.initialParamsJson = JSON.stringify({ view: params.view || '', record: params.record || '', dept: params.dept || '' });
   return tmpl.evaluate()
     .setTitle('CSC QC Inspection System')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')

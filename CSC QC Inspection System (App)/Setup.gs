@@ -177,6 +177,32 @@ function migrateSettingsTab() {
   );
 }
 
+/**
+ * One-time: creates the "Line Configuration" sheet (Department | Line # | Equipment Code |
+ * Equipment Description — one row per piece of equipment on a line) and seeds it with
+ * Plastics' existing Line 1-10 (no equipment breakdown for Plastics, so those columns stay
+ * blank). Metals rows are added by hand afterward. No-ops if the sheet already has data,
+ * so it's safe to run again.
+ */
+function setupLineConfiguration() {
+  const ss = getDb_();
+  const sheet = ensureSheetWithHeaders_(ss, LINE_CONFIG_SHEET_NAME, ['Department', 'Line #', 'Equipment Code', 'Equipment Description']);
+  if (sheet.getLastRow() > 1) { SpreadsheetApp.getActive().toast('Line Configuration already has data — leaving it as-is.'); return; }
+  const rows = [];
+  for (let i = 1; i <= 10; i++) rows.push(['Plastics', String(i), '', '']);
+  sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+  SpreadsheetApp.getActive().toast('Line Configuration created and seeded with Plastics Line 1-10. Add Metals rows by hand.');
+}
+
+/** One-time: creates the "Runs - Metals" sheet with headers, mirroring the Plastics "Runs"
+ *  sheet but with Material Lot / Size ID / Can Description in place of Resin Lot / Mold ID /
+ *  Mold Description. No-ops if the sheet already exists. */
+function setupMetalsRunsSheet() {
+  const ss = getDb_();
+  ensureSheetWithHeaders_(ss, RUNS_SHEET_NAME_METALS, METALS_RUNS_HEADERS);
+  SpreadsheetApp.getActive().toast('"' + RUNS_SHEET_NAME_METALS + '" is ready.');
+}
+
 /** One-off cleanup: removes the empty "ITEM LIST" placeholder section a previous
  *  run of migrateSettingsTab left behind before Item List was found in its own
  *  "All Items List" tab instead. Safe to run once; no-ops if already clean. */

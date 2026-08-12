@@ -14,6 +14,8 @@
     <div class="nav-item" data-view="testdatareview"><span class="icon">🔍</span> Inspection Records</div>
 
     <div class="nav-group-label">Metals</div>
+    <div class="nav-item" data-view="metalsaddrun"><span class="icon">🏭</span> Add Run</div>
+    <div class="nav-item" data-view="metalsstartup"><span class="icon">✅</span> Start-Up Verification</div>
     <div class="nav-item" data-view="metals"><span class="icon">⚙️</span> Metals Inspection</div>
   </nav>
   <main id="main">
@@ -24,13 +26,15 @@
     <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
     <div class="view" id="view-inprocess"><?!= include('InProcessView'); ?></div>
     <div class="view" id="view-testdatareview"><?!= include('TestDataReviewView'); ?></div>
+    <div class="view" id="view-metalsaddrun"><?!= include('MetalsAddRunView'); ?></div>
+    <div class="view" id="view-metalsstartup"><?!= include('MetalsStartUpVerificationView'); ?></div>
     <div class="view" id="view-metals"><?!= include('MetalsView'); ?></div>
   </main>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-  var VIEWS = ['home', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metals'];
+  var VIEWS = ['home', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsaddrun', 'metalsstartup', 'metals'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 

@@ -1,0 +1,361 @@
+<div class="page-title-row">
+  <h1 class="page-title">✅ Start-Up Verification — Metals</h1>
+  <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0</div>
+</div>
+<p class="page-sub">Qualification is required to release the line for production.</p>
+
+<section class="card">
+  <h2>1. Run &amp; Sign-In</h2>
+  <p class="spec-hint">Pick the Run being started up — Can Size, Item, and Line details auto-fill from the Run record.</p>
+  <div class="section-divider">RUN SELECTION</div>
+  <div class="field-row">
+    <div class="field"><label>Run ID</label><select id="msu-run"></select></div>
+    <div class="field"><label>Verification Date</label><input type="date" id="msu-date"></div>
+    <div class="field"><label>Verification Time</label><input type="time" id="msu-time"></div>
+    <div class="field"><label>Shift</label><select id="msu-shift"></select></div>
+  </div>
+  <div class="section-divider">PERSONNEL</div>
+  <div class="field-row">
+    <div class="field"><label>QC Technician Name</label><select id="msu-qctech"></select></div>
+    <div class="field"><label>Start-Up Technician Name</label><select id="msu-suptech"></select></div>
+    <div class="field"><label>Shift Foreman</label><select id="msu-foreman"></select></div>
+  </div>
+  <div class="section-divider">CAN INFO</div>
+  <div class="field-row">
+    <div class="field"><label>Can Size ID</label><input id="msu-sizeid" readonly></div>
+    <div class="field"><label>Product Type</label><input id="msu-producttype" readonly></div>
+    <div class="field"><label>Line #</label><input id="msu-line" readonly></div>
+  </div>
+  <div class="section-divider">ITEM INFO</div>
+  <div class="field-row">
+    <div class="field"><label>Customer Name</label><input id="msu-customer" readonly></div>
+    <div class="field"><label>Item No.</label><input id="msu-item" readonly></div>
+    <div class="field field-wide"><label>Item Description</label><input id="msu-itemdesc" readonly></div>
+    <div class="field"><label>Run Qty</label><input id="msu-runqty" readonly></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>2. Checklist &amp; Key Process Parameters</h2>
+  <div class="section-divider" id="msu-ctx-checklist">RUN CONTEXT</div>
+  <p class="spec-hint">Checklist items: check exactly one box — Pass, Fail, or N/A. Key Process Parameters: enter the reading under Actual Value. Both are grouped below by the Category set on each item in the Start-Up Verification Items List- Metals.</p>
+  <div id="msu-checklist-table"></div>
+</section>
+
+<section class="card">
+  <h2>3. Deviation</h2>
+  <p class="spec-hint">If anything above didn't pass as expected, report it here — approval and PFA sign-off happen through the Deviation Approvals workflow before the Run can qualify.</p>
+  <div id="msu-deviation-fields"></div>
+</section>
+
+<section class="card">
+  <h2>4. Qualification</h2>
+  <p class="spec-hint">Answer the Deviation question above to see the sign-off path that applies to this Run.</p>
+  <div id="msu-selfserve-block" class="field hidden">
+    <label>PFA Signed off by</label>
+    <select id="msu-pfa-direct"></select>
+    <div class="spec-hint">No deviation reported — sign off here to qualify this Run immediately.</div>
+  </div>
+  <div id="msu-locked-block" class="hidden">
+    <div class="field-row">
+      <div class="field"><label>Deviation Approved by</label><input value="— pending approval —" readonly></div>
+      <div class="field"><label>Supervisor Authorization</label><input value="— pending approval —" readonly></div>
+      <div class="field"><label>PFA Signed off by</label><input value="— locked until approved —" readonly></div>
+    </div>
+    <div class="spec-hint">A deviation was reported — saving will email the Deviation Authorization List for approval. Come back to this record afterward (Deviation Approvals) to sign off the PFA once it's approved.</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>5. Submit</h2>
+  <div style="display:flex;gap:8px;">
+    <button id="msu-submit-btn" class="primary">Save Verification</button>
+    <button id="msu-print-btn" class="ghost">🖨️ Print This Form</button>
+  </div>
+  <p class="spec-hint">Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
+</section>
+
+<script>
+  var msuData = null;
+  var msuItemEls = {};
+  var msuChecklistItems = [];
+  var msuKppItems = [];
+  var msuDeviationItems = [];
+  var msuPlainItems = [];
+  var MSU_BODY_EXCLUDE = [
+    'Run ID', 'Customer Name', 'Item Number', 'Item Description', 'Run Qty', 'Start-up Date', 'Start-up Time',
+    'Line / Machine #', 'Shift', 'Size ID', 'QC Technician Name', 'Start-Up Technician Name', 'Foreman Name',
+    'Deviation Approved by', 'PFA Signed off by', 'Supervisor Authorization (if deviation)', 'PFA completed (PFA ID)',
+    'Adjustments or Corrections completed if applicable',
+  ];
+  var MSU_DEVIATION_ITEMS = ['Was there a deviation?', 'Deviation Description / Notes'];
+
+  function init_metalsstartup() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        msuData = data;
+        document.getElementById('msu-date').value = msuTodayStr();
+        document.getElementById('msu-time').value = msuNowTimeStr();
+        renderRunPicker();
+        fillSelect('msu-shift', data.shiftOptions);
+        fillSelect('msu-qctech', data.qcTechOptions);
+        fillSelect('msu-suptech', data.startUpTechOptions);
+        fillSelect('msu-foreman', data.foremanOptions);
+        fillSelect('msu-pfa-direct', data.qcTechOptions);
+        renderChecklist();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getStartUpVerificationFormDataMetals();
+    document.getElementById('msu-submit-btn').addEventListener('click', submitStartUpVerificationMetals);
+    document.getElementById('msu-print-btn').addEventListener('click', function () { window.print(); });
+  }
+
+  function msuTodayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function msuNowTimeStr() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function msuBodyItems() {
+    return (msuData.items || []).filter(function (it) { return MSU_BODY_EXCLUDE.indexOf(it.item) < 0; });
+  }
+
+  function msuItemKind(it) {
+    if (MSU_DEVIATION_ITEMS.indexOf(it.item) >= 0) return 'deviation';
+    var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
+    if (vt === 'yes/no') return 'checklist';
+    if (vt === 'number') return 'kpp';
+    return 'other';
+  }
+
+  function renderRunPicker() {
+    var sel = document.getElementById('msu-run');
+    sel.innerHTML = '<option value="">— select —</option>' + (msuData.runs || []).map(function (r) {
+      return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.sizeId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
+    }).join('');
+    sel.addEventListener('change', function () {
+      var run = (msuData.runs || []).find(function (r) { return r.runId === sel.value; });
+      document.getElementById('msu-customer').value = run ? run.customerName : '';
+      document.getElementById('msu-sizeid').value = run ? run.sizeId : '';
+      document.getElementById('msu-producttype').value = run ? run.productType : '';
+      document.getElementById('msu-item').value = run ? run.item : '';
+      document.getElementById('msu-itemdesc').value = run ? run.itemDescription : '';
+      document.getElementById('msu-line').value = run ? run.line : '';
+      document.getElementById('msu-runqty').value = run ? run.runQty : '';
+      updateContextBanners(run);
+    });
+  }
+
+  function updateContextBanners(run) {
+    var text = run
+      ? ('RUN ' + run.runId + ' · CAN SIZE ' + (run.sizeId || '—') + ' · ITEM ' + (run.item || '—') + ' · LINE ' + (run.line || '—'))
+      : 'RUN CONTEXT — pick a Run above';
+    document.getElementById('msu-ctx-checklist').textContent = text;
+  }
+
+  function groupItemsByCategory(items) {
+    var groups = []; var byName = {};
+    items.forEach(function (it) {
+      var cat = (it.category || '').trim() || 'Uncategorized';
+      if (!byName[cat]) { byName[cat] = { name: cat, items: [] }; groups.push(byName[cat]); }
+      byName[cat].items.push(it);
+    });
+    return groups;
+  }
+
+  function checklistTableHtml(items, baseIdx) {
+    var rows = items.map(function (it, i) {
+      return '<tr data-idx="' + (baseIdx + i) + '">' +
+        '<td>' + esc(it.item) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="pass"></td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="fail"></td>' +
+        '<td class="suv-check-cell"><input type="checkbox" data-role="na"></td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table suv-checklist-table"><thead><tr>' +
+      '<th>Verification Item</th><th class="suv-check-col">Pass</th><th class="suv-check-col">Fail</th><th class="suv-check-col">N/A</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function kppTableHtml(items, baseIdx) {
+    var rows = items.map(function (it, i) {
+      var idx = baseIdx + i;
+      return '<tr data-idx="' + idx + '">' +
+        '<td>' + esc(it.item) + '</td>' +
+        '<td>' + esc(it.unit || '—') + '</td>' +
+        '<td><input type="number" step="any" data-idx="' + idx + '"></td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table suv-kpp-table"><thead><tr>' +
+      '<th>Key Process Parameter</th><th>UOM</th><th>Actual Value</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function plainFieldHtml(it, idx) {
+    var id = 'msu-plain-' + idx;
+    var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
+    var input;
+    if (vt === 'date') input = '<input type="date" id="' + id + '">';
+    else if (vt === 'decimal') input = '<input type="number" step="0.01" id="' + id + '">';
+    else input = '<input type="text" id="' + id + '">';
+    return '<div class="field"><label>' + esc(it.item) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+  }
+
+  function deviationFieldHtml(it, idx) {
+    var id = 'msu-dev-' + idx;
+    if (it.item === 'Was there a deviation?') {
+      return '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
+        '<select id="' + id + '"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>';
+    }
+    return '<div class="field field-wide hidden" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
+      '<textarea id="' + id + '" rows="3"></textarea></div>';
+  }
+
+  function wireChecklistTable() {
+    document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var boxes = tr.querySelectorAll('input[type=checkbox]');
+      boxes.forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          if (cb.checked) boxes.forEach(function (other) { if (other !== cb) other.checked = false; });
+        });
+      });
+    });
+  }
+
+  function checklistValue(tr) {
+    if (tr.querySelector('[data-role="pass"]').checked) return 'Pass';
+    if (tr.querySelector('[data-role="fail"]').checked) return 'Fail';
+    if (tr.querySelector('[data-role="na"]').checked) return 'N/A';
+    return '';
+  }
+
+  function renderChecklist() {
+    var items = msuBodyItems();
+    var bodyRaw = items.filter(function (it) { return msuItemKind(it) !== 'deviation'; });
+    var groups = groupItemsByCategory(bodyRaw);
+    var showHeadings = !(groups.length === 1 && groups[0].name === 'Uncategorized');
+
+    msuChecklistItems = [];
+    msuKppItems = [];
+    msuPlainItems = [];
+    var html = groups.map(function (g) {
+      var checklistSub = g.items.filter(function (it) { return msuItemKind(it) === 'checklist'; });
+      var kppSub = g.items.filter(function (it) { return msuItemKind(it) === 'kpp'; });
+      var plainSub = g.items.filter(function (it) { return msuItemKind(it) === 'other'; });
+      var block = showHeadings ? '<div class="section-divider">' + esc(g.name.toUpperCase()) + '</div>' : '';
+      if (checklistSub.length) {
+        block += checklistTableHtml(checklistSub, msuChecklistItems.length);
+        msuChecklistItems = msuChecklistItems.concat(checklistSub);
+      }
+      if (kppSub.length) {
+        block += kppTableHtml(kppSub, msuKppItems.length);
+        msuKppItems = msuKppItems.concat(kppSub);
+      }
+      if (plainSub.length) {
+        block += '<div class="field-row">' + plainSub.map(function (it) {
+          var fieldHtml = plainFieldHtml(it, msuPlainItems.length);
+          msuPlainItems.push(it);
+          return fieldHtml;
+        }).join('') + '</div>';
+      }
+      return block;
+    }).join('');
+
+    document.getElementById('msu-checklist-table').innerHTML = html ||
+      '<p class="spec-hint">No checklist items or Key Process Parameters configured in the Start-Up Verification Items List- Metals.</p>';
+
+    msuDeviationItems = items.filter(function (it) { return msuItemKind(it) === 'deviation'; });
+    document.getElementById('msu-deviation-fields').innerHTML = msuDeviationItems.map(function (it, idx) { return deviationFieldHtml(it, idx); }).join('');
+
+    wireChecklistTable();
+    updateContextBanners(null);
+
+    msuItemEls = {};
+    msuDeviationItems.forEach(function (it, idx) {
+      msuItemEls[it.item] = { wrap: document.getElementById('wrap-msu-dev-' + idx), input: document.getElementById('msu-dev-' + idx) };
+    });
+    if (msuItemEls['Was there a deviation?']) {
+      msuItemEls['Was there a deviation?'].input.addEventListener('change', updateDeviationUI);
+    }
+    updateDeviationUI();
+  }
+
+  function updateDeviationUI() {
+    var devInfo = msuItemEls['Was there a deviation?'];
+    var val = devInfo ? devInfo.input.value : '';
+    var descInfo = msuItemEls['Deviation Description / Notes'];
+    if (descInfo) descInfo.wrap.classList.toggle('hidden', val !== 'Yes');
+    document.getElementById('msu-locked-block').classList.toggle('hidden', val !== 'Yes');
+    document.getElementById('msu-selfserve-block').classList.toggle('hidden', val !== 'No');
+  }
+
+  function submitStartUpVerificationMetals() {
+    var runId = document.getElementById('msu-run').value;
+    var qcTechName = document.getElementById('msu-qctech').value;
+    var startUpTechName = document.getElementById('msu-suptech').value;
+    if (!runId) { showToast('Pick a Run.', true); return; }
+    if (!qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
+    if (!startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
+
+    var devInfo = msuItemEls['Was there a deviation?'];
+    var devVal = devInfo ? devInfo.input.value : '';
+    var descInfo = msuItemEls['Deviation Description / Notes'];
+    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
+      showToast('Describe the deviation before saving.', true); return;
+    }
+
+    var checklist = [];
+    document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var it = msuChecklistItems[Number(tr.getAttribute('data-idx'))];
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: checklistValue(tr) });
+    });
+    document.querySelectorAll('#msu-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
+      var it = msuKppItems[Number(tr.getAttribute('data-idx'))];
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: tr.querySelector('input').value });
+    });
+    msuPlainItems.forEach(function (it, idx) {
+      var el = document.getElementById('msu-plain-' + idx);
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: el ? el.value : '' });
+    });
+    msuDeviationItems.forEach(function (it, idx) {
+      var el = document.getElementById('msu-dev-' + idx);
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: el ? el.value : '' });
+    });
+
+    var payload = {
+      runId: runId,
+      verificationDate: document.getElementById('msu-date').value,
+      verificationTime: document.getElementById('msu-time').value,
+      qcTechName: qcTechName,
+      startUpTechName: startUpTechName,
+      shift: document.getElementById('msu-shift').value,
+      foreman: document.getElementById('msu-foreman').value,
+      checklist: checklist,
+      pfaDirectSignOff: devVal === 'No' ? document.getElementById('msu-pfa-direct').value : '',
+    };
+
+    document.getElementById('msu-submit-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('msu-submit-btn').disabled = false;
+        showToast(result.qualified ? 'Saved — Run ' + runId + ' is now Qualified.' :
+          (result.hasDeviation ? 'Saved — deviation reported, approval requested.' : 'Verification saved.'));
+        resetStartUpFormMetals();
+      })
+      .withFailureHandler(function (err) { document.getElementById('msu-submit-btn').disabled = false; showToast(err.message, true); })
+      .saveStartUpVerificationMetals(payload);
+  }
+
+  function resetStartUpFormMetals() {
+    document.getElementById('msu-run').value = '';
+    ['msu-customer', 'msu-sizeid', 'msu-producttype', 'msu-item', 'msu-itemdesc', 'msu-line', 'msu-runqty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('msu-date').value = msuTodayStr();
+    document.getElementById('msu-time').value = msuNowTimeStr();
+    renderChecklist();
+  }
+</script>

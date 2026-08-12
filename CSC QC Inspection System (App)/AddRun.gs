@@ -13,6 +13,7 @@ function getAddRunFormData() {
     shifts: getShiftList_(),
     createdByOptions: getInspectorList_(), // QC Technician Name roster — the only staff list on file today
     activeRuns: getActiveRuns_(),
+    lines: getLinesForDepartment_('Plastics'),
   };
 }
 

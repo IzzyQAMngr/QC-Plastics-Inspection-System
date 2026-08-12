@@ -45,7 +45,7 @@
   }
 
   function renderAddRunForm() {
-    var lineOptions = ['1','2','3','4','5','6','7','8','9','10'];
+    var lineOptions = arData.lines || [];
     var html =
       '<div class="field-row">' +
         fieldSimpleAR('ar-line', 'Line #', 'select', lineOptions) +
@@ -54,7 +54,6 @@
         fieldSimpleAR('ar-productType', 'Product Type', 'text', null, '', true) +
       '</div>' +
       '<div class="field-row">' +
-        fieldSimpleAR('ar-moldDescription', 'Mold Description', 'text', null, '', true) +
         '<div class="field"><label>Item</label><div class="combo"><input id="ar-item" placeholder="Start typing to search…"></div></div>' +
         fieldSimpleAR('ar-itemDescription', 'Item Description', 'text', null, '', true) +
         fieldSimpleAR('ar-resinLot', 'Resin Lot', 'text') +
@@ -70,16 +69,14 @@
   }
 
   function wireAddRunForm() {
-    var moldItems = arData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description + ' — ' + m.productType }; });
+    var moldItems = arData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
     initCombobox(document.getElementById('ar-mold'), moldItems, {
       onSelect: function (moldId, item) {
         var m = arData.molds.find(function (x) { return x.moldId === moldId; });
         document.getElementById('ar-productType').value = m ? m.productType : '';
-        document.getElementById('ar-moldDescription').value = m ? m.description : '';
       },
       onInvalid: function () {
         document.getElementById('ar-productType').value = '';
-        document.getElementById('ar-moldDescription').value = '';
       },
     });
 
@@ -102,7 +99,6 @@
       shift: document.getElementById('ar-shift').value,
       productType: document.getElementById('ar-productType').value,
       moldId: moldId,
-      moldDescription: document.getElementById('ar-moldDescription').value,
       resinLot: document.getElementById('ar-resinLot').value,
       item: document.getElementById('ar-item').value,
       itemDescription: document.getElementById('ar-itemDescription').value,

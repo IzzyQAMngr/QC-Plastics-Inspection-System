@@ -97,7 +97,7 @@
   function loadGlobalFilterOptions() {
     google.script.run
       .withSuccessHandler(function (molds) {
-        var items = (molds || []).map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.description + ' — ' + m.productType }; });
+        var items = (molds || []).map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
         initCombobox(document.getElementById('tdr-mold'), items, { onSelect: loadTdr });
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
