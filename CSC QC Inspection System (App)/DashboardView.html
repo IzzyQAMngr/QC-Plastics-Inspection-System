@@ -74,7 +74,7 @@
       'Mold <strong>' + esc(c.moldId || '—') + '</strong>' + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '') + '<br>' +
       'Item ' + esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '') + '<br>' +
       esc(c.customerName || 'No customer on file') + '<br>' +
-      '<span class="spec-hint">Run ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') +
+      '<span class="spec-hint">Run ID ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') +
       ' &middot; Started ' + startedDateText_(c.createdAt) + '</span>';
     return '<div class="line-card' + (c.qualified ? '' : ' not-qualified') + '">' +
       '<div class="line-card-head">' +
