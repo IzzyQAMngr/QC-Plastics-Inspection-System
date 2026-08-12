@@ -111,6 +111,11 @@
   table.qc-table th { background: var(--header-bg); color: var(--text-secondary); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
   table.qc-table tbody tr:nth-child(even) td { background: var(--row-alt); }
 
+  /* Scrollable table with a frozen (sticky) header row — used by Inspection Records
+     and the Add Run active-runs grids. */
+  .scroll-table-wrap { overflow: auto; max-height: 60vh; }
+  .scroll-table-wrap table.qc-table th { position: sticky; top: 0; z-index: 2; }
+
   .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px 2px 7px; border-radius: 0; border-left: 3px solid; font-size: 12px; font-weight: 600; }
   .badge.good { background: var(--good-bg); color: var(--good); border-color: var(--good); }
   .badge.critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }

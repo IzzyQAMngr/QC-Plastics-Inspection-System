@@ -2,6 +2,11 @@
 <p class="page-sub">Set up a Run once — Line, Shift, Can Size, Item, Customer, Material Lot — and it stays selectable for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
 
 <section class="card">
+  <h2>Add a Run</h2>
+  <div id="mar-form"></div>
+</section>
+
+<section class="card">
   <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
   <div class="field-row">
     <div class="field"><label>Confirmed By</label><select id="mar-confirmedBy"></select></div>
@@ -11,11 +16,6 @@
     </div>
   </div>
   <div id="mar-active-runs-table"></div>
-</section>
-
-<section class="card">
-  <h2>Add a Run</h2>
-  <div id="mar-form"></div>
 </section>
 
 <script>
@@ -137,7 +137,7 @@
         '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop</button></td>' +
         '</tr>';
     }).join('');
-    el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
+    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table"><thead><tr>' +
       '<th>Run ID</th><th>Line</th><th>Shift</th><th>Can Size</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
       '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
