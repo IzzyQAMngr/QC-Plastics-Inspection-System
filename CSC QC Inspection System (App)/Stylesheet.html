@@ -205,6 +205,55 @@
   }
   .hidden { display: none !important; }
 
+  /* ---- Plastics Dashboard — one card per active Run, built for a big lab monitor ---- */
+  .dash-summary { display: flex; gap: 32px; align-items: baseline; margin-bottom: 22px; flex-wrap: wrap; }
+  .dash-summary .stat .num {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 30px; font-weight: 700;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .dash-summary .stat .lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+
+  .line-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(370px, 1fr)); gap: 18px; }
+
+  .line-card {
+    background: var(--surface-1); border: 1px solid var(--border); border-left: 5px solid var(--good);
+    padding: 18px 20px;
+  }
+  .line-card.not-qualified { border-left-color: var(--critical); }
+
+  .line-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+  .line-card-linenum { font-size: 24px; font-weight: 800; line-height: 1; }
+  .line-card-linenum small {
+    display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 3px;
+  }
+
+  .line-card-meta { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 18px; }
+  .line-card-meta strong { color: var(--text-primary); }
+
+  .line-card-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .lc-meter { min-width: 0; }
+  .lc-meter:first-child { border-right: 1px solid var(--gridline); padding-right: 18px; }
+  .lc-meter-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 5px; }
+  .lc-meter-pct {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 25px; font-weight: 700;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .lc-meter-pct.good { color: var(--good); }
+  .lc-meter-pct.warning { color: var(--warning); }
+  .lc-meter-pct.critical { color: var(--critical); }
+  .lc-meter-pct.muted { color: var(--text-muted); font-size: 15px; font-weight: 600; }
+  .meter-track { background: var(--gridline); border: 1px solid var(--border); height: 10px; margin: 7px 0 6px; overflow: hidden; }
+  .meter-fill { height: 100%; }
+  .meter-fill.good { background: var(--good); }
+  .meter-fill.warning { background: var(--warning); }
+  .meter-fill.critical { background: var(--critical); }
+  .lc-meter-caption { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  .dash-empty {
+    border: 1px dashed var(--border); padding: 48px 20px; text-align: center; color: var(--text-muted); font-size: 13.5px;
+  }
+
   /* ---- Checkbox-driven Pass/Fail/N/A tables (Start-Up Verification checklist) ---- */
   table.suv-checklist-table th.suv-check-col, table.suv-checklist-table td.suv-check-cell { width: 64px; text-align: center; }
   table.suv-checklist-table td.suv-check-cell input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--series-1); }

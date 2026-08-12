@@ -3,10 +3,10 @@
 <div id="app">
   <nav id="sidenav">
     <div class="brand">CSC QC Inspection System<small>Container Supply Co.</small></div>
-    <div class="nav-item active" data-view="home"><span class="icon">📊</span> Home</div>
 
     <div class="nav-group-label">Plastics</div>
     <div class="nav-group">
+      <div class="nav-item active" data-view="dashboard"><span class="icon">📊</span> Dashboard</div>
       <div class="nav-item" data-view="addrun"><span class="icon">🏭</span> Daily Run Setup</div>
       <div class="nav-item" data-view="startup"><span class="icon">✅</span> Start-Up Verification</div>
       <div class="nav-item" data-view="devapproval"><span class="icon">🔏</span> Deviation Approvals</div>
@@ -17,19 +17,21 @@
 
     <div class="nav-group-label">Metals</div>
     <div class="nav-group">
+      <div class="nav-item" data-view="metalsdashboard"><span class="icon">📊</span> Dashboard</div>
       <div class="nav-item" data-view="metalsaddrun"><span class="icon">🏭</span> Daily Run Setup</div>
       <div class="nav-item" data-view="metalsstartup"><span class="icon">✅</span> Start-Up Verification</div>
       <div class="nav-item" data-view="metals"><span class="icon">⚙️</span> Metals Inspection</div>
     </div>
   </nav>
   <main id="main">
-    <div class="view active" id="view-home"><?!= include('HomeDashboardView'); ?></div>
+    <div class="view active" id="view-dashboard"><?!= include('DashboardView'); ?></div>
     <div class="view" id="view-addrun"><?!= include('AddRunView'); ?></div>
     <div class="view" id="view-startup"><?!= include('StartUpVerificationView'); ?></div>
     <div class="view" id="view-devapproval"><?!= include('DeviationApprovalView'); ?></div>
     <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
     <div class="view" id="view-inprocess"><?!= include('InProcessView'); ?></div>
     <div class="view" id="view-testdatareview"><?!= include('TestDataReviewView'); ?></div>
+    <div class="view" id="view-metalsdashboard"><?!= include('MetalsDashboardView'); ?></div>
     <div class="view" id="view-metalsaddrun"><?!= include('MetalsAddRunView'); ?></div>
     <div class="view" id="view-metalsstartup"><?!= include('MetalsStartUpVerificationView'); ?></div>
     <div class="view" id="view-metals"><?!= include('MetalsView'); ?></div>
@@ -38,7 +40,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  var VIEWS = ['home', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsaddrun', 'metalsstartup', 'metals'];
+  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 
@@ -62,8 +64,8 @@
   }
 
   window.addEventListener('DOMContentLoaded', function () {
-    VIEWS_LOADED.home = true;
-    if (window.init_home) init_home();
+    VIEWS_LOADED.dashboard = true;
+    if (window.init_dashboard) init_dashboard();
     if (window.INITIAL_PARAMS && VIEWS.indexOf(window.INITIAL_PARAMS.view) >= 0) {
       showView(window.INITIAL_PARAMS.view);
     }
