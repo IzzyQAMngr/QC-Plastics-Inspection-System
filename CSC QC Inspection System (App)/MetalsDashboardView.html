@@ -1,11 +1,104 @@
 <h1 class="page-title">📊 Dashboard — Metals</h1>
-<p class="page-sub">Coming soon.</p>
-<div class="placeholder-box">
-  This will show the same live, per-Line card view as the Plastics Dashboard — Qualified status plus
-  In-Process and (once Metals gets its own drop/functional test) pass-rate meters for every active Run.
-  <br><br>
-  It's waiting on the Metals In-Process module, which isn't built yet.
+<p class="page-sub">Live qualification status for every Line currently running a Metals job.</p>
+
+<div class="dash-summary">
+  <div class="stat"><div class="num" id="mdash-summary-count">—</div><div class="lbl">Lines Active</div></div>
+  <div class="stat"><div class="num" id="mdash-summary-qualified">—</div><div class="lbl">Qualified</div></div>
+  <div class="spec-hint" id="mdash-updated" style="align-self:center;"></div>
 </div>
+
+<p id="mdash-loading" style="color:var(--text-muted);font-size:13px;">Loading dashboard…</p>
+<div id="mdash-empty" class="dash-empty hidden">No active Runs right now — start one from Daily Run Setup to see it here.</div>
+<div class="line-cards-grid hidden" id="mdash-line-cards"></div>
+
 <script>
-  function init_metalsdashboard() { /* no data source yet */ }
+  var mdashRefreshTimer_ = null;
+  var MDASH_REFRESH_MS_ = 60000;
+
+  function init_metalsdashboard() {
+    mdashLoad_(true);
+    if (!mdashRefreshTimer_) {
+      mdashRefreshTimer_ = setInterval(function () { mdashLoad_(false); }, MDASH_REFRESH_MS_);
+    }
+  }
+
+  /** Same showLoadingState convention as the Plastics Dashboard — background auto-refreshes
+   *  skip the loading flash/error toast and just try again next tick, and skip entirely if
+   *  the user isn't currently looking at this view. */
+  function mdashLoad_(showLoadingState) {
+    var view = document.getElementById('view-metalsdashboard');
+    if (!showLoadingState && view && !view.classList.contains('active')) return;
+    if (showLoadingState) {
+      document.getElementById('mdash-loading').classList.remove('hidden');
+      document.getElementById('mdash-line-cards').classList.add('hidden');
+      document.getElementById('mdash-empty').classList.add('hidden');
+    }
+    google.script.run
+      .withSuccessHandler(mdashRender_)
+      .withFailureHandler(function (err) { if (showLoadingState) showToast(err.message, true); })
+      .getMetalsLineDashboardData();
+  }
+
+  function mdashMeterHtml_(label, metric) {
+    var pct = metric.total ? Math.round((metric.pass / metric.total) * 1000) / 10 : null;
+    var sev = pct === null ? 'muted' : (pct >= 95 ? 'good' : pct >= 85 ? 'warning' : 'critical');
+    var pctText = pct === null ? 'No data yet' : pct + '%';
+    var caption = metric.total
+      ? (metric.pass + ' pass &middot; ' + metric.fail + ' fail (' + metric.total + ' total)')
+      : 'Metals Inspection module not built yet';
+    return '<div class="lc-meter">' +
+      '<div class="lc-meter-label">' + label + '</div>' +
+      '<div class="lc-meter-pct ' + sev + '">' + pctText + '</div>' +
+      '<div class="meter-track"><div class="meter-fill ' + sev + '" style="width:' + (pct || 0) + '%;"></div></div>' +
+      '<div class="lc-meter-caption">' + caption + '</div>' +
+      '</div>';
+  }
+
+  function mdashStartedDateText_(createdAt) {
+    var d = createdAt ? new Date(createdAt) : null;
+    return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : '—';
+  }
+
+  function mdashCardHtml_(c) {
+    var qualBadge = c.qualified ? '<span class="badge good">&check; Qualified</span>' : '<span class="badge critical">Not Qualified</span>';
+    var meta =
+      'Can Size <strong>' + esc(c.sizeId || '—') + '</strong>' + (c.canDescription ? ' — ' + esc(c.canDescription) : '') + '<br>' +
+      'Item ' + esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '') + '<br>' +
+      esc(c.customerName || 'No customer on file') + '<br>' +
+      '<span class="spec-hint">Run ID ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') +
+      ' &middot; Started ' + mdashStartedDateText_(c.createdAt) + '</span>';
+    return '<div class="line-card' + (c.qualified ? '' : ' not-qualified') + '">' +
+      '<div class="line-card-head">' +
+      '<div class="line-card-linenum"><small>Line</small>' + esc(c.line || '—') + '</div>' +
+      qualBadge +
+      '</div>' +
+      '<div class="line-card-meta">' + meta + '</div>' +
+      '<div class="line-card-meters">' +
+      mdashMeterHtml_('Metals In-Process', c.metalsInProcess) +
+      mdashMeterHtml_('Drop / Functional Test', c.dropFunctional) +
+      '</div>' +
+      '</div>';
+  }
+
+  function mdashRender_(data) {
+    document.getElementById('mdash-loading').classList.add('hidden');
+    var cards = data.cards || [];
+    var qualifiedCount = cards.filter(function (c) { return c.qualified; }).length;
+    document.getElementById('mdash-summary-count').textContent = cards.length;
+    document.getElementById('mdash-summary-qualified').textContent = cards.length ? (qualifiedCount + ' / ' + cards.length) : '—';
+    var updatedAt = data.generatedAt ? new Date(data.generatedAt) : null;
+    document.getElementById('mdash-updated').textContent = updatedAt && !isNaN(updatedAt.getTime())
+      ? 'Updated ' + updatedAt.toLocaleTimeString() + ' · refreshes every 60s'
+      : '';
+
+    var grid = document.getElementById('mdash-line-cards');
+    if (!cards.length) {
+      grid.classList.add('hidden');
+      document.getElementById('mdash-empty').classList.remove('hidden');
+      return;
+    }
+    grid.classList.remove('hidden');
+    document.getElementById('mdash-empty').classList.add('hidden');
+    grid.innerHTML = cards.map(mdashCardHtml_).join('');
+  }
 </script>
