@@ -8,8 +8,7 @@
 <section class="card">
   <h2>1. Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
   <div class="field-row">
-    <div class="field"><label>Inspection Date</label><input type="date" id="ip-inspDate"></div>
-    <div class="field"><label>Inspection Time</label><input type="time" id="ip-inspTime"></div>
+    <div class="field"><label>Inspection Date/Time</label><input type="datetime-local" id="ip-inspDateTime"></div>
     <div class="field"><label>Shift</label><select id="ip-shift"></select></div>
     <div class="field"><label>Inspected By</label><select id="ip-inspector"></select></div>
     <div class="field"><label>Shift Foreman</label><select id="ip-foreman"></select></div>
@@ -93,6 +92,15 @@
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+  // The sheet still keeps Date and Time as separate columns, so a single <input type="datetime-local">
+  // (one calendar+clock picker instead of two fields) is split back into its date/time halves here
+  // right where the value leaves the form — everything downstream (payload, sheet columns) is unchanged.
+  function splitDateTimeLocal(value) {
+    var parts = String(value || '').split('T');
+    return { date: parts[0] || '', time: parts[1] || '' };
+  }
+  function combineDateTimeLocal(date, time) { return date ? (date + 'T' + (time || '')) : ''; }
 
   // 3-tier: 'Fail' (beyond LSL/USL with no Reject Limit band, or beyond the band too),
   // 'NeedsReview' (past LSL/USL but still inside the register's Reject Limit % band), 'Pass'.
@@ -327,8 +335,7 @@
       '</div>' +
       '<div class="section-divider">SAMPLE INFO</div>' +
       '<div class="field-row">' +
-        fieldSimple('lb-sampleDate', 'Sample Date', 'date', null, line.sampleDate) +
-        fieldSimple('lb-sampleTime', 'Sample Time', 'time', null, line.sampleTime) +
+        fieldSimple('lb-sampleDateTime', 'Sample Date/Time', 'datetime-local', null, combineDateTimeLocal(line.sampleDate, line.sampleTime)) +
         fieldSimple('lb-resinLot', 'LOT of Resin', 'text', null, line.resinLot) +
         fieldSimple('lb-pallet', 'Pallet Sequence', 'text', null, line.pallet) +
       '</div>' +
@@ -410,8 +417,13 @@
       ensureLine(n).color = e.target.value;
       refetchColorSpec(n);
     });
-    ['resinLot','pallet','sampleDate','sampleTime'].forEach(function (key) {
+    ['resinLot','pallet'].forEach(function (key) {
       document.getElementById('lb-' + key).addEventListener('input', function (e) { ensureLine(n)[key] = e.target.value; });
+    });
+    document.getElementById('lb-sampleDateTime').addEventListener('input', function (e) {
+      var parts = splitDateTimeLocal(e.target.value);
+      var line = ensureLine(n);
+      line.sampleDate = parts.date; line.sampleTime = parts.time;
     });
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
       ensureLine(n).cavityRows.push(newCavityRow(''));
@@ -609,9 +621,10 @@
   function submitAllLines() {
     var lines = activeLinesWithData();
     if (lines.length === 0) return;
+    var inspDateTime = splitDateTimeLocal(document.getElementById('ip-inspDateTime').value);
     var header = {
-      inspDate: document.getElementById('ip-inspDate').value,
-      inspTime: document.getElementById('ip-inspTime').value,
+      inspDate: inspDateTime.date,
+      inspTime: inspDateTime.time,
       shift: document.getElementById('ip-shift').value,
       inspector: document.getElementById('ip-inspector').value,
       foreman: document.getElementById('ip-foreman').value,

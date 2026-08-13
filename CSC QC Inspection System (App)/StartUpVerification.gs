@@ -36,7 +36,7 @@ function getRecordRows_(recordId, department) {
  *  the target sheet doesn't have simply gets dropped by appendObjectsAsRows_, so one function serves both. */
 function contextFromRow_(row) {
   return {
-    'Verification Record #': row['Verification Record #'] || '', 'Timestamp saved': dateToStr_(new Date()),
+    'Verification Record #': row['Verification Record #'] || '', 'Timestamp saved': new Date(),
     'Run ID': row['Run ID'] || '', 'Verification Date': row['Verification Date'] || '', 'Verification Time': row['Verification Time'] || '',
     'QC Tech Name': row['QC Tech Name'] || '', 'Shift': row['Shift'] || '', 'Foreman': row['Foreman'] || '',
     'Start-Up Tech': row['Start-Up Tech'] || '', 'Line #': row['Line #'] || '', 'Run Qty': row['Run Qty'] || '',
@@ -85,7 +85,7 @@ function saveStartUpVerification_(payload, department) {
   const recordId = makeVerificationRecordId_(department);
 
   const context = {
-    'Verification Record #': recordId, 'Timestamp saved': dateToStr_(new Date()), 'Run ID': run.runId,
+    'Verification Record #': recordId, 'Timestamp saved': new Date(), 'Run ID': run.runId,
     'Verification Date': payload.verificationDate || '', 'Verification Time': payload.verificationTime || '',
     'QC Tech Name': payload.qcTechName || '', 'Shift': payload.shift || '', 'Foreman': payload.foreman || '',
     'Start-Up Tech': payload.startUpTechName || '', 'Line #': run.line || '', 'Run Qty': run.runQty || '',

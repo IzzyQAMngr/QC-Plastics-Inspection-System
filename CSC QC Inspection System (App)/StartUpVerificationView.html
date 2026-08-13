@@ -10,8 +10,7 @@
   <div class="section-divider">RUN SELECTION</div>
   <div class="field-row">
     <div class="field"><label>Run ID</label><select id="suv-run"></select></div>
-    <div class="field"><label>Verification Date</label><input type="date" id="suv-date"></div>
-    <div class="field"><label>Verification Time</label><input type="time" id="suv-time"></div>
+    <div class="field"><label>Verification Date/Time</label><input type="datetime-local" id="suv-datetime"></div>
     <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
   </div>
   <div class="section-divider">PERSONNEL</div>
@@ -94,8 +93,7 @@
     google.script.run
       .withSuccessHandler(function (data) {
         suvData = data;
-        document.getElementById('suv-date').value = suvTodayStr();
-        document.getElementById('suv-time').value = suvNowTimeStr();
+        document.getElementById('suv-datetime').value = suvNowDateTimeStr();
         renderRunPicker();
         fillSelect('suv-shift', data.shiftOptions);
         fillSelect('suv-qctech', data.qcTechOptions);
@@ -110,13 +108,18 @@
     document.getElementById('suv-print-btn').addEventListener('click', function () { window.print(); });
   }
 
-  function suvTodayStr() {
+  function suvNowDateTimeStr() {
     var d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    var date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    var time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    return date + 'T' + time;
   }
-  function suvNowTimeStr() {
-    var d = new Date();
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  // The Log sheet still keeps Verification Date and Verification Time as separate columns, so the
+  // single <input type="datetime-local"> (one calendar+clock picker instead of two fields) is split
+  // back into its date/time halves right where the value leaves the form.
+  function suvSplitDateTime() {
+    var parts = String(document.getElementById('suv-datetime').value || '').split('T');
+    return { date: parts[0] || '', time: parts[1] || '' };
   }
 
   function suvBodyItems() {
@@ -343,10 +346,11 @@
       checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: el ? el.value : '' });
     });
 
+    var suvDT = suvSplitDateTime();
     var payload = {
       runId: runId,
-      verificationDate: document.getElementById('suv-date').value,
-      verificationTime: document.getElementById('suv-time').value,
+      verificationDate: suvDT.date,
+      verificationTime: suvDT.time,
       qcTechName: qcTechName,
       startUpTechName: startUpTechName,
       shift: document.getElementById('suv-shift').value,
@@ -372,8 +376,7 @@
     ['suv-customer', 'suv-mold', 'suv-molddesc', 'suv-item', 'suv-itemdesc', 'suv-line', 'suv-runqty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
-    document.getElementById('suv-date').value = suvTodayStr();
-    document.getElementById('suv-time').value = suvNowTimeStr();
+    document.getElementById('suv-datetime').value = suvNowDateTimeStr();
     renderChecklist();
   }
 </script>

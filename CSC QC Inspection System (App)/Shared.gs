@@ -107,12 +107,15 @@ function settingsValueRightOf_(label) {
   return String(getSettingsSheet_().getRange(pos.row, pos.col + 1).getValue() || '').trim();
 }
 
-/** Row of the "Drop Down Lists- Metals" section header — Metals' dropdown lists (same
- *  column labels as Plastics') live below this, so lookups need to start searching there. */
+/** Row of the "Drop Down Lists- Metals" section header, if Settings still keeps a separate
+ *  Metals section. Returns null when it doesn't (e.g. merged into one shared "Drop Down
+ *  Lists" section, as of the 2026-08 Settings cleanup) — callers fall back to the same
+ *  lookup Plastics uses instead of erroring, since that's exactly what a shared section means.
+ *  Must not throw: it's called while building getStartUpVerificationFormData()'s single
+ *  response object, and any throw there blanks out every field on the form, not just this one. */
 function getMetalsDropdownSectionRow_() {
   const pos = findSettingsLabel_('Drop Down Lists- Metals');
-  if (!pos) throw new Error('"Drop Down Lists- Metals" section header not found in Settings.');
-  return pos.row;
+  return pos ? pos.row : null;
 }
 
 function settingsColumnBelow_(label, maxScan, fromRow) {
@@ -538,7 +541,12 @@ function getColorOptionsForMold_(mold) {
 // Dates go over google.script.run as plain strings, not Date objects — the client never needs
 // them as real Dates, and many real Date objects in one response is a known flaky spot for
 // Apps Script's client bridge (it silently delivers `null` instead of throwing — see Runs work,
-// 2026-08-06).
+// 2026-08-06). This only applies to values crossing that bridge to the client, though — audit
+// timestamps written straight into a sheet cell (Created At, Stopped At, Timestamp saved, etc.)
+// should be plain `new Date()`, not dateToStr_(new Date()): Range.setValues() isn't the client
+// bridge, and a real Date cell displays as a normal date/time instead of raw ISO text
+// (2026-08-07T14:46:39.472Z) and stays sortable/filterable. dateToStr_ still runs on the way
+// back OUT to the client (e.g. runRowToObject_), so the flaky-bridge constraint above still holds.
 function dateToStr_(v) { return v instanceof Date ? v.toISOString() : String(v || ''); }
 
 // ================= RUNS (replaces the old Batches concept) =================
@@ -590,7 +598,7 @@ function createRun_(fields, department) {
   const sheet = getRunsSheet_(department);
   const runId = makeRunId_(department);
   appendObjectsAsRows_(sheet, [{
-    'Run ID': runId, 'Created At': dateToStr_(new Date()), 'Shift': fields.shift || '', 'Status': 'Active',
+    'Run ID': runId, 'Created At': new Date(), 'Shift': fields.shift || '', 'Status': 'Active',
     'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
     'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '',
     'Material Lot': fields.materialLot || '', 'Size ID': fields.sizeId || '', 'Can Description': fields.canDescription || '',
@@ -613,7 +621,7 @@ function getActiveRuns_(department) {
 }
 
 function stopRun_(runId, department) {
-  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Status': 'Stopped', 'Stopped At': dateToStr_(new Date()) });
+  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Status': 'Stopped', 'Stopped At': new Date() });
   return getRun_(runId, department);
 }
 
@@ -621,7 +629,7 @@ function stopRun_(runId, department) {
 function confirmTodaysRuns_(confirmedBy, department) {
   const sheet = getRunsSheet_(department);
   const rows = readSheetObjects_(sheet);
-  const now = dateToStr_(new Date());
+  const now = new Date();
   let count = 0;
   rows.forEach(r => {
     if (String(r['Status'] || '').trim().toLowerCase() === 'active') {
@@ -634,7 +642,7 @@ function confirmTodaysRuns_(confirmedBy, department) {
 
 /** Called when a Start-Up Verification submission passes — marks the Run qualified. */
 function qualifyRun_(runId, department) {
-  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Qualified': 'Yes', 'Qualified Timestamp': dateToStr_(new Date()) });
+  updateRowWhere_(getRunsSheet_(department), 'Run ID', runId, { 'Qualified': 'Yes', 'Qualified Timestamp': new Date() });
 }
 
 // ================= PUBLIC CLIENT-FACING WRAPPERS (Runs) =================
