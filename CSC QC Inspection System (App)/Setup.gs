@@ -205,6 +205,14 @@ function setupMetalsRunsSheet() {
   SpreadsheetApp.getActive().toast('"' + RUNS_SHEET_NAME_METALS + '" is ready.');
 }
 
+/** One-time: creates the "QC Inspection Data- Metals Ends" flat log sheet with headers.
+ *  No-ops if the sheet already exists. Run once from the Apps Script editor after clasp push. */
+function setupMetalsEndsLogSheet() {
+  const ss = getDb_();
+  ensureSheetWithHeaders_(ss, METALS_ENDS_LOG_SHEET_NAME, METALS_ENDS_LOG_HEADERS);
+  SpreadsheetApp.getActive().toast('"' + METALS_ENDS_LOG_SHEET_NAME + '" is ready.');
+}
+
 /**
  * ONE-TIME: imports historical Drop Freeze records from the old system's spreadsheet
  * ("Test Data" tab) into this system's Drop Freeze Test Data log, mapping the old column

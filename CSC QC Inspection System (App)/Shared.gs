@@ -22,6 +22,14 @@ const METALS_SU_LOG_HEADERS = [
 ];
 const LINE_CONFIG_SHEET_NAME = 'Line Configuration';
 
+const METALS_ENDS_LOG_SHEET_NAME = 'QC Inspection Data- Metals Ends';
+const METALS_ENDS_LOG_HEADERS = [
+  'QC Record #', 'Timestamp Saved', 'Inspection ID', 'Inspection Date', 'Inspection Time',
+  'Inspected By', 'Shift', 'Shift Foreman', 'Line #', 'Machine ID', 'End Size', 'Customer', 'End Description',
+  'Test Type', 'Measure Index', 'Characteristic Name', 'Unit', 'LSL', 'USL', 'Actual Value', 'Status', 'Status Detail',
+  'Visual Notes', 'Source', 'Month', 'Year', 'Release Decision', 'Justification',
+];
+
 // Spec Register (relinked 2026-08 — Spec Matrix / Color Specs / All Molds List
 // replaced the old per-product tabs). This is the default; Settings' own
 // "Master Register ID" row can override it without a redeploy.
@@ -434,6 +442,96 @@ function getSpecsFromMaster_(mold) {
     });
   }
   return results;
+}
+
+/**
+ * Metals Ends spec register reads — the Metals Master Register's own "Spec Matrix" tab covers
+ * both End and (eventually) Body components in one sheet, distinguished by a "Product Type"
+ * column ('End' / 'Body'), unlike Plastics' single-purpose Spec Matrix keyed by Mold ID alone.
+ * No dedicated "All Ends Size List" helper tab exists (unlike All Molds List / All Cans Size
+ * List), so the End Size list is derived here by deduping Spec Matrix rows directly.
+ */
+function getEndsSpecMatrixTab_() {
+  const mr = getMasterRegister_('Metals');
+  const tab = mr.getSheetByName(SPEC_MATRIX_SHEET);
+  if (!tab) throw new Error('"' + SPEC_MATRIX_SHEET + '" tab not found in Metals Spec Register.');
+  return tab;
+}
+
+/** [{sizeId, customer, description}] for every distinct End Size on file, in first-seen order. */
+function getEndSizeList_() {
+  const tab = getEndsSpecMatrixTab_();
+  const pos = findHeaderRowAndCol_(tab, 'Size ID', 6);
+  if (!pos) return [];
+  const lastRow = tab.getLastRow(), lastCol = tab.getLastColumn();
+  if (lastRow <= pos.row) return [];
+  const headers = tab.getRange(pos.row, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const idx = name => headers.indexOf(name);
+  const sizeCol = idx('Size ID'), custCol = idx('Customer'), descCol = idx('Description'), prodCol = idx('Product Type');
+  const data = tab.getRange(pos.row + 1, 1, lastRow - pos.row, lastCol).getValues();
+  const seen = {};
+  const out = [];
+  data.forEach(row => {
+    if (String(row[prodCol] || '').trim() !== 'End') return;
+    const sizeId = String(row[sizeCol] || '').trim();
+    if (!sizeId || seen[sizeId]) return;
+    seen[sizeId] = true;
+    out.push({ sizeId: sizeId, customer: String(row[custCol] || '').trim(), description: String(row[descCol] || '').trim() });
+  });
+  return out;
+}
+function getEndSizeList() { return getEndSizeList_(); }
+
+/** Dimensional specs for one End Size — same shape as getSpecsFromMaster_'s results, filtered
+ *  to this Size ID + Product Type='End'. */
+function getSpecsForEndSize_(sizeId) {
+  const tab = getEndsSpecMatrixTab_();
+  const pos = findHeaderRowAndCol_(tab, 'Size ID', 6);
+  if (!pos) throw new Error('"Size ID" header not found in Metals ' + SPEC_MATRIX_SHEET + '.');
+  const lastRow = tab.getLastRow(), lastCol = tab.getLastColumn();
+  if (lastRow <= pos.row) return [];
+  const headers = tab.getRange(pos.row, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const idx = name => headers.indexOf(name);
+  const sizeCol = idx('Size ID'), prodCol = idx('Product Type'), charCol = idx('Characteristic'), unitCol = idx('Unit'),
+    lslCol = idx('LSL'), nomCol = idx('Nominal'), uslCol = idx('USL'), miCol = idx('Measure Index'), rejCol = idx('Reject Limit');
+  const data = tab.getRange(pos.row + 1, 1, lastRow - pos.row, lastCol).getValues();
+  const target = String(sizeId).trim();
+  const results = [];
+  data.forEach(row => {
+    if (String(row[sizeCol] || '').trim() !== target) return;
+    if (String(row[prodCol] || '').trim() !== 'End') return;
+    const lsl = row[lslCol], usl = row[uslCol], nom = row[nomCol];
+    const rej = rejCol >= 0 ? row[rejCol] : '';
+    const rejPct = (rej === '' || rej === null || rej === undefined) ? null : parseFloat(String(rej).replace('%', ''));
+    results.push({
+      characteristic: String(row[charCol] || '').trim(),
+      unit: String(row[unitCol] || '').trim(),
+      measureIndex: row[miCol] !== '' && row[miCol] !== null ? row[miCol] : '',
+      lsl: (lsl === '' || lsl === null) ? null : parseFloat(lsl),
+      nominal: (nom === '' || nom === null) ? null : parseFloat(nom),
+      usl: (usl === '' || usl === null) ? null : parseFloat(usl),
+      rejectLimitPct: (rejPct === null || isNaN(rejPct)) ? null : rejPct,
+    });
+  });
+  return results;
+}
+
+/** Equipment Code + Description options for one Line, from Line Configuration — backs the
+ *  Machine ID dropdown on Metals Ends In-Process (per-Line, the way Cavity IDs are per-Mold on
+ *  Plastics). Empty until real Ends-press equipment rows exist there — add them by hand the
+ *  same way every other Line Configuration row is added. */
+function getMachineIdsForLine_(department, line) {
+  const sheet = getDb_().getSheetByName(LINE_CONFIG_SHEET_NAME);
+  if (!sheet) return [];
+  const out = [];
+  readSheetObjects_(sheet).forEach(row => {
+    if (String(row['Department'] || '').trim() !== department) return;
+    if (String(row['Line #'] || '').trim() !== String(line).trim()) return;
+    const code = String(row['Equipment Code'] || '').trim();
+    if (!code) return;
+    out.push({ code: code, description: String(row['Equipment Description'] || '').trim() });
+  });
+  return out;
 }
 
 /** Doc No./Revision citation line for spec-driven form headers, read live off the register

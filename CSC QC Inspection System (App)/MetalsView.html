@@ -1,11 +1,514 @@
-<h1 class="page-title">⚙️ Metals Inspection</h1>
-<p class="page-sub">Coming soon.</p>
-<div class="placeholder-box">
-  This module is reserved for a future Metals QC workflow — no requirements or data exist yet.
-  <br><br>
-  Once specs are defined, this page will get its own inspection form here, following the same
-  Batch-sharing pattern as Plastics Drop Freeze Testing and Plastics In-Process Inspection.
+<div class="page-title-row">
+  <h1 class="page-title">⚙️ Ends In-Process Inspection</h1>
+  <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0</div>
 </div>
+<p class="page-sub">Log in-process dimensional, material verification, and functional test results by Line — one record covers every Line inspected this shift.</p>
+<div class="form-loading-banner" id="mei-loading"><span class="spinner"></span> Loading form data…</div>
+
+<section class="card">
+  <h2>1. Inspection Header <span class="spec-hint">(applies to everything submitted below)</span></h2>
+  <div class="field-row">
+    <div class="field"><label>Inspection Date/Time</label><input type="datetime-local" id="mei-inspDateTime"></div>
+    <div class="field"><label>Shift</label><select id="mei-shift"></select></div>
+    <div class="field"><label>Inspected By</label><select id="mei-inspector"></select></div>
+    <div class="field"><label>Shift Foreman</label><select id="mei-foreman"></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Resume Existing Record #</label><input id="mei-record-id" placeholder="(leave blank to start a new record)"></div>
+    <div class="field" style="align-self:end;"><button id="mei-new-btn" class="ghost">Start New Inspection</button></div>
+  </div>
+  <p class="spec-hint">"Start New Inspection" clears this form to begin a brand-new QC Record. You don't need it to keep adding Lines to the inspection you're already working on — just switch Lines below.</p>
+</section>
+
+<section class="card">
+  <h2>2. Lines</h2>
+  <div class="line-tabs" id="mei-line-tabs"></div>
+  <p class="spec-hint" id="mei-no-lines" style="margin-top:8px;"></p>
+</section>
+
+<section class="card">
+  <h2 id="mei-line-title">3. Line — Batch</h2>
+  <div id="mei-line-panel-body"></div>
+</section>
+
+<section class="card">
+  <h2>4. Review &amp; Submit</h2>
+  <button id="mei-review-btn">Review All Lines</button>
+  <div id="mei-review-area" class="hidden" style="margin-top:14px;"></div>
+</section>
+
 <script>
-  function init_metals() { /* no data source yet */ }
+  var meiData = null;
+  var meiLines = {};
+  var meiActiveLine = null;
+  var MEI_FUNCTIONAL_OPTIONS = ['', 'Pass', 'Fail', 'N/A'];
+
+  function meiLineNumbers() { return (meiData && meiData.lines) || []; }
+
+  function init_metals() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        meiData = data;
+        MEI_FUNCTIONAL_OPTIONS = [''].concat(data.functionalTestOptions && data.functionalTestOptions.length ? data.functionalTestOptions : ['Pass', 'Fail', 'N/A']);
+        fillSelect('mei-shift', data.shifts);
+        fillSelect('mei-inspector', data.inspectors);
+        fillSelect('mei-foreman', data.foremen);
+        meiActiveLine = meiLineNumbers()[0] || null;
+        meiRenderLineTabs();
+        meiRenderLinePanel();
+        document.getElementById('mei-loading').classList.add('hidden');
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('mei-loading').classList.add('hidden');
+        showToast(err.message, true);
+      })
+      .getMetalsEndsFormData();
+    document.getElementById('mei-new-btn').addEventListener('click', meiStartNew);
+    document.getElementById('mei-review-btn').addEventListener('click', meiRenderReview);
+  }
+
+  function meiSplitDateTime(value) {
+    var parts = String(value || '').split('T');
+    return { date: parts[0] || '', time: parts[1] || '' };
+  }
+
+  // ================= SPEC EVALUATION (mirrors evalBound in InProcessView.html) =================
+  function meiEvalBound(value, bound) {
+    if (value === '' || value === null || value === undefined || isNaN(parseFloat(value))) return '';
+    var v = parseFloat(value);
+    if (!bound) return 'Pass';
+    if (bound.lsl !== null && bound.lsl !== undefined && v < bound.lsl) {
+      if (bound.rejectLsl !== null && bound.rejectLsl !== undefined && v >= bound.rejectLsl) return 'NeedsReview';
+      return 'Fail';
+    }
+    if (bound.usl !== null && bound.usl !== undefined && v > bound.usl) {
+      if (bound.rejectUsl !== null && bound.rejectUsl !== undefined && v <= bound.rejectUsl) return 'NeedsReview';
+      return 'Fail';
+    }
+    return 'Pass';
+  }
+
+  function meiStatusBadge(status) {
+    if (status === 'FAIL') return '<span class="badge critical">Deviation</span>';
+    if (status === 'NEEDS REVIEW') return '<span class="badge serious">Needs Review</span>';
+    if (status === 'PASS') return '<span class="badge good">Pass</span>';
+    return '<span class="badge warning">—</span>';
+  }
+
+  function meiDimFlag(tier) {
+    if (tier === 'Fail') return '<span class="badge critical">Deviation</span>';
+    if (tier === 'NeedsReview') return '<span class="badge serious">Review</span>';
+    if (tier === 'Pass') return '<span class="badge good">Pass</span>';
+    return '';
+  }
+
+  function meiDimKeysFor(line) { return (line.dimFields || []).map(function (f) { return f.key; }); }
+
+  function meiComputeRowStatus(row, bounds, dimKeys) {
+    bounds = bounds || {}; dimKeys = dimKeys || [];
+    var hasAny = false, worst = '';
+    function escalate(tier) {
+      if (tier === 'Fail') worst = 'FAIL';
+      else if (tier === 'NeedsReview' && worst !== 'FAIL') worst = 'NEEDS REVIEW';
+    }
+    dimKeys.forEach(function (k) {
+      if (row[k] !== '' && row[k] !== undefined && row[k] !== null) { hasAny = true; escalate(meiEvalBound(row[k], bounds[k])); }
+    });
+    ['pingGauge', 'copperSulfate', 'scotchTape'].forEach(function (k) { if (row[k]) { hasAny = true; if (row[k] === 'Fail') escalate('Fail'); } });
+    if (row.visualNotes || row.tinPlateTag || row.basisWtTag || row.basisWtActual || row.temperTag || row.temperActual || row.coatingTag || row.coatingActual) hasAny = true;
+    if (!hasAny) return '';
+    return worst || 'PASS';
+  }
+
+  // ================= LINES =================
+  function meiNewSampleRow() {
+    var row = {};
+    ['machineId', 'inspectionTime', 'visualNotes', 'tinPlateTag', 'basisWtTag', 'basisWtActual', 'temperTag', 'temperActual',
+      'coatingTag', 'coatingActual', 'pingGauge', 'copperSulfate', 'scotchTape', 'releaseDecision', 'releaseJustification'].forEach(function (k) { row[k] = ''; });
+    return row;
+  }
+
+  function meiEnsureLine(n) {
+    if (!meiLines[n]) {
+      meiLines[n] = { endSize: '', endCustomer: '', endDescription: '', bounds: null, dimFields: [], machineOptions: [], sampleRows: [] };
+    }
+    return meiLines[n];
+  }
+
+  function meiRenderLineTabs() {
+    var wrap = document.getElementById('mei-line-tabs');
+    var lines = meiLineNumbers();
+    document.getElementById('mei-no-lines').textContent = lines.length ? '' : 'No Metals Lines configured yet — add them in Line Configuration.';
+    wrap.innerHTML = lines.map(function (n) {
+      var line = meiLines[n];
+      var hasData = line && line.sampleRows.length > 0;
+      var statuses = hasData ? line.sampleRows.map(function (r) { return meiComputeRowStatus(r, line.bounds, meiDimKeysFor(line)); }) : [];
+      var failCount = statuses.filter(function (s) { return s === 'FAIL'; }).length;
+      var reviewCount = statuses.filter(function (s) { return s === 'NEEDS REVIEW'; }).length;
+      var dot = hasData ? ('<span class="dot ' + (failCount > 0 ? 'critical' : (reviewCount > 0 ? 'serious' : 'good')) + '"></span>') : '';
+      return '<button class="line-tab' + (n === meiActiveLine ? ' active' : '') + '" data-line="' + esc(n) + '">' + dot + 'Line ' + esc(n) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-line]'), function (btn) {
+      btn.addEventListener('click', function () {
+        meiActiveLine = btn.dataset.line;
+        meiRenderLineTabs();
+        meiRenderLinePanel();
+      });
+    });
+  }
+
+  function meiFieldSimpleInput(id, type, value, readonly, options) {
+    if (type === 'select') {
+      return '<select id="' + id + '"><option value="">— select —</option>' +
+        (options || []).map(function (o) { return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+    }
+    return '<input type="' + type + '" id="' + id + '" value="' + esc(value) + '"' + (readonly ? ' readonly' : '') + '>';
+  }
+  function meiFieldSimple(id, label, type, options, value, readonly) {
+    return '<div class="field"><label>' + label + '</label>' + meiFieldSimpleInput(id, type, value, readonly, options) + '</div>';
+  }
+
+  function meiDimensionalTableHtml(row, dimFields, bounds) {
+    if (!dimFields.length) return '<p class="spec-hint">Pick an End Size above to load its dimensional specs.</p>';
+    var rowsHtml = dimFields.map(function (f) {
+      var b = bounds[f.key] || {};
+      var tier = meiEvalBound(row[f.key], b);
+      var oosClass = tier === 'Fail' ? 'oos' : (tier === 'NeedsReview' ? 'oos-review' : '');
+      var fmt = function (v) { return (v === null || v === undefined) ? '—' : v; };
+      return '<tr>' +
+        '<td>' + esc(f.characteristic || f.label) + '</td>' +
+        '<td>' + fmt(b.lsl) + '</td><td>' + fmt(b.nominal) + '</td><td>' + fmt(b.usl) + '</td>' +
+        '<td>' + esc(f.unit || '—') + '</td>' +
+        '<td class="dim-value"><input type="number" step="any" class="' + oosClass + '" data-field="' + f.key + '" value="' + esc(row[f.key]) + '"></td>' +
+        '<td class="dim-remark">' + meiDimFlag(tier) + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;"><table class="qc-table dim-table"><colgroup>' +
+      '<col><col class="dim-narrow"><col class="dim-narrow"><col class="dim-narrow"><col class="dim-narrow"><col class="dim-value-col"><col>' +
+      '</colgroup><thead><tr><th>Characteristic</th><th>LSL</th><th>Nom</th><th>USL</th><th>UOM</th><th>Actual Value</th><th>Remark</th></tr></thead>' +
+      '<tbody>' + rowsHtml + '</tbody></table></div>';
+  }
+
+  function meiSampleRowHtml(idx, row, line) {
+    var status = meiComputeRowStatus(row, line.bounds, meiDimKeysFor(line));
+    var badge = meiStatusBadge(status);
+
+    var topRow = '<div class="field-row">' +
+      meiFieldSimple('mei-time-' + idx, 'Inspection Time', 'time', null, row.inspectionTime) +
+      '<div class="field field-wide"><label>Visual Conformance Check (Notes &amp; Observations)</label>' +
+      '<textarea data-field="visualNotes" rows="2">' + esc(row.visualNotes) + '</textarea></div>' +
+      '</div>';
+
+    var matRow = '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">MATERIAL VERIFICATION — TIN PLATE CONTROL TAG</h3>' +
+      '<p class="spec-hint">Recorded side by side for your own review — Tag vs. Actual is not auto-compared.</p>' +
+      '<div class="field-row">' +
+      '<div class="field"><label>Tin Plate Tag #</label><input data-field="tinPlateTag" value="' + esc(row.tinPlateTag) + '"></div>' +
+      '<div class="field"><label>Basis Wt (Tag)</label><input data-field="basisWtTag" value="' + esc(row.basisWtTag) + '"></div>' +
+      '<div class="field"><label>Basis Wt (Actual)</label><input data-field="basisWtActual" value="' + esc(row.basisWtActual) + '"></div>' +
+      '</div><div class="field-row">' +
+      '<div class="field"><label>Temper (Tag)</label><input data-field="temperTag" value="' + esc(row.temperTag) + '"></div>' +
+      '<div class="field"><label>Temper (Actual)</label><input data-field="temperActual" value="' + esc(row.temperActual) + '"></div>' +
+      '<div class="field"><label>Coating (Tag)</label><input data-field="coatingTag" value="' + esc(row.coatingTag) + '"></div>' +
+      '<div class="field"><label>Coating (Actual)</label><input data-field="coatingActual" value="' + esc(row.coatingActual) + '"></div>' +
+      '</div>';
+
+    var dimBlock = '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">DIMENSIONAL MEASUREMENTS</h3>' +
+      meiDimensionalTableHtml(row, line.dimFields || [], line.bounds || {});
+
+    var funcRow = '<h3 style="font-size:11.5px;color:var(--text-muted);margin:12px 0 6px;">FUNCTIONAL TESTS</h3><div class="field-row">' +
+      meiFunctionalSelect('pingGauge', 'Ping Gauge', row.pingGauge) +
+      meiFunctionalSelect('copperSulfate', 'Copper Sulfate', row.copperSulfate) +
+      meiFunctionalSelect('scotchTape', 'Scotch Tape', row.scotchTape) +
+      '</div>';
+
+    return '<div class="row-card" data-idx="' + idx + '">' +
+      '<div class="row-head"><div><strong>Sample ' + (idx + 1) + '</strong></div>' +
+      '<div class="tag" data-badge-slot>' + badge + ' <button class="ghost" data-remove-row>Remove</button></div></div>' +
+      topRow + matRow + dimBlock + funcRow + '</div>';
+  }
+
+  function meiFunctionalSelect(field, label, value) {
+    var opts = MEI_FUNCTIONAL_OPTIONS.slice(1).map(function (o) { return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('');
+    return '<div class="field"><label>' + label + '</label><select data-field="' + field + '"><option value="">— select —</option>' + opts + '</select></div>';
+  }
+
+  function meiRenderLinePanel() {
+    var n = meiActiveLine;
+    if (!n) {
+      document.getElementById('mei-line-title').textContent = '3. Line — Batch';
+      document.getElementById('mei-line-panel-body').innerHTML = '<p class="spec-hint">No Line selected.</p>';
+      return;
+    }
+    var line = meiEnsureLine(n);
+    document.getElementById('mei-line-title').textContent = '3. Line ' + n + ' — Batch';
+
+    var endSizeItems = (meiData.endSizes || []).map(function (s) { return { value: s.sizeId, label: s.sizeId, sublabel: s.description }; });
+
+    var html =
+      '<div class="section-divider">BATCH INFO</div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>End Size</label><div class="combo"><input id="mei-endsize" placeholder="Start typing to search…" value="' + esc(line.endSize) + '"></div></div>' +
+        meiFieldSimple('mei-endcustomer', 'Customer', 'text', null, line.endCustomer, true) +
+        meiFieldSimple('mei-enddesc', 'End Description', 'text', null, line.endDescription, true) +
+        meiFieldSimple('mei-machineid', 'Machine ID', 'select', line.machineOptions.map(function (m) { return m.code + (m.description ? ' — ' + m.description : ''); }), '') +
+      '</div>' +
+      '<div style="margin:10px 0;display:flex;gap:8px;">' +
+        '<button id="mei-addrow-btn" class="ghost">+ Add Sample Row</button>' +
+      '</div>' +
+      '<div id="mei-sample-rows">' +
+      (line.sampleRows.length
+        ? line.sampleRows.map(function (row, idx) { return meiSampleRowHtml(idx, row, line); }).join('')
+        : '<p class="spec-hint">No sample rows yet — pick an End Size above, then add a row per sample inspected.</p>') +
+      '</div>';
+
+    document.getElementById('mei-line-panel-body').innerHTML = html;
+    meiWireLinePanelEvents();
+  }
+
+  function meiWireLinePanelEvents() {
+    var n = meiActiveLine;
+    var line = meiEnsureLine(n);
+
+    var endSizeItems = (meiData.endSizes || []).map(function (s) { return { value: s.sizeId, label: s.sizeId, sublabel: s.description }; });
+    initCombobox(document.getElementById('mei-endsize'), endSizeItems, {
+      onSelect: function (sizeId, item) {
+        var spec = (meiData.endSizes || []).find(function (s) { return s.sizeId === sizeId; });
+        line.endSize = sizeId;
+        line.endCustomer = spec ? spec.customer : '';
+        line.endDescription = spec ? spec.description : '';
+        meiRenderLinePanel();
+        meiFetchEndSizeDependents(n);
+      },
+      onInvalid: function () {
+        line.endSize = ''; line.endCustomer = ''; line.endDescription = ''; line.bounds = null; line.dimFields = [];
+        document.getElementById('mei-endcustomer').value = '';
+        document.getElementById('mei-enddesc').value = '';
+      },
+    });
+
+    document.getElementById('mei-machineid').addEventListener('change', function (e) {
+      // Machine ID select stores "CODE — Description"; keep just the code for the payload.
+      line.selectedMachineId = e.target.value.split(' — ')[0];
+    });
+
+    document.getElementById('mei-addrow-btn').addEventListener('click', function () {
+      line.sampleRows.push(meiNewSampleRow());
+      meiRenderLinePanel();
+      meiRenderLineTabs();
+    });
+
+    var container = document.getElementById('mei-sample-rows');
+    container.addEventListener('input', meiOnSampleFieldChange);
+    container.addEventListener('change', meiOnSampleFieldChange);
+    container.addEventListener('click', function (e) {
+      if (e.target.matches('[data-remove-row]')) {
+        var idx = parseInt(e.target.closest('.row-card').dataset.idx, 10);
+        line.sampleRows.splice(idx, 1);
+        meiRenderLinePanel();
+        meiRenderLineTabs();
+      }
+    });
+
+    if (!line.machineOptionsFetched) meiFetchMachineIds(n);
+    if (line.endSize && !line.dimFields.length) meiFetchEndSizeDependents(n);
+  }
+
+  function meiOnSampleFieldChange(e) {
+    var field = e.target.dataset.field;
+    if (!field) return;
+    var n = meiActiveLine;
+    var line = meiEnsureLine(n);
+    var idx = parseInt(e.target.closest('.row-card').dataset.idx, 10);
+    line.sampleRows[idx][field] = e.target.value;
+    if (meiDimKeysFor(line).indexOf(field) >= 0) {
+      var bound = (line.bounds || {})[field];
+      var tier = meiEvalBound(e.target.value, bound);
+      e.target.classList.toggle('oos', tier === 'Fail');
+      e.target.classList.toggle('oos-review', tier === 'NeedsReview');
+      var tr = e.target.closest('tr');
+      var remarkCell = tr && tr.querySelector('.dim-remark');
+      if (remarkCell) remarkCell.innerHTML = meiDimFlag(tier);
+    }
+    var status = meiComputeRowStatus(line.sampleRows[idx], line.bounds, meiDimKeysFor(line));
+    var badge = meiStatusBadge(status);
+    var slot = e.target.closest('.row-card').querySelector('[data-badge-slot]');
+    if (slot) slot.innerHTML = badge + ' <button class="ghost" data-remove-row>Remove</button>';
+    meiRenderLineTabs();
+  }
+
+  function meiFetchMachineIds(n) {
+    var line = meiEnsureLine(n);
+    line.machineOptionsFetched = true;
+    google.script.run
+      .withSuccessHandler(function (options) {
+        line.machineOptions = options || [];
+        meiRenderLinePanel();
+      })
+      .withFailureHandler(function () {})
+      .getMachineIdsForEndsLine(n);
+  }
+
+  function meiFetchEndSizeDependents(n) {
+    var line = meiEnsureLine(n);
+    if (!line.endSize) { meiRenderLinePanel(); return; }
+    google.script.run
+      .withSuccessHandler(function (specInfo) {
+        line.bounds = specInfo.bounds;
+        line.dimFields = specInfo.fields || [];
+        meiRenderLinePanel();
+        meiRenderLineTabs();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getSpecsForEndSizeRow(line.endSize);
+  }
+
+  // ================= REVIEW & SUBMIT =================
+  function meiActiveLinesWithData() {
+    return meiLineNumbers().filter(function (n) { return meiLines[n] && meiLines[n].endSize && meiLines[n].sampleRows.length > 0; });
+  }
+
+  function meiRowIssueDetails(row, bounds, dimFields) {
+    var issues = [];
+    (dimFields || []).forEach(function (f) {
+      var tier = meiEvalBound(row[f.key], bounds[f.key]);
+      if (tier === 'Fail') issues.push(f.label + ' ' + row[f.key] + ' (deviation)');
+      else if (tier === 'NeedsReview') issues.push(f.label + ' ' + row[f.key] + ' (needs review)');
+    });
+    ['pingGauge', 'copperSulfate', 'scotchTape'].forEach(function (k) { if (row[k] === 'Fail') issues.push(k + ' deviation'); });
+    return issues;
+  }
+
+  function meiOpenReleaseDecisionForm(n, idx) {
+    var row = meiLines[n].sampleRows[idx];
+    var panel = document.getElementById('mei-release-panel');
+    if (!panel) return;
+    var opts = (meiData.releaseDecisionOptions || []).map(function (o) {
+      return '<option' + (o === row.releaseDecision ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('');
+    panel.innerHTML =
+      '<div class="row-card"><div class="row-head"><strong>Release Decision — Line ' + esc(n) + ', Sample ' + (idx + 1) + '</strong></div>' +
+      '<div class="field-row">' +
+      '<div class="field"><label>Release Decision</label><select id="mei-rd-decision"><option value="">— select —</option>' + opts + '</select></div>' +
+      '<div class="field field-wide"><label>Justification</label><textarea id="mei-rd-justification" rows="2">' + esc(row.releaseJustification) + '</textarea></div>' +
+      '<div class="field" style="align-self:end;"><button class="primary" id="mei-rd-save-btn">Save</button></div>' +
+      '</div></div>';
+    document.getElementById('mei-rd-decision').value = row.releaseDecision || '';
+    document.getElementById('mei-rd-save-btn').addEventListener('click', function () {
+      var decision = document.getElementById('mei-rd-decision').value;
+      var justification = document.getElementById('mei-rd-justification').value.trim();
+      if (!decision) { showToast('Pick a Release Decision.', true); return; }
+      if (!justification) { showToast('Justification is required.', true); return; }
+      row.releaseDecision = decision;
+      row.releaseJustification = justification;
+      meiRenderReview();
+    });
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function meiRenderReview() {
+    var area = document.getElementById('mei-review-area');
+    area.classList.remove('hidden');
+    var lines = meiActiveLinesWithData();
+    if (lines.length === 0) { area.innerHTML = '<p class="spec-hint">No lines have data yet.</p>'; return; }
+
+    var unresolvedCount = 0;
+    var cardsHtml = lines.map(function (n) {
+      var line = meiLines[n];
+      var rowsHtml = line.sampleRows.map(function (r, idx) {
+        var status = meiComputeRowStatus(r, line.bounds, meiDimKeysFor(line));
+        var issues = meiRowIssueDetails(r, line.bounds, line.dimFields);
+        var detailText = issues.length ? issues.join('; ') : (status === 'PASS' ? 'All within spec' : '—');
+        var releaseCell;
+        if (status !== 'FAIL') {
+          releaseCell = '<span class="spec-hint">—</span>';
+        } else if (r.releaseDecision && r.releaseJustification) {
+          releaseCell = '<strong>' + esc(r.releaseDecision) + '</strong><div class="spec-hint">' + esc(r.releaseJustification) + '</div>' +
+            '<button class="ghost" data-release="' + n + ':' + idx + '" style="margin-top:4px;">Edit</button>';
+        } else {
+          unresolvedCount++;
+          releaseCell = '<span class="badge warning">Needs Decision</span><br>' +
+            '<button class="ghost" data-release="' + n + ':' + idx + '" style="margin-top:4px;">Add Release Decision</button>';
+        }
+        return '<tr><td>Sample ' + (idx + 1) + '</td><td>' + meiStatusBadge(status) + '</td>' +
+          '<td style="font-size:12px;color:var(--text-secondary);">' + esc(detailText) + '</td>' +
+          '<td>' + releaseCell + '</td></tr>';
+      }).join('');
+      return '<div class="row-card"><div class="row-head"><strong>Line ' + esc(n) + '</strong>' +
+        '<span class="tag">End Size ' + esc(line.endSize) + (line.endCustomer ? ' / ' + esc(line.endCustomer) : '') +
+        (line.selectedMachineId ? ' — Machine ' + esc(line.selectedMachineId) : '') + '</span></div>' +
+        '<table class="qc-table"><thead><tr><th>Sample</th><th>Status</th><th>Details</th><th>Release Decision</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+    }).join('');
+
+    var footerHtml = unresolvedCount > 0
+      ? '<p class="spec-hint" style="color:var(--critical);font-weight:600;margin-top:10px;">' +
+        unresolvedCount + ' deviation(s) above still need a Release Decision + Justification before you can submit.</p>'
+      : '<button class="primary" id="mei-submit-all-btn" style="margin-top:10px;">Submit All (' + lines.length + ' line' + (lines.length > 1 ? 's' : '') + ')</button>';
+
+    area.innerHTML = cardsHtml + '<div id="mei-release-panel"></div>' + footerHtml;
+
+    Array.prototype.forEach.call(area.querySelectorAll('[data-release]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var parts = btn.dataset.release.split(':');
+        meiOpenReleaseDecisionForm(parts[0], parseInt(parts[1], 10));
+      });
+    });
+    var submitBtn = document.getElementById('mei-submit-all-btn');
+    if (submitBtn) submitBtn.addEventListener('click', meiSubmitAllLines);
+  }
+
+  function meiSubmitAllLines() {
+    var lines = meiActiveLinesWithData();
+    if (lines.length === 0) return;
+    var dt = meiSplitDateTime(document.getElementById('mei-inspDateTime').value);
+    var header = {
+      inspDate: dt.date, inspTime: dt.time,
+      shift: document.getElementById('mei-shift').value,
+      inspector: document.getElementById('mei-inspector').value,
+      foreman: document.getElementById('mei-foreman').value,
+    };
+    meiDoSubmitAll(lines, header);
+  }
+
+  function meiDoSubmitAll(lines, header) {
+    var rows = [];
+    lines.forEach(function (n) {
+      var line = meiLines[n];
+      line.sampleRows.forEach(function (r) {
+        var row = {};
+        for (var k in r) row[k] = r[k];
+        row.line = String(n); row.endSize = line.endSize; row.endCustomer = line.endCustomer; row.endDescription = line.endDescription;
+        row.machineId = line.selectedMachineId || '';
+        rows.push(row);
+      });
+    });
+
+    var btn = document.getElementById('mei-submit-all-btn');
+    var originalLabel = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('mei-record-id').value = result.recordId;
+        showToast('Record ' + result.recordId + ' has been added to Inspection Records (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
+          (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
+          (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
+          result.failCount > 0);
+        meiLines = {}; meiActiveLine = meiLineNumbers()[0] || null;
+        meiRenderLineTabs(); meiRenderLinePanel();
+        document.getElementById('mei-review-area').classList.add('hidden');
+      })
+      .withFailureHandler(function (err) {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast(err.message, true);
+      })
+      .saveMetalsEndsInspection({ recordId: document.getElementById('mei-record-id').value || null, header: header, rows: rows });
+  }
+
+  function meiStartNew() {
+    document.getElementById('mei-record-id').value = '';
+    meiLines = {}; meiActiveLine = meiLineNumbers()[0] || null;
+    meiRenderLineTabs(); meiRenderLinePanel();
+    document.getElementById('mei-review-area').classList.add('hidden');
+    showToast('Started a new round.');
+  }
 </script>
