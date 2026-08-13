@@ -267,7 +267,20 @@ function getStartUpItemsList_(department) {
       number: numbers ? String(numbers[i][0] || '').trim() : '',
     });
   }
-  return out;
+  // "No." is the real sort key, not just a display label — sorted here (once, department-agnostic)
+  // rather than client-side so category order and the form's Yes/No → Number → Other sub-grouping
+  // both inherit it for free. Numbered items sort ascending; unnumbered items keep their original
+  // sheet-row order and always sort after every numbered item (never jump ahead just for being
+  // blank). Stable tie-break on original index so equal/blank numbers don't get reshuffled.
+  const withIndex = out.map((it, i) => ({ it: it, i: i, num: it.number === '' ? null : parseFloat(it.number) }));
+  withIndex.sort((a, b) => {
+    if (a.num === null && b.num === null) return a.i - b.i;
+    if (a.num === null) return 1;
+    if (b.num === null) return -1;
+    if (a.num !== b.num) return a.num - b.num;
+    return a.i - b.i;
+  });
+  return withIndex.map(x => x.it);
 }
 
 /**
