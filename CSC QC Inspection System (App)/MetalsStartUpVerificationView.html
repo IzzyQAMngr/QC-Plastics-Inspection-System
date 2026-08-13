@@ -95,13 +95,13 @@
       .withSuccessHandler(function (data) {
         msuData = data;
         document.getElementById('msu-datetime').value = msuNowDateTimeStr();
-        renderRunPicker();
+        msuRenderRunPicker();
         fillSelect('msu-shift', data.shiftOptions);
         fillSelect('msu-qctech', data.qcTechOptions);
         fillSelect('msu-suptech', data.startUpTechOptions);
         fillSelect('msu-foreman', data.foremanOptions);
         fillSelect('msu-pfa-direct', data.qcTechOptions);
-        renderChecklist();
+        msuRenderChecklist();
         document.getElementById('msu-loading').classList.add('hidden');
       })
       .withFailureHandler(function (err) {
@@ -139,7 +139,7 @@
     return 'other';
   }
 
-  function renderRunPicker() {
+  function msuRenderRunPicker() {
     var sel = document.getElementById('msu-run');
     sel.innerHTML = '<option value="">— select —</option>' + (msuData.runs || []).map(function (r) {
       return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.sizeId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
@@ -153,18 +153,18 @@
       document.getElementById('msu-itemdesc').value = run ? run.itemDescription : '';
       document.getElementById('msu-line').value = run ? run.line : '';
       document.getElementById('msu-runqty').value = run ? run.runQty : '';
-      updateContextBanners(run);
+      msuUpdateContextBanners(run);
     });
   }
 
-  function updateContextBanners(run) {
+  function msuUpdateContextBanners(run) {
     var text = run
       ? ('RUN ' + run.runId + ' · CAN SIZE ' + (run.sizeId || '—') + ' · ITEM ' + (run.item || '—') + ' · LINE ' + (run.line || '—'))
       : 'RUN CONTEXT — pick a Run above';
     document.getElementById('msu-ctx-checklist').textContent = text;
   }
 
-  function groupItemsByCategory(items) {
+  function msuGroupItemsByCategory(items) {
     var groups = []; var byName = {};
     items.forEach(function (it) {
       var cat = (it.category || '').trim() || 'Uncategorized';
@@ -178,7 +178,7 @@
     return (it.number ? esc(it.number) + '. ' : '') + esc(it.item);
   }
 
-  function checklistTableHtml(items, baseIdx) {
+  function msuChecklistTableHtml(items, baseIdx) {
     var rows = items.map(function (it, i) {
       return '<tr data-idx="' + (baseIdx + i) + '">' +
         '<td>' + msuItemLabel(it) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
@@ -192,7 +192,7 @@
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
-  function kppTableHtml(items, baseIdx) {
+  function msuKppTableHtml(items, baseIdx) {
     var rows = items.map(function (it, i) {
       var idx = baseIdx + i;
       return '<tr data-idx="' + idx + '">' +
@@ -208,7 +208,7 @@
 
   var MSU_ITEM_COMBO_ITEMS = ['End Item No.'];
 
-  function plainFieldHtml(it, idx) {
+  function msuPlainFieldHtml(it, idx) {
     var id = 'msu-plain-' + idx;
     var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
     var input;
@@ -226,7 +226,7 @@
     });
   }
 
-  function deviationFieldHtml(it, idx) {
+  function msuDeviationFieldHtml(it, idx) {
     var id = 'msu-dev-' + idx;
     if (it.item === 'Was there a deviation?') {
       return '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
@@ -236,7 +236,7 @@
       '<textarea id="' + id + '" rows="3"></textarea></div>';
   }
 
-  function wireChecklistTable() {
+  function msuWireChecklistTable() {
     document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
       var boxes = tr.querySelectorAll('input[type=checkbox]');
       boxes.forEach(function (cb) {
@@ -247,17 +247,17 @@
     });
   }
 
-  function checklistValue(tr) {
+  function msuChecklistValue(tr) {
     if (tr.querySelector('[data-role="pass"]').checked) return 'Pass';
     if (tr.querySelector('[data-role="fail"]').checked) return 'Fail';
     if (tr.querySelector('[data-role="na"]').checked) return 'N/A';
     return '';
   }
 
-  function renderChecklist() {
+  function msuRenderChecklist() {
     var items = msuBodyItems();
     var bodyRaw = items.filter(function (it) { return msuItemKind(it) !== 'deviation'; });
-    var groups = groupItemsByCategory(bodyRaw);
+    var groups = msuGroupItemsByCategory(bodyRaw);
     var showHeadings = !(groups.length === 1 && groups[0].name === 'Uncategorized');
 
     msuChecklistItems = [];
@@ -269,16 +269,16 @@
       var plainSub = g.items.filter(function (it) { return msuItemKind(it) === 'other'; });
       var block = showHeadings ? '<div class="section-divider">' + esc(g.name.toUpperCase()) + '</div>' : '';
       if (checklistSub.length) {
-        block += checklistTableHtml(checklistSub, msuChecklistItems.length);
+        block += msuChecklistTableHtml(checklistSub, msuChecklistItems.length);
         msuChecklistItems = msuChecklistItems.concat(checklistSub);
       }
       if (kppSub.length) {
-        block += kppTableHtml(kppSub, msuKppItems.length);
+        block += msuKppTableHtml(kppSub, msuKppItems.length);
         msuKppItems = msuKppItems.concat(kppSub);
       }
       if (plainSub.length) {
         block += '<div class="field-row">' + plainSub.map(function (it) {
-          var fieldHtml = plainFieldHtml(it, msuPlainItems.length);
+          var fieldHtml = msuPlainFieldHtml(it, msuPlainItems.length);
           msuPlainItems.push(it);
           return fieldHtml;
         }).join('') + '</div>';
@@ -291,22 +291,22 @@
     wireItemCombos();
 
     msuDeviationItems = items.filter(function (it) { return msuItemKind(it) === 'deviation'; });
-    document.getElementById('msu-deviation-fields').innerHTML = msuDeviationItems.map(function (it, idx) { return deviationFieldHtml(it, idx); }).join('');
+    document.getElementById('msu-deviation-fields').innerHTML = msuDeviationItems.map(function (it, idx) { return msuDeviationFieldHtml(it, idx); }).join('');
 
-    wireChecklistTable();
-    updateContextBanners(null);
+    msuWireChecklistTable();
+    msuUpdateContextBanners(null);
 
     msuItemEls = {};
     msuDeviationItems.forEach(function (it, idx) {
       msuItemEls[it.item] = { wrap: document.getElementById('wrap-msu-dev-' + idx), input: document.getElementById('msu-dev-' + idx) };
     });
     if (msuItemEls['Was there a deviation?']) {
-      msuItemEls['Was there a deviation?'].input.addEventListener('change', updateDeviationUI);
+      msuItemEls['Was there a deviation?'].input.addEventListener('change', msuUpdateDeviationUI);
     }
-    updateDeviationUI();
+    msuUpdateDeviationUI();
   }
 
-  function updateDeviationUI() {
+  function msuUpdateDeviationUI() {
     var devInfo = msuItemEls['Was there a deviation?'];
     var val = devInfo ? devInfo.input.value : '';
     var descInfo = msuItemEls['Deviation Description / Notes'];
@@ -333,7 +333,7 @@
     var checklist = [];
     document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
       var it = msuChecklistItems[Number(tr.getAttribute('data-idx'))];
-      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: checklistValue(tr) });
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: msuChecklistValue(tr) });
     });
     document.querySelectorAll('#msu-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
       var it = msuKppItems[Number(tr.getAttribute('data-idx'))];
@@ -379,6 +379,6 @@
       document.getElementById(id).value = '';
     });
     document.getElementById('msu-datetime').value = msuNowDateTimeStr();
-    renderChecklist();
+    msuRenderChecklist();
   }
 </script>

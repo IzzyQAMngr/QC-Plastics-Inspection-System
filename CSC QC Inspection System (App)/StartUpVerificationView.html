@@ -95,13 +95,13 @@
       .withSuccessHandler(function (data) {
         suvData = data;
         document.getElementById('suv-datetime').value = suvNowDateTimeStr();
-        renderRunPicker();
+        suvRenderRunPicker();
         fillSelect('suv-shift', data.shiftOptions);
         fillSelect('suv-qctech', data.qcTechOptions);
         fillSelect('suv-suptech', data.startUpTechOptions);
         fillSelect('suv-foreman', data.foremanOptions);
         fillSelect('suv-pfa-direct', data.qcTechOptions);
-        renderChecklist();
+        suvRenderChecklist();
         document.getElementById('suv-loading').classList.add('hidden');
       })
       .withFailureHandler(function (err) {
@@ -143,7 +143,7 @@
     return 'other';
   }
 
-  function renderRunPicker() {
+  function suvRenderRunPicker() {
     var sel = document.getElementById('suv-run');
     sel.innerHTML = '<option value="">— select —</option>' + (suvData.runs || []).map(function (r) {
       return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.moldId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
@@ -157,11 +157,11 @@
       document.getElementById('suv-itemdesc').value = run ? run.itemDescription : '';
       document.getElementById('suv-line').value = run ? run.line : '';
       document.getElementById('suv-runqty').value = run ? run.runQty : '';
-      updateContextBanners(run);
+      suvUpdateContextBanners(run);
     });
   }
 
-  function updateContextBanners(run) {
+  function suvUpdateContextBanners(run) {
     var text = run
       ? ('RUN ' + run.runId + ' · ' + (run.moldId || '—') + (run.moldDescription ? ' (' + run.moldDescription + ')' : '') +
          ' · ITEM ' + (run.item || '—') + ' · LINE ' + (run.line || '—'))
@@ -171,7 +171,7 @@
 
   /** Buckets items by their (optional) Category column, in first-seen order — uncategorized items land in a
    *  trailing "Uncategorized" bucket rather than disappearing. */
-  function groupItemsByCategory(items) {
+  function suvGroupItemsByCategory(items) {
     var groups = []; var byName = {};
     items.forEach(function (it) {
       var cat = (it.category || '').trim() || 'Uncategorized';
@@ -187,7 +187,7 @@
     return (it.number ? esc(it.number) + '. ' : '') + esc(it.item);
   }
 
-  function checklistTableHtml(items, baseIdx) {
+  function suvChecklistTableHtml(items, baseIdx) {
     var rows = items.map(function (it, i) {
       return '<tr data-idx="' + (baseIdx + i) + '">' +
         '<td>' + suvItemLabel(it) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
@@ -201,11 +201,11 @@
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
-  /** Key Process Parameter table for one category — same baseIdx convention as checklistTableHtml,
+  /** Key Process Parameter table for one category — same baseIdx convention as suvChecklistTableHtml,
    *  so it can sit alongside the checklist table under the same category heading (a category can mix
    *  Pass/Fail checks and measured parameters, e.g. Material Information having both "Correct resin
    *  ready" and a numeric "Melt" reading). */
-  function kppTableHtml(items, baseIdx) {
+  function suvKppTableHtml(items, baseIdx) {
     var rows = items.map(function (it, i) {
       var idx = baseIdx + i;
       return '<tr data-idx="' + idx + '">' +
@@ -219,7 +219,7 @@
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
-  function plainFieldHtml(it, idx) {
+  function suvPlainFieldHtml(it, idx) {
     var id = 'suv-plain-' + idx;
     var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
     var input;
@@ -229,7 +229,7 @@
     return '<div class="field"><label>' + suvItemLabel(it) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
   }
 
-  function deviationFieldHtml(it, idx) {
+  function suvDeviationFieldHtml(it, idx) {
     var id = 'suv-dev-' + idx;
     if (it.item === 'Was there a deviation?') {
       return '<div class="field" id="wrap-' + id + '"><label>' + esc(it.item) + '</label>' +
@@ -239,7 +239,7 @@
       '<textarea id="' + id + '" rows="3"></textarea></div>';
   }
 
-  function wireChecklistTable() {
+  function suvWireChecklistTable() {
     document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
       var boxes = tr.querySelectorAll('input[type=checkbox]');
       boxes.forEach(function (cb) {
@@ -250,7 +250,7 @@
     });
   }
 
-  function checklistValue(tr) {
+  function suvChecklistValue(tr) {
     if (tr.querySelector('[data-role="pass"]').checked) return 'Pass';
     if (tr.querySelector('[data-role="fail"]').checked) return 'Fail';
     if (tr.querySelector('[data-role="na"]').checked) return 'N/A';
@@ -262,10 +262,10 @@
    *  together under a single heading, in that order, so a category can freely mix row types (e.g.
    *  Material Information having both a "Correct resin ready" Pass/Fail row and a numeric "Melt" reading)
    *  and still show up as one block instead of split across separate page sections. */
-  function renderChecklist() {
+  function suvRenderChecklist() {
     var items = suvBodyItems();
     var bodyRaw = items.filter(function (it) { return suvItemKind(it) !== 'deviation'; });
-    var groups = groupItemsByCategory(bodyRaw);
+    var groups = suvGroupItemsByCategory(bodyRaw);
     var showHeadings = !(groups.length === 1 && groups[0].name === 'Uncategorized');
 
     suvChecklistItems = [];
@@ -277,16 +277,16 @@
       var plainSub = g.items.filter(function (it) { return suvItemKind(it) === 'other'; });
       var block = showHeadings ? '<div class="section-divider">' + esc(g.name.toUpperCase()) + '</div>' : '';
       if (checklistSub.length) {
-        block += checklistTableHtml(checklistSub, suvChecklistItems.length);
+        block += suvChecklistTableHtml(checklistSub, suvChecklistItems.length);
         suvChecklistItems = suvChecklistItems.concat(checklistSub);
       }
       if (kppSub.length) {
-        block += kppTableHtml(kppSub, suvKppItems.length);
+        block += suvKppTableHtml(kppSub, suvKppItems.length);
         suvKppItems = suvKppItems.concat(kppSub);
       }
       if (plainSub.length) {
         block += '<div class="field-row">' + plainSub.map(function (it) {
-          var fieldHtml = plainFieldHtml(it, suvPlainItems.length);
+          var fieldHtml = suvPlainFieldHtml(it, suvPlainItems.length);
           suvPlainItems.push(it);
           return fieldHtml;
         }).join('') + '</div>';
@@ -298,22 +298,22 @@
       '<p class="spec-hint">No checklist items or Key Process Parameters configured in the Start-Up Verification Items List.</p>';
 
     suvDeviationItems = items.filter(function (it) { return suvItemKind(it) === 'deviation'; });
-    document.getElementById('suv-deviation-fields').innerHTML = suvDeviationItems.map(function (it, idx) { return deviationFieldHtml(it, idx); }).join('');
+    document.getElementById('suv-deviation-fields').innerHTML = suvDeviationItems.map(function (it, idx) { return suvDeviationFieldHtml(it, idx); }).join('');
 
-    wireChecklistTable();
-    updateContextBanners(null);
+    suvWireChecklistTable();
+    suvUpdateContextBanners(null);
 
     suvItemEls = {};
     suvDeviationItems.forEach(function (it, idx) {
       suvItemEls[it.item] = { wrap: document.getElementById('wrap-suv-dev-' + idx), input: document.getElementById('suv-dev-' + idx) };
     });
     if (suvItemEls['Was there a deviation?']) {
-      suvItemEls['Was there a deviation?'].input.addEventListener('change', updateDeviationUI);
+      suvItemEls['Was there a deviation?'].input.addEventListener('change', suvUpdateDeviationUI);
     }
-    updateDeviationUI();
+    suvUpdateDeviationUI();
   }
 
-  function updateDeviationUI() {
+  function suvUpdateDeviationUI() {
     var devInfo = suvItemEls['Was there a deviation?'];
     var val = devInfo ? devInfo.input.value : '';
     var descInfo = suvItemEls['Deviation Description / Notes'];
@@ -340,7 +340,7 @@
     var checklist = [];
     document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
       var it = suvChecklistItems[Number(tr.getAttribute('data-idx'))];
-      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: checklistValue(tr) });
+      checklist.push({ item: it.item, valueType: it.valueType, unit: it.unit, value: suvChecklistValue(tr) });
     });
     document.querySelectorAll('#suv-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
       var it = suvKppItems[Number(tr.getAttribute('data-idx'))];
@@ -386,6 +386,6 @@
       document.getElementById(id).value = '';
     });
     document.getElementById('suv-datetime').value = suvNowDateTimeStr();
-    renderChecklist();
+    suvRenderChecklist();
   }
 </script>

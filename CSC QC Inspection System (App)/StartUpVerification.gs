@@ -57,7 +57,10 @@ function computeItemStatus_(valueType, value) {
   return '';
 }
 
-/** Called by StartUpVerificationView.html (Plastics) / MetalsStartUpVerificationView.html on load. */
+/** Called by StartUpVerificationView.html (Plastics) / MetalsStartUpVerificationView.html on load.
+ *  itemList is only fetched for Metals (backs the End Item No. combobox there) — Plastics' Item
+ *  master list is far larger and has no on-page use here, so pulling it in unconditionally bloated
+ *  the response enough to make google.script.run hang on the Plastics form instead of resolving. */
 function getStartUpVerificationFormData(department) {
   return {
     items: getStartUpItemsList_(department),
@@ -66,7 +69,7 @@ function getStartUpVerificationFormData(department) {
     startUpTechOptions: getStartUpTechList_(department),
     shiftOptions: getShiftList_(department),
     foremanOptions: getForemanList_(department),
-    itemList: getItemList_(department), // [{itemNo, description}] — backs the End Item No. combobox (Metals)
+    itemList: department === 'Metals' ? getItemList_(department) : [], // [{itemNo, description}]
   };
 }
 
