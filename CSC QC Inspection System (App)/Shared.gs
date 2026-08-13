@@ -87,15 +87,33 @@ function getSettingsSheet_() {
 // so it can be reorganized again later without breaking these.
 // fromRow lets a caller skip past an earlier section that reuses the same label text
 // (e.g. "QC Technician Name" appears once under Plastics' dropdown lists, again under Metals').
-function findSettingsLabel_(label, fromRow) {
+
+// Memoized per execution, like _dbCache_ above. Every dropdown/label lookup on a form
+// (QC Tech, Foreman, Shift, Start-Up Tech, etc.) used to call findSettingsLabel_ separately,
+// and each call re-fetched the ENTIRE Settings sheet with its own getRange().getValues() —
+// on the Metals Start-Up form alone that was ~8 full-sheet reads just to locate labels,
+// which was the real source of the multi-second load. Now the sheet is fetched once and every
+// lookup for the rest of this execution just scans the in-memory array.
+let _settingsGridCache_ = null;
+function getSettingsGrid_() {
+  if (_settingsGridCache_) return _settingsGridCache_;
   const st = getSettingsSheet_();
-  const startRow = fromRow || 1;
   const lastRow = st.getLastRow(), lastCol = st.getLastColumn();
-  if (startRow > lastRow) return null;
-  const values = st.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
-  for (let r = 0; r < values.length; r++) {
-    for (let c = 0; c < values[r].length; c++) {
-      if (String(values[r][c]).trim() === label) return { row: startRow + r, col: c + 1 };
+  _settingsGridCache_ = {
+    values: (lastRow > 0 && lastCol > 0) ? st.getRange(1, 1, lastRow, lastCol).getValues() : [],
+    lastRow: lastRow, lastCol: lastCol,
+  };
+  return _settingsGridCache_;
+}
+
+function findSettingsLabel_(label, fromRow) {
+  const grid = getSettingsGrid_();
+  const startRow = fromRow || 1;
+  if (startRow > grid.lastRow) return null;
+  for (let r = startRow - 1; r < grid.values.length; r++) {
+    const row = grid.values[r];
+    for (let c = 0; c < row.length; c++) {
+      if (String(row[c]).trim() === label) return { row: r + 1, col: c + 1 };
     }
   }
   return null;
@@ -121,17 +139,16 @@ function getMetalsDropdownSectionRow_() {
 function settingsColumnBelow_(label, maxScan, fromRow) {
   const pos = findSettingsLabel_(label, fromRow);
   if (!pos) return [];
-  const st = getSettingsSheet_();
-  const scan = Math.min(maxScan || 30, Math.max(st.getLastRow() - pos.row, 0));
+  // Reads off the same cached grid findSettingsLabel_ just used instead of issuing its own
+  // getRange() round trip — see getSettingsGrid_ above.
+  const grid = getSettingsGrid_();
+  const scan = Math.min(maxScan || 30, Math.max(grid.lastRow - pos.row, 0));
   if (scan <= 0) return [];
-  // One bulk read instead of up to `scan` individual getValue() round trips — this backed
-  // every dropdown list (Shift, QC Tech, Foreman, etc.) on nearly every form and was the
-  // single biggest source of page-load lag.
-  const values = st.getRange(pos.row + 1, pos.col, scan, 1).getValues();
   const out = [];
   let blanks = 0;
-  for (let i = 0; i < values.length && blanks < 6; i++) {
-    const s = String(values[i][0] || '').trim();
+  for (let i = 0; i < scan && blanks < 6; i++) {
+    const row = grid.values[pos.row + i] || [];
+    const s = String(row[pos.col - 1] || '').trim();
     if (!s) { blanks++; continue; }
     blanks = 0;
     out.push(s);
@@ -142,15 +159,16 @@ function settingsColumnBelow_(label, maxScan, fromRow) {
 function settingsTableBelow_(label, numCols, maxScan) {
   const pos = findSettingsLabel_(label);
   if (!pos) return [];
-  const st = getSettingsSheet_();
-  const lastRow = Math.min(pos.row + (maxScan || 1000), st.getLastRow());
+  const grid = getSettingsGrid_();
+  const lastRow = Math.min(pos.row + (maxScan || 1000), grid.lastRow);
   if (lastRow <= pos.row) return [];
-  const data = st.getRange(pos.row + 1, pos.col, lastRow - pos.row, numCols).getValues();
   const out = [];
   let blanks = 0;
-  for (const row of data) {
+  for (let r = pos.row; r < lastRow; r++) {
     if (blanks >= 8) break;
-    const cells = row.map(v => String(v || '').trim());
+    const row = grid.values[r] || [];
+    const cells = [];
+    for (let c = pos.col - 1; c < pos.col - 1 + numCols; c++) cells.push(String(row[c] || '').trim());
     if (cells.every(c => !c)) { blanks++; continue; }
     blanks = 0;
     out.push(cells);
@@ -210,10 +228,12 @@ function getStartUpTechList_(department) { return settingsColumnBelow_('Start-Up
 function getDeviationAuthList_(department) { return settingsColumnBelow_('Deviation Authorization List', 30, department === 'Metals' ? getMetalsDropdownSectionRow_() : undefined); }
 
 /**
- * Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes, category}], in sheet order.
- * "Category" is an optional column (e.g. Set-Up, Line Clearance, Artwork & KC#s, Material / Silos) used to group
- * checklist rows on the form — it can live anywhere in the header row, and if it's missing entirely every item
- * comes back with category: '' so the form falls back to one flat, ungrouped table.
+ * Reads the Start-Up Verification checklist definitions: [{item, valueType, unit, notes, category, number}],
+ * in sheet order. "Category" is an optional column (e.g. Set-Up, Line Clearance, Artwork & KC#s, Material /
+ * Silos) used to group checklist rows on the form — it can live anywhere in the header row, and if it's
+ * missing entirely every item comes back with category: '' so the form falls back to one flat, ungrouped
+ * table. "No." is likewise an optional column holding a manually-assigned display number for the item —
+ * missing means number: '' and the form just doesn't show one.
  */
 function getStartUpItemsList_(department) {
   const sheetName = department === 'Metals' ? SU_ITEMS_SHEET_NAME_METALS : SU_ITEMS_SHEET_NAME;
@@ -226,6 +246,8 @@ function getStartUpItemsList_(department) {
   const data = sheet.getRange(pos.row + 1, pos.col, lastRow - pos.row, 4).getValues();
   const catPos = findHeaderRowAndCol_(sheet, 'Category', 3);
   const categories = catPos ? sheet.getRange(pos.row + 1, catPos.col, lastRow - pos.row, 1).getValues() : null;
+  const numPos = findHeaderRowAndCol_(sheet, 'No.', 3);
+  const numbers = numPos ? sheet.getRange(pos.row + 1, numPos.col, lastRow - pos.row, 1).getValues() : null;
   const out = [];
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
@@ -234,6 +256,7 @@ function getStartUpItemsList_(department) {
     out.push({
       item: item, valueType: String(row[1] || '').trim(), unit: String(row[2] || '').trim(), notes: String(row[3] || '').trim(),
       category: categories ? String(categories[i][0] || '').trim() : '',
+      number: numbers ? String(numbers[i][0] || '').trim() : '',
     });
   }
   return out;

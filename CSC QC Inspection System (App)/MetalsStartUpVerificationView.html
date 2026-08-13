@@ -3,6 +3,7 @@
   <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0</div>
 </div>
 <p class="page-sub">Qualification is required to release the line for production.</p>
+<div class="form-loading-banner" id="msu-loading"><span class="spinner"></span> Loading form data…</div>
 
 <section class="card">
   <h2>1. Run &amp; Sign-In</h2>
@@ -101,8 +102,12 @@
         fillSelect('msu-foreman', data.foremanOptions);
         fillSelect('msu-pfa-direct', data.qcTechOptions);
         renderChecklist();
+        document.getElementById('msu-loading').classList.add('hidden');
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        document.getElementById('msu-loading').classList.add('hidden');
+        showToast(err.message, true);
+      })
       .getStartUpVerificationFormDataMetals();
     document.getElementById('msu-submit-btn').addEventListener('click', submitStartUpVerificationMetals);
     document.getElementById('msu-print-btn').addEventListener('click', function () { window.print(); });
@@ -169,10 +174,14 @@
     return groups;
   }
 
+  function msuItemLabel(it) {
+    return (it.number ? esc(it.number) + '. ' : '') + esc(it.item);
+  }
+
   function checklistTableHtml(items, baseIdx) {
     var rows = items.map(function (it, i) {
       return '<tr data-idx="' + (baseIdx + i) + '">' +
-        '<td>' + esc(it.item) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
+        '<td>' + msuItemLabel(it) + (it.unit ? ' <span class="spec-hint">(' + esc(it.unit) + ')</span>' : '') + '</td>' +
         '<td class="suv-check-cell"><input type="checkbox" data-role="pass"></td>' +
         '<td class="suv-check-cell"><input type="checkbox" data-role="fail"></td>' +
         '<td class="suv-check-cell"><input type="checkbox" data-role="na"></td>' +
@@ -187,7 +196,7 @@
     var rows = items.map(function (it, i) {
       var idx = baseIdx + i;
       return '<tr data-idx="' + idx + '">' +
-        '<td>' + esc(it.item) + '</td>' +
+        '<td>' + msuItemLabel(it) + '</td>' +
         '<td>' + esc(it.unit || '—') + '</td>' +
         '<td><input type="number" step="any" data-idx="' + idx + '"></td>' +
       '</tr>';
@@ -197,14 +206,24 @@
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
+  var MSU_ITEM_COMBO_ITEMS = ['End Item No.'];
+
   function plainFieldHtml(it, idx) {
     var id = 'msu-plain-' + idx;
     var vt = (it.valueType || '').replace(/\s+/g, '').toLowerCase();
     var input;
-    if (vt === 'date') input = '<input type="date" id="' + id + '">';
+    if (MSU_ITEM_COMBO_ITEMS.indexOf(it.item) >= 0) input = '<div class="combo"><input id="' + id + '" placeholder="Start typing to search…"></div>';
+    else if (vt === 'date') input = '<input type="date" id="' + id + '">';
     else if (vt === 'decimal') input = '<input type="number" step="0.01" id="' + id + '">';
     else input = '<input type="text" id="' + id + '">';
-    return '<div class="field"><label>' + esc(it.item) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+    return '<div class="field"><label>' + msuItemLabel(it) + (it.unit ? ' (' + esc(it.unit) + ')' : '') + '</label>' + input + '</div>';
+  }
+
+  function wireItemCombos() {
+    var comboItems = (msuData.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    msuPlainItems.forEach(function (it, idx) {
+      if (MSU_ITEM_COMBO_ITEMS.indexOf(it.item) >= 0) initCombobox(document.getElementById('msu-plain-' + idx), comboItems, {});
+    });
   }
 
   function deviationFieldHtml(it, idx) {
@@ -269,6 +288,7 @@
 
     document.getElementById('msu-checklist-table').innerHTML = html ||
       '<p class="spec-hint">No checklist items or Key Process Parameters configured in the Start-Up Verification Items List- Metals.</p>';
+    wireItemCombos();
 
     msuDeviationItems = items.filter(function (it) { return msuItemKind(it) === 'deviation'; });
     document.getElementById('msu-deviation-fields').innerHTML = msuDeviationItems.map(function (it, idx) { return deviationFieldHtml(it, idx); }).join('');

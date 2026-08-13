@@ -66,6 +66,7 @@ function getStartUpVerificationFormData(department) {
     startUpTechOptions: getStartUpTechList_(department),
     shiftOptions: getShiftList_(department),
     foremanOptions: getForemanList_(department),
+    itemList: getItemList_(department), // [{itemNo, description}] — backs the End Item No. combobox (Metals)
   };
 }
 
