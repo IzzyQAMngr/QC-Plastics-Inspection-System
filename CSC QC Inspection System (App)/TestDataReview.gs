@@ -29,6 +29,48 @@ const REVIEW_MODULES_ = {
 
 const REVIEW_ROW_CAP_ = 500;
 
+/**
+ * readSheetObjects_ (Shared.gs) reads every column and builds a full-width object per row — fine
+ * for small sheets, but In-Process's log has grown to 80k+ rows across 35 columns, and this review
+ * only ever touches ~13 of them. Reading all 35 for every keystroke-triggered filter is most of
+ * why this page felt slow. This reads only the requested columns, grouped into contiguous runs so
+ * a handful of getValues() calls cover them instead of one call per column.
+ */
+function readReviewLogRows_(sheet, neededHeaders) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+  const allHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const wanted = new Set(neededHeaders);
+  const wantedCols = [];
+  allHeaders.forEach((h, i) => { if (h && wanted.has(h)) wantedCols.push({ idx: i, header: h }); });
+  if (!wantedCols.length) return [];
+
+  const numRows = lastRow - 1;
+  const rows = new Array(numRows);
+  for (let r = 0; r < numRows; r++) rows[r] = {};
+
+  let runStart = 0;
+  for (let i = 1; i <= wantedCols.length; i++) {
+    if (i < wantedCols.length && wantedCols[i].idx === wantedCols[i - 1].idx + 1) continue;
+    const run = wantedCols.slice(runStart, i);
+    const values = sheet.getRange(2, run[0].idx + 1, numRows, run.length).getValues();
+    for (let r = 0; r < numRows; r++) {
+      for (let c = 0; c < run.length; c++) rows[r][run[c].header] = values[r][c];
+    }
+    runStart = i;
+  }
+  return rows;
+}
+
+/** Every field the review ever reads off a module's log — the display columns plus whichever
+ *  filter/stat fields aren't already in that list (e.g. In-Process's date filter runs off
+ *  Timestamp Saved, not the Inspection Date column shown in the table). */
+function reviewNeededHeaders_(cfg) {
+  const extra = [cfg.moldField, cfg.itemField, cfg.colorField, cfg.charField, cfg.statusField, cfg.dateField, cfg.valueField, cfg.unitField];
+  return Array.from(new Set(cfg.columns.concat(extra.filter(Boolean))));
+}
+
 /** Every displayed date column here (Inspection Date, TestDate, Verification Date) is a plain
  *  calendar date with no meaningful time-of-day, so format as yyyy-MM-dd instead of a raw ISO
  *  timestamp — dateToStr_'s full ISO string is still what drives date-range filtering/sorting,
@@ -58,7 +100,8 @@ function getReviewFilterOptions(module) {
   const cfg = REVIEW_MODULES_[module];
   if (!cfg) throw new Error('Unknown review module: ' + module);
   const sheet = getDb_().getSheetByName(cfg.sheetName);
-  const rows = sheet ? readSheetObjects_(sheet) : [];
+  const optionFields = Array.from(new Set([cfg.charField, cfg.itemField, cfg.colorField].filter(Boolean)));
+  const rows = sheet ? readReviewLogRows_(sheet, optionFields) : [];
   const characteristics = new Set();
   const itemNumbers = new Set();
   const colors = new Set();
@@ -131,7 +174,7 @@ function getTestDataReviewRows(module, filters) {
   const dateFrom = filters.dateFrom ? toDateSafe_(filters.dateFrom) : null;
   const dateTo = filters.dateTo ? toDateSafe_(filters.dateTo) : null;
 
-  let rows = readSheetObjects_(sheet).filter(r => {
+  let rows = readReviewLogRows_(sheet, reviewNeededHeaders_(cfg)).filter(r => {
     if (moldFilter && String(r[cfg.moldField] || '').toLowerCase().indexOf(moldFilter) < 0) return false;
     if (itemFilter && cfg.itemField && String(r[cfg.itemField] || '').toLowerCase().indexOf(itemFilter) < 0) return false;
     if (colorFilter && cfg.colorField && String(r[cfg.colorField] || '').toLowerCase().indexOf(colorFilter) < 0) return false;
