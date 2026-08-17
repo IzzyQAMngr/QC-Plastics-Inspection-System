@@ -18,10 +18,12 @@
     <p class="spec-hint">Filters apply as you type or select — no need to click anything.</p>
     <div class="field-row">
       <div class="field"><label>Mold</label><div class="combo"><input id="tdr-mold" placeholder="Start typing to search…"></div></div>
-      <div class="field"><label id="tdr-char-label">Characteristic</label><div class="combo"><input id="tdr-characteristic" placeholder="Start typing to search…"></div></div>
+      <div class="field"><label>Item Number</label><div class="combo"><input id="tdr-item" placeholder="Start typing to search…"></div></div>
+      <div class="field" id="tdr-color-field"><label>Color</label><div class="combo"><input id="tdr-color" placeholder="Start typing to search…"></div></div>
       <div class="field"><label>Status</label><select id="tdr-status"><option value="">— all —</option></select></div>
     </div>
     <div class="field-row">
+      <div class="field"><label id="tdr-char-label">Characteristic</label><div class="combo"><input id="tdr-characteristic" placeholder="Start typing to search…"></div></div>
       <div class="field field-wide"><label>Search (any field)</label><input id="tdr-search" placeholder="record #, run ID, name…"></div>
       <div class="field"><label>Date from</label><input type="date" id="tdr-datefrom"></div>
       <div class="field"><label>Date to</label><input type="date" id="tdr-dateto"></div>
@@ -34,6 +36,13 @@
       <button class="ghost" type="button" data-preset="all">All Time</button>
     </div>
   </div>
+</section>
+
+<div class="form-loading-banner hidden" id="tdr-loading"><span class="spinner"></span> Loading records…</div>
+
+<section class="card">
+  <h2 style="margin:0 0 10px;">Summary</h2>
+  <div id="tdr-stats-body"><p class="spec-hint" style="margin:0;">No data yet.</p></div>
 </section>
 
 <section class="card">
@@ -61,10 +70,13 @@
         tab.classList.add('active');
         tdrModule = tab.dataset.module;
         document.getElementById('tdr-characteristic').value = '';
+        document.getElementById('tdr-item').value = '';
+        document.getElementById('tdr-color').value = '';
         tdrCharOptionsLoaded = false;
+        toggleTdrColorField();
         loadTdr();
-        // Filters were already open when the module changed — Characteristic options are module-scoped, refresh them.
-        if (!document.getElementById('tdr-filters-body').classList.contains('hidden')) maybeLoadCharacteristicOptions();
+        // Filters were already open when the module changed — these options are module-scoped, refresh them.
+        if (!document.getElementById('tdr-filters-body').classList.contains('hidden')) maybeLoadLogFilterOptions();
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-preset]'), function (btn) {
@@ -73,17 +85,24 @@
     document.getElementById('tdr-filters-toggle').addEventListener('click', function () {
       var collapsed = document.getElementById('tdr-filters-body').classList.toggle('hidden');
       document.getElementById('tdr-filters-caret').textContent = collapsed ? '▸ Show' : '▾ Hide';
-      if (!collapsed) maybeLoadCharacteristicOptions();
+      if (!collapsed) maybeLoadLogFilterOptions();
     });
-    ['tdr-mold', 'tdr-characteristic', 'tdr-search'].forEach(function (id) {
+    ['tdr-mold', 'tdr-item', 'tdr-color', 'tdr-characteristic', 'tdr-search'].forEach(function (id) {
       document.getElementById(id).addEventListener('input', debounceLoadTdr);
     });
     document.getElementById('tdr-status').addEventListener('change', loadTdr);
     document.getElementById('tdr-datefrom').addEventListener('change', loadTdr);
     document.getElementById('tdr-dateto').addEventListener('change', loadTdr);
 
+    toggleTdrColorField();
     loadGlobalFilterOptions();
     loadTdr();
+  }
+
+  /** Only In-Process records a Color per row today — hide the filter for the other modules rather
+   *  than show a field that will never match anything. */
+  function toggleTdrColorField() {
+    document.getElementById('tdr-color-field').classList.toggle('hidden', tdrModule !== 'inprocess');
   }
 
   function debounceLoadTdr() {
@@ -114,16 +133,18 @@
       .getReviewStatusOptions();
   }
 
-  /** Characteristic is the one filter still scanning the module's log data (high-cardinality, no
-   *  sensible fixed list) — lazy-loaded the first time Filters is opened for a module, not on
-   *  every switch, and never blocks the table from loading. */
-  function maybeLoadCharacteristicOptions() {
+  /** Characteristic/Item Number/Color are the filters still scanning the module's log data
+   *  (high-cardinality, no sensible fixed list) — lazy-loaded in one call the first time Filters
+   *  is opened for a module, not on every switch, and never blocks the table from loading. */
+  function maybeLoadLogFilterOptions() {
     if (tdrCharOptionsLoaded) return;
     tdrCharOptionsLoaded = true;
     google.script.run
       .withSuccessHandler(function (opts) {
         document.getElementById('tdr-char-label').textContent = opts.charLabel || 'Characteristic';
         initCombobox(document.getElementById('tdr-characteristic'), (opts.characteristics || []).map(function (c) { return { value: c, label: c }; }), { onSelect: loadTdr });
+        initCombobox(document.getElementById('tdr-item'), (opts.itemNumbers || []).map(function (c) { return { value: c, label: c }; }), { onSelect: loadTdr });
+        if (opts.hasColor) initCombobox(document.getElementById('tdr-color'), (opts.colors || []).map(function (c) { return { value: c, label: c }; }), { onSelect: loadTdr });
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getReviewFilterOptions(tdrModule);
@@ -153,21 +174,60 @@
   function loadTdr() {
     var filters = {
       moldId: document.getElementById('tdr-mold').value,
+      itemNo: document.getElementById('tdr-item').value,
+      color: document.getElementById('tdr-color').value,
       characteristic: document.getElementById('tdr-characteristic').value,
       status: document.getElementById('tdr-status').value,
       dateFrom: document.getElementById('tdr-datefrom').value,
       dateTo: document.getElementById('tdr-dateto').value,
       search: document.getElementById('tdr-search').value,
     };
-    document.getElementById('tdr-summary').textContent = 'Loading…';
+    document.getElementById('tdr-loading').classList.remove('hidden');
     google.script.run
       .withSuccessHandler(function (data) {
+        document.getElementById('tdr-loading').classList.add('hidden');
         tdrData = data;
         tdrSortCol = -1;
         renderTdr();
+        renderTdrStats(data.stats);
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        document.getElementById('tdr-loading').classList.add('hidden');
+        showToast(err.message, true);
+      })
       .getTestDataReviewRows(tdrModule, filters);
+  }
+
+  /** Small summary table (count/average/min/max off the module's numeric value field, when it has
+   *  one) plus a count-by-status breakdown — both computed server-side over every matched record,
+   *  not just the page shown in the table below. */
+  function renderTdrStats(stats) {
+    var body = document.getElementById('tdr-stats-body');
+    if (!stats || !stats.total) {
+      body.innerHTML = '<p class="spec-hint" style="margin:0;">No matching records.</p>';
+      return;
+    }
+    var html = '';
+    if (stats.numeric) {
+      var n = stats.numeric;
+      var unit = n.unit ? (' ' + esc(n.unit)) : '';
+      html += '<div style="overflow:auto;"><table class="qc-table" style="max-width:560px;">' +
+        '<thead><tr><th>Count</th><th>Average</th><th>Min</th><th>Max</th></tr></thead><tbody><tr>' +
+        '<td>' + n.count + '</td><td>' + fmtTdrNum(n.avg) + unit + '</td><td>' + fmtTdrNum(n.min) + unit + '</td><td>' + fmtTdrNum(n.max) + unit + '</td>' +
+        '</tr></tbody></table></div>';
+    }
+    var statuses = Object.keys(stats.byStatus || {}).sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
+    if (statuses.length) {
+      html += '<div style="margin-top:' + (stats.numeric ? '10px' : '0') + ';display:flex;gap:14px;flex-wrap:wrap;">' +
+        statuses.map(function (s) {
+          return '<span class="spec-hint" style="margin:0;"><b style="color:var(--text-primary);">' + esc(s) + ':</b> ' + stats.byStatus[s] + '</span>';
+        }).join('') + '</div>';
+    }
+    body.innerHTML = html || '<p class="spec-hint" style="margin:0;">No matching records.</p>';
+  }
+
+  function fmtTdrNum(v) {
+    return (Math.round(v * 1000) / 1000).toString();
   }
 
   /** Sorts numerically when every value in the column parses as a number, otherwise as text —

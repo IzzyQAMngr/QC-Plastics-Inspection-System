@@ -10,17 +10,20 @@ const REVIEW_MODULES_ = {
   inprocess: {
     sheetName: INPROCESS_LOG_SHEET_NAME, moldField: 'Mold', statusField: 'Status', dateField: 'Timestamp Saved',
     charField: 'Characteristic Name', charLabel: 'Characteristic',
-    columns: ['QC Record #', 'Inspection Date', 'Mold', 'Product Type', 'Characteristic Name', 'Actual Value', 'Status', 'Inspected By', 'Line #'],
+    itemField: 'Item No.', colorField: 'Color', valueField: 'Actual Value', unitField: 'Unit',
+    columns: ['QC Record #', 'Inspection Date', 'Mold', 'Item No.', 'Color', 'Product Type', 'Characteristic Name', 'Actual Value', 'Status', 'Inspected By', 'Line #'],
   },
   dropfreeze: {
     sheetName: DROPFREEZE_LOG_SHEET_NAME, moldField: 'Mold ID', statusField: 'Result', dateField: 'TestDate',
     charField: 'Test Name', charLabel: 'Test',
-    columns: ['RecordKey', 'Run ID', 'Mold ID', 'Test Name', 'Cavity', 'TestDate', 'TestedBy', 'Result'],
+    itemField: 'Item No', colorField: null, valueField: null, unitField: null,
+    columns: ['RecordKey', 'Run ID', 'Mold ID', 'Item No', 'Test Name', 'Cavity', 'TestDate', 'TestedBy', 'Result'],
   },
   startup: {
     sheetName: SU_LOG_SHEET_NAME, moldField: 'Mold ID', statusField: 'Status', dateField: 'Verification Date',
     charField: 'Verification Item', charLabel: 'Verification Item',
-    columns: ['Verification Record #', 'Run ID', 'Mold ID', 'Verification Item', 'Actual Value', 'Status', 'Verification Date', 'QC Tech Name'],
+    itemField: 'Item', colorField: null, valueField: 'Actual Value', unitField: 'Unit',
+    columns: ['Verification Record #', 'Run ID', 'Mold ID', 'Item', 'Verification Item', 'Actual Value', 'Status', 'Verification Date', 'QC Tech Name'],
   },
 };
 
@@ -46,10 +49,10 @@ function getReviewStatusOptions_() { return settingsColumnBelow_('Inspection Sta
 function getReviewStatusOptions() { return getReviewStatusOptions_(); }
 
 /**
- * Distinct Characteristic values for the module's own log data — the one filter still worth
- * scanning for, since it's high-cardinality (dimensional points, verification items, etc.) and
- * varies by mold, so there's no sensible fixed list for it. Lazy-loaded client-side (first time
- * Filters is expanded for a module), not on every switch.
+ * Distinct Characteristic/Item Number/Color values for the module's own log data — all
+ * high-cardinality (dimensional points, verification items, item numbers, colors) and vary by
+ * mold, so there's no sensible fixed list for any of them. Lazy-loaded client-side (first time
+ * Filters is expanded for a module), not on every switch, and in one scan of the sheet.
  */
 function getReviewFilterOptions(module) {
   const cfg = REVIEW_MODULES_[module];
@@ -57,25 +60,71 @@ function getReviewFilterOptions(module) {
   const sheet = getDb_().getSheetByName(cfg.sheetName);
   const rows = sheet ? readSheetObjects_(sheet) : [];
   const characteristics = new Set();
-  rows.forEach(r => { const c = String(r[cfg.charField] || '').trim(); if (c) characteristics.add(c); });
-  return { charLabel: cfg.charLabel, characteristics: Array.from(characteristics).sort((a, b) => a.localeCompare(b)) };
+  const itemNumbers = new Set();
+  const colors = new Set();
+  rows.forEach(r => {
+    const c = String(r[cfg.charField] || '').trim(); if (c) characteristics.add(c);
+    if (cfg.itemField) { const it = String(r[cfg.itemField] || '').trim(); if (it) itemNumbers.add(it); }
+    if (cfg.colorField) { const co = String(r[cfg.colorField] || '').trim(); if (co) colors.add(co); }
+  });
+  return {
+    charLabel: cfg.charLabel,
+    characteristics: Array.from(characteristics).sort((a, b) => a.localeCompare(b)),
+    itemNumbers: Array.from(itemNumbers).sort((a, b) => a.localeCompare(b)),
+    colors: Array.from(colors).sort((a, b) => a.localeCompare(b)),
+    hasColor: !!cfg.colorField,
+  };
 }
 
 /**
- * filters: {moldId, characteristic, search, dateFrom, dateTo, status} — all optional.
- * Mold/Characteristic/search are typed, substring matches. Status is a single exact match off the
- * fixed Settings list. Returns { columns, rows, totalMatched, capped }. Rows are sorted newest-first
- * by the module's date field and capped at REVIEW_ROW_CAP_ — totalMatched/capped tell the client if
- * more exist.
+ * Summary stats over ALL matched rows (before the display cap) — so it reflects the true filtered
+ * set even when results are capped. A count-by-status breakdown works for every module, including
+ * Drop Freeze, whose "value" is a Pass/Fail/Inconclusive result rather than a number. Average/min/max
+ * only apply where cfg.valueField is configured, and only over the rows that actually parse as a
+ * number — Start-Up mixes numeric verification items with text/dropdown/sign-off ones.
+ */
+function computeReviewStats_(rows, cfg) {
+  const byStatus = {};
+  const nums = [];
+  let unit = '';
+  rows.forEach(r => {
+    const s = String(r[cfg.statusField] || '').trim() || '(blank)';
+    byStatus[s] = (byStatus[s] || 0) + 1;
+    if (cfg.valueField) {
+      const n = parseFloat(r[cfg.valueField]);
+      if (!isNaN(n) && isFinite(n)) {
+        nums.push(n);
+        if (!unit && cfg.unitField && r[cfg.unitField]) unit = String(r[cfg.unitField]).trim();
+      }
+    }
+  });
+  const numeric = nums.length ? {
+    count: nums.length,
+    avg: nums.reduce((a, b) => a + b, 0) / nums.length,
+    min: Math.min.apply(null, nums),
+    max: Math.max.apply(null, nums),
+    unit: unit,
+  } : null;
+  return { total: rows.length, byStatus: byStatus, numeric: numeric };
+}
+
+/**
+ * filters: {moldId, itemNo, color, characteristic, search, dateFrom, dateTo, status} — all optional.
+ * Mold/Item Number/Color/Characteristic/search are typed, substring matches. Status is a single exact
+ * match off the fixed Settings list. Returns { columns, rows, totalMatched, capped, stats }. Rows are
+ * sorted newest-first by the module's date field and capped at REVIEW_ROW_CAP_ — totalMatched/capped
+ * tell the client if more exist; stats is computed over every matched row, not just the capped page.
  */
 function getTestDataReviewRows(module, filters) {
   const cfg = REVIEW_MODULES_[module];
   if (!cfg) throw new Error('Unknown review module: ' + module);
   const sheet = getDb_().getSheetByName(cfg.sheetName);
-  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false };
+  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null } };
 
   filters = filters || {};
   const moldFilter = String(filters.moldId || '').trim().toLowerCase();
+  const itemFilter = String(filters.itemNo || '').trim().toLowerCase();
+  const colorFilter = String(filters.color || '').trim().toLowerCase();
   const charFilter = String(filters.characteristic || '').trim().toLowerCase();
   const statusFilter = String(filters.status || '').trim().toLowerCase();
   const searchFilter = String(filters.search || '').trim().toLowerCase();
@@ -84,6 +133,8 @@ function getTestDataReviewRows(module, filters) {
 
   let rows = readSheetObjects_(sheet).filter(r => {
     if (moldFilter && String(r[cfg.moldField] || '').toLowerCase().indexOf(moldFilter) < 0) return false;
+    if (itemFilter && cfg.itemField && String(r[cfg.itemField] || '').toLowerCase().indexOf(itemFilter) < 0) return false;
+    if (colorFilter && cfg.colorField && String(r[cfg.colorField] || '').toLowerCase().indexOf(colorFilter) < 0) return false;
     if (charFilter && String(r[cfg.charField] || '').toLowerCase().indexOf(charFilter) < 0) return false;
     if (statusFilter && String(r[cfg.statusField] || '').trim().toLowerCase() !== statusFilter) return false;
     if (dateFrom || dateTo) {
@@ -105,10 +156,11 @@ function getTestDataReviewRows(module, filters) {
   });
 
   const totalMatched = rows.length;
+  const stats = computeReviewStats_(rows, cfg);
   const capped = totalMatched > REVIEW_ROW_CAP_;
   rows = rows.slice(0, REVIEW_ROW_CAP_);
 
   const tz = getDb_().getSpreadsheetTimeZone();
   const outRows = rows.map(r => cfg.columns.map(c => sanitizeForClient_(r[c], tz)));
-  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped };
+  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats };
 }
