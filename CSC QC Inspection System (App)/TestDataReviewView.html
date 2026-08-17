@@ -1,13 +1,19 @@
 <h1 class="page-title">📈 Data Analysis</h1>
 <p class="page-sub">Filter and analyze inspection data across In-Process, Drop Freeze, and Start-Up Verification — spot trends and pass rates to help decide whether a flag is a minor deviation you can accept, or something that needs action.</p>
 
-<section class="card">
-  <div class="line-tabs" id="tdr-module-tabs">
-    <div class="line-tab active" data-module="inprocess">📋 In-Process</div>
-    <div class="line-tab" data-module="dropfreeze">🧊 Drop Freeze</div>
-    <div class="line-tab" data-module="startup">✅ Start-Up Verification</div>
-  </div>
-</section>
+<div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px;">
+  <section class="card" style="flex:0 0 300px;margin:0;">
+    <div class="line-tabs" id="tdr-module-tabs">
+      <div class="line-tab active" data-module="inprocess">📋 In-Process</div>
+      <div class="line-tab" data-module="dropfreeze">🧊 Drop Freeze</div>
+      <div class="line-tab" data-module="startup">✅ Start-Up Verification</div>
+    </div>
+  </section>
+  <section class="card" style="flex:1 1 380px;margin:0;">
+    <h2 style="margin:0 0 10px;">Overall Summary</h2>
+    <div id="tdr-overall-body"><p class="spec-hint" style="margin:0;">No data yet.</p></div>
+  </section>
+</div>
 
 <section class="card" style="padding-bottom:10px;">
   <div id="tdr-filters-toggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
@@ -20,11 +26,13 @@
       <div class="field"><label>Mold</label><div class="combo"><input id="tdr-mold" placeholder="Start typing to search…"></div></div>
       <div class="field"><label>Item Number</label><div class="combo"><input id="tdr-item" placeholder="Start typing to search…"></div></div>
       <div class="field" id="tdr-color-field"><label>Color</label><div class="combo"><input id="tdr-color" placeholder="Start typing to search…"></div></div>
-      <div class="field"><label>Status</label><select id="tdr-status"><option value="">— all —</option></select></div>
     </div>
     <div class="field-row">
+      <div class="field"><label>Status</label><select id="tdr-status"><option value="">— all —</option></select></div>
       <div class="field"><label id="tdr-char-label">Characteristic</label><div class="combo"><input id="tdr-characteristic" placeholder="Start typing to search…"></div></div>
       <div class="field field-wide"><label>Search (any field)</label><input id="tdr-search" placeholder="record #, run ID, name…"></div>
+    </div>
+    <div class="field-row">
       <div class="field"><label>Date from</label><input type="date" id="tdr-datefrom"></div>
       <div class="field"><label>Date to</label><input type="date" id="tdr-dateto"></div>
     </div>
@@ -41,8 +49,8 @@
 <div class="form-loading-banner hidden" id="tdr-loading"><span class="spinner"></span> Loading records…</div>
 
 <section class="card">
-  <h2 style="margin:0 0 10px;">Summary</h2>
-  <div id="tdr-stats-body"><p class="spec-hint" style="margin:0;">No data yet.</p></div>
+  <h2 style="margin:0 0 10px;">Characteristic Analysis</h2>
+  <div id="tdr-char-analysis-body"><p class="spec-hint" style="margin:0;">Select a Characteristic above to see its average, min, and max.</p></div>
 </section>
 
 <section class="card">
@@ -198,14 +206,20 @@
       .getTestDataReviewRows(tdrModule, filters);
   }
 
-  /** Visual summary: a Pass Rate meter (same look as the Dashboard's line meters), KPI tiles for
-   *  how many distinct Molds/Items showed up in the filtered set, a min/avg/max range bar for the
-   *  module's numeric value (only once a Characteristic is selected — averaging unrelated
-   *  measurements like weight and ΔE color under one unit is meaningless), and any remaining
-   *  statuses (blank/Inconclusive/etc.) as a plain breakdown. All computed server-side over every
-   *  matched record, not just the page shown in the table below. */
+  /** Two independent panels computed off the same server-side stats (every matched row, not just
+   *  the page shown in the table below): an Overall Summary — a Pass Rate meter (same look as the
+   *  Dashboard's line meters), Molds/Items Tested KPI tiles, and any remaining statuses
+   *  (blank/Inconclusive/etc.) — that stays visible above Filters regardless of what's selected;
+   *  and a Characteristic Analysis — a min/avg/max range bar for the module's numeric value — that
+   *  only appears once a Characteristic is selected, since averaging unrelated measurements like
+   *  weight and ΔE color under one unit is meaningless. */
   function renderTdrStats(stats) {
-    var body = document.getElementById('tdr-stats-body');
+    renderTdrOverallSummary(stats);
+    renderTdrCharAnalysis(stats);
+  }
+
+  function renderTdrOverallSummary(stats) {
+    var body = document.getElementById('tdr-overall-body');
     if (!stats || !stats.total) {
       body.innerHTML = '<p class="spec-hint" style="margin:0;">No matching records.</p>';
       return;
@@ -224,28 +238,15 @@
         '</div>';
     }
 
-    html += '<div class="tiles" style="max-width:340px;margin-bottom:16px;">' +
+    var otherStatuses = Object.keys(stats.byStatus || {})
+      .filter(function (s) { return s !== 'Pass' && s !== 'Fail'; })
+      .sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
+
+    html += '<div class="tiles" style="max-width:340px;' + (otherStatuses.length ? 'margin-bottom:16px;' : '') + '">' +
       '<div class="tile"><div class="label">Molds Tested</div><div class="value">' + stats.moldsTested + '</div></div>' +
       '<div class="tile"><div class="label">Items Tested</div><div class="value">' + stats.itemsTested + '</div></div>' +
       '</div>';
 
-    if (stats.numeric) {
-      var n = stats.numeric;
-      var unit = n.unit ? (' ' + esc(n.unit)) : '';
-      var span = n.max - n.min;
-      var markerPct = span > 0 ? ((n.avg - n.min) / span) * 100 : 50;
-      html += '<div class="range-bar" style="max-width:420px;margin-bottom:16px;">' +
-        '<div class="range-bar-labels"><span>Min <b>' + fmtTdrNum(n.min) + unit + '</b></span>' +
-        '<span>Avg <b>' + fmtTdrNum(n.avg) + unit + '</b></span>' +
-        '<span>Max <b>' + fmtTdrNum(n.max) + unit + '</b></span></div>' +
-        '<div class="range-bar-track"><div class="range-bar-marker" style="left:' + markerPct + '%;"></div></div>' +
-        '<div class="spec-hint" style="margin:0;">' + n.count + ' reading' + (n.count === 1 ? '' : 's') + '</div>' +
-        '</div>';
-    }
-
-    var otherStatuses = Object.keys(stats.byStatus || {})
-      .filter(function (s) { return s !== 'Pass' && s !== 'Fail'; })
-      .sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
     if (otherStatuses.length) {
       html += '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
         otherStatuses.map(function (s) {
@@ -254,6 +255,25 @@
     }
 
     body.innerHTML = html || '<p class="spec-hint" style="margin:0;">No matching records.</p>';
+  }
+
+  function renderTdrCharAnalysis(stats) {
+    var body = document.getElementById('tdr-char-analysis-body');
+    if (!stats || !stats.numeric) {
+      body.innerHTML = '<p class="spec-hint" style="margin:0;">Select a Characteristic above to see its average, min, and max.</p>';
+      return;
+    }
+    var n = stats.numeric;
+    var unit = n.unit ? (' ' + esc(n.unit)) : '';
+    var span = n.max - n.min;
+    var markerPct = span > 0 ? ((n.avg - n.min) / span) * 100 : 50;
+    body.innerHTML = '<div class="range-bar" style="max-width:420px;">' +
+      '<div class="range-bar-labels"><span>Min <b>' + fmtTdrNum(n.min) + unit + '</b></span>' +
+      '<span>Avg <b>' + fmtTdrNum(n.avg) + unit + '</b></span>' +
+      '<span>Max <b>' + fmtTdrNum(n.max) + unit + '</b></span></div>' +
+      '<div class="range-bar-track"><div class="range-bar-marker" style="left:' + markerPct + '%;"></div></div>' +
+      '<div class="spec-hint" style="margin:0;">' + n.count + ' reading' + (n.count === 1 ? '' : 's') + '</div>' +
+      '</div>';
   }
 
   function fmtTdrNum(v) {
