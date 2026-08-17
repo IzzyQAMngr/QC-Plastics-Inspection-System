@@ -198,27 +198,38 @@
       .getTestDataReviewRows(tdrModule, filters);
   }
 
-  /** Small summary table (count/average/min/max off the module's numeric value field, when it has
-   *  one) plus a count-by-status breakdown — both computed server-side over every matched record,
-   *  not just the page shown in the table below. */
+  /** Small summary table — count/average/min/max off the module's numeric value field (when it has
+   *  one), plus Tested/Pass Rate/Fail Rate (Pass/(Pass+Fail), excluding blank/Inconclusive/other
+   *  statuses) — and a count-by-status breakdown below. All computed server-side over every
+   *  matched record, not just the page shown in the table below. */
   function renderTdrStats(stats) {
     var body = document.getElementById('tdr-stats-body');
     if (!stats || !stats.total) {
       body.innerHTML = '<p class="spec-hint" style="margin:0;">No matching records.</p>';
       return;
     }
-    var html = '';
+    var headers = [];
+    var cells = [];
     if (stats.numeric) {
       var n = stats.numeric;
       var unit = n.unit ? (' ' + esc(n.unit)) : '';
-      html += '<div style="overflow:auto;"><table class="qc-table" style="max-width:560px;">' +
-        '<thead><tr><th>Count</th><th>Average</th><th>Min</th><th>Max</th></tr></thead><tbody><tr>' +
-        '<td>' + n.count + '</td><td>' + fmtTdrNum(n.avg) + unit + '</td><td>' + fmtTdrNum(n.min) + unit + '</td><td>' + fmtTdrNum(n.max) + unit + '</td>' +
-        '</tr></tbody></table></div>';
+      headers.push('Count', 'Average', 'Min', 'Max');
+      cells.push(n.count, fmtTdrNum(n.avg) + unit, fmtTdrNum(n.min) + unit, fmtTdrNum(n.max) + unit);
+    }
+    if (stats.passRate) {
+      var p = stats.passRate;
+      headers.push('Tested', 'Pass Rate', 'Fail Rate');
+      cells.push(p.tested, fmtTdrPct(p.passPct) + ' (' + p.passCount + ')', fmtTdrPct(p.failPct) + ' (' + p.failCount + ')');
+    }
+    var html = '';
+    if (headers.length) {
+      html += '<div style="overflow:auto;"><table class="qc-table" style="max-width:760px;">' +
+        '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>' +
+        '<tbody><tr>' + cells.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr></tbody></table></div>';
     }
     var statuses = Object.keys(stats.byStatus || {}).sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
     if (statuses.length) {
-      html += '<div style="margin-top:' + (stats.numeric ? '10px' : '0') + ';display:flex;gap:14px;flex-wrap:wrap;">' +
+      html += '<div style="margin-top:' + (headers.length ? '10px' : '0') + ';display:flex;gap:14px;flex-wrap:wrap;">' +
         statuses.map(function (s) {
           return '<span class="spec-hint" style="margin:0;"><b style="color:var(--text-primary);">' + esc(s) + ':</b> ' + stats.byStatus[s] + '</span>';
         }).join('') + '</div>';
@@ -228,6 +239,10 @@
 
   function fmtTdrNum(v) {
     return (Math.round(v * 1000) / 1000).toString();
+  }
+
+  function fmtTdrPct(v) {
+    return (Math.round(v * 10) / 10) + '%';
   }
 
   /** Sorts numerically when every value in the column parses as a number, otherwise as text —

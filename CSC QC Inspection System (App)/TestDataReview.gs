@@ -148,7 +148,21 @@ function computeReviewStats_(rows, cfg) {
     max: Math.max.apply(null, nums),
     unit: unit,
   } : null;
-  return { total: rows.length, byStatus: byStatus, numeric: numeric };
+
+  // Pass rate is Pass/(Pass+Fail) — "tested" deliberately excludes blank/Inconclusive/other
+  // statuses (informational log rows with no pass/fail verdict), not the full matched count.
+  const passCount = byStatus['Pass'] || 0;
+  const failCount = byStatus['Fail'] || 0;
+  const tested = passCount + failCount;
+  const passRate = tested ? {
+    tested: tested,
+    passCount: passCount,
+    failCount: failCount,
+    passPct: (passCount / tested) * 100,
+    failPct: (failCount / tested) * 100,
+  } : null;
+
+  return { total: rows.length, byStatus: byStatus, numeric: numeric, passRate: passRate };
 }
 
 /**
@@ -162,7 +176,7 @@ function getTestDataReviewRows(module, filters) {
   const cfg = REVIEW_MODULES_[module];
   if (!cfg) throw new Error('Unknown review module: ' + module);
   const sheet = getDb_().getSheetByName(cfg.sheetName);
-  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null } };
+  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null, passRate: null } };
 
   filters = filters || {};
   const moldFilter = String(filters.moldId || '').trim().toLowerCase();
