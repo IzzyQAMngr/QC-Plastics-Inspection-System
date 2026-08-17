@@ -126,7 +126,7 @@
   table.qc-table th { background: var(--header-bg); color: var(--text-secondary); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
   table.qc-table tbody tr:nth-child(even) td { background: var(--row-alt); }
 
-  /* Scrollable table with a frozen (sticky) header row — used by Inspection Records
+  /* Scrollable table with a frozen (sticky) header row — used by Data Analysis
      and the Add Run active-runs grids. */
   .scroll-table-wrap { overflow: auto; max-height: 60vh; }
   .scroll-table-wrap table.qc-table th { position: sticky; top: 0; z-index: 2; }
@@ -283,11 +283,25 @@
   table.suv-checklist-table th.suv-check-col, table.suv-checklist-table td.suv-check-cell { width: 64px; text-align: center; }
   table.suv-checklist-table td.suv-check-cell input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--series-1); }
 
-  /* ---- Inspection Records: dense Excel-like grid — small font, frozen header, sortable ---- */
+  /* ---- Data Analysis: dense Excel-like grid — small font, frozen header, sortable ---- */
   #tdr-table { font-size: 11.5px; }
   #tdr-table th, #tdr-table td { white-space: nowrap; vertical-align: middle; padding: 4px 8px; }
   #tdr-table th { cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 2; }
   #tdr-table th .sort-arrow { margin-left: 4px; color: var(--text-muted); }
+
+  /* Min/avg/max range bar — a single marker's position between two endpoints, used when a
+     Characteristic filter narrows the numeric value column to one comparable unit. */
+  .range-bar-track {
+    position: relative; height: 8px; background: var(--gridline); border: 1px solid var(--border);
+    border-radius: 4px; margin: 8px 0 4px;
+  }
+  .range-bar-marker {
+    position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--series-1); border: 2px solid var(--surface-1); box-shadow: 0 0 0 1px var(--series-1);
+    transform: translate(-50%, -50%);
+  }
+  .range-bar-labels { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary); }
+  .range-bar-labels b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
   /* ---- Print: strip nav/chrome so a form can be printed blank and filled by hand ---- */
   @media print {

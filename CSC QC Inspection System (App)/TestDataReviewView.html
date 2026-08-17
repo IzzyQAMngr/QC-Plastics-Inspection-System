@@ -1,5 +1,5 @@
-<h1 class="page-title">🔍 Inspection Records</h1>
-<p class="page-sub">Browse and filter saved records across In-Process, Drop Freeze, and Start-Up Verification — all of your inspection data in one place.</p>
+<h1 class="page-title">📈 Data Analysis</h1>
+<p class="page-sub">Filter and analyze inspection data across In-Process, Drop Freeze, and Start-Up Verification — spot trends and pass rates to help decide whether a flag is a minor deviation you can accept, or something that needs action.</p>
 
 <section class="card">
   <div class="line-tabs" id="tdr-module-tabs">
@@ -198,9 +198,11 @@
       .getTestDataReviewRows(tdrModule, filters);
   }
 
-  /** Small summary table — count/average/min/max off the module's numeric value field (when it has
-   *  one), plus Tested/Pass Rate/Fail Rate (Pass/(Pass+Fail), excluding blank/Inconclusive/other
-   *  statuses) — and a count-by-status breakdown below. All computed server-side over every
+  /** Visual summary: a Pass Rate meter (same look as the Dashboard's line meters), KPI tiles for
+   *  how many distinct Molds/Items showed up in the filtered set, a min/avg/max range bar for the
+   *  module's numeric value (only once a Characteristic is selected — averaging unrelated
+   *  measurements like weight and ΔE color under one unit is meaningless), and any remaining
+   *  statuses (blank/Inconclusive/etc.) as a plain breakdown. All computed server-side over every
    *  matched record, not just the page shown in the table below. */
   function renderTdrStats(stats) {
     var body = document.getElementById('tdr-stats-body');
@@ -208,41 +210,54 @@
       body.innerHTML = '<p class="spec-hint" style="margin:0;">No matching records.</p>';
       return;
     }
-    var headers = [];
-    var cells = [];
+    var html = '';
+
+    if (stats.passRate) {
+      var p = stats.passRate;
+      var pct = Math.round(p.passPct * 10) / 10;
+      var sev = pct >= 95 ? 'good' : (pct >= 85 ? 'warning' : 'critical');
+      html += '<div class="lc-meter" style="max-width:340px;margin-bottom:16px;">' +
+        '<div class="lc-meter-label">Pass Rate</div>' +
+        '<div class="lc-meter-pct ' + sev + '">' + pct + '%</div>' +
+        '<div class="meter-track"><div class="meter-fill ' + sev + '" style="width:' + pct + '%;"></div></div>' +
+        '<div class="lc-meter-caption">' + p.passCount + ' pass &middot; ' + p.failCount + ' fail (' + p.tested + ' tested)</div>' +
+        '</div>';
+    }
+
+    html += '<div class="tiles" style="max-width:340px;margin-bottom:16px;">' +
+      '<div class="tile"><div class="label">Molds Tested</div><div class="value">' + stats.moldsTested + '</div></div>' +
+      '<div class="tile"><div class="label">Items Tested</div><div class="value">' + stats.itemsTested + '</div></div>' +
+      '</div>';
+
     if (stats.numeric) {
       var n = stats.numeric;
       var unit = n.unit ? (' ' + esc(n.unit)) : '';
-      headers.push('Count', 'Average', 'Min', 'Max');
-      cells.push(n.count, fmtTdrNum(n.avg) + unit, fmtTdrNum(n.min) + unit, fmtTdrNum(n.max) + unit);
+      var span = n.max - n.min;
+      var markerPct = span > 0 ? ((n.avg - n.min) / span) * 100 : 50;
+      html += '<div class="range-bar" style="max-width:420px;margin-bottom:16px;">' +
+        '<div class="range-bar-labels"><span>Min <b>' + fmtTdrNum(n.min) + unit + '</b></span>' +
+        '<span>Avg <b>' + fmtTdrNum(n.avg) + unit + '</b></span>' +
+        '<span>Max <b>' + fmtTdrNum(n.max) + unit + '</b></span></div>' +
+        '<div class="range-bar-track"><div class="range-bar-marker" style="left:' + markerPct + '%;"></div></div>' +
+        '<div class="spec-hint" style="margin:0;">' + n.count + ' reading' + (n.count === 1 ? '' : 's') + '</div>' +
+        '</div>';
     }
-    if (stats.passRate) {
-      var p = stats.passRate;
-      headers.push('Tested', 'Pass Rate', 'Fail Rate');
-      cells.push(p.tested, fmtTdrPct(p.passPct) + ' (' + p.passCount + ')', fmtTdrPct(p.failPct) + ' (' + p.failCount + ')');
-    }
-    var html = '';
-    if (headers.length) {
-      html += '<div style="overflow:auto;"><table class="qc-table" style="max-width:760px;">' +
-        '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>' +
-        '<tbody><tr>' + cells.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr></tbody></table></div>';
-    }
-    var statuses = Object.keys(stats.byStatus || {}).sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
-    if (statuses.length) {
-      html += '<div style="margin-top:' + (headers.length ? '10px' : '0') + ';display:flex;gap:14px;flex-wrap:wrap;">' +
-        statuses.map(function (s) {
+
+    var otherStatuses = Object.keys(stats.byStatus || {})
+      .filter(function (s) { return s !== 'Pass' && s !== 'Fail'; })
+      .sort(function (a, b) { return stats.byStatus[b] - stats.byStatus[a]; });
+    if (otherStatuses.length) {
+      html += '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+        otherStatuses.map(function (s) {
           return '<span class="spec-hint" style="margin:0;"><b style="color:var(--text-primary);">' + esc(s) + ':</b> ' + stats.byStatus[s] + '</span>';
         }).join('') + '</div>';
     }
+
     body.innerHTML = html || '<p class="spec-hint" style="margin:0;">No matching records.</p>';
   }
 
   function fmtTdrNum(v) {
     return (Math.round(v * 1000) / 1000).toString();
-  }
-
-  function fmtTdrPct(v) {
-    return (Math.round(v * 10) / 10) + '%';
   }
 
   /** Sorts numerically when every value in the column parses as a number, otherwise as text —

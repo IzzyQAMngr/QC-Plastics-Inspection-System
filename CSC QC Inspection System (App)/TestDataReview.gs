@@ -122,18 +122,29 @@ function getReviewFilterOptions(module) {
 /**
  * Summary stats over ALL matched rows (before the display cap) — so it reflects the true filtered
  * set even when results are capped. A count-by-status breakdown works for every module, including
- * Drop Freeze, whose "value" is a Pass/Fail/Inconclusive result rather than a number. Average/min/max
- * only apply where cfg.valueField is configured, and only over the rows that actually parse as a
- * number — Start-Up mixes numeric verification items with text/dropdown/sign-off ones.
+ * Drop Freeze, whose "value" is a Pass/Fail/Inconclusive result rather than a number.
+ *
+ * includeNumeric gates the average/min/max block: it's only meaningful once a single Characteristic
+ * is selected (cfg.valueField mixes unrelated measurements — weight in grams, ΔE color values,
+ * thickness — under one column, so an unfiltered average is noise, not signal). The caller passes
+ * true only when a Characteristic filter is active.
  */
-function computeReviewStats_(rows, cfg) {
+function computeReviewStats_(rows, cfg, includeNumeric) {
   const byStatus = {};
   const nums = [];
+  const molds = new Set();
+  const items = new Set();
   let unit = '';
   rows.forEach(r => {
     const s = String(r[cfg.statusField] || '').trim() || '(blank)';
     byStatus[s] = (byStatus[s] || 0) + 1;
-    if (cfg.valueField) {
+    const m = String(r[cfg.moldField] || '').trim();
+    if (m) molds.add(m);
+    if (cfg.itemField) {
+      const it = String(r[cfg.itemField] || '').trim();
+      if (it) items.add(it);
+    }
+    if (includeNumeric && cfg.valueField) {
       const n = parseFloat(r[cfg.valueField]);
       if (!isNaN(n) && isFinite(n)) {
         nums.push(n);
@@ -162,7 +173,10 @@ function computeReviewStats_(rows, cfg) {
     failPct: (failCount / tested) * 100,
   } : null;
 
-  return { total: rows.length, byStatus: byStatus, numeric: numeric, passRate: passRate };
+  return {
+    total: rows.length, byStatus: byStatus, numeric: numeric, passRate: passRate,
+    moldsTested: molds.size, itemsTested: items.size,
+  };
 }
 
 /**
@@ -176,7 +190,7 @@ function getTestDataReviewRows(module, filters) {
   const cfg = REVIEW_MODULES_[module];
   if (!cfg) throw new Error('Unknown review module: ' + module);
   const sheet = getDb_().getSheetByName(cfg.sheetName);
-  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null, passRate: null } };
+  if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null, passRate: null, moldsTested: 0, itemsTested: 0 } };
 
   filters = filters || {};
   const moldFilter = String(filters.moldId || '').trim().toLowerCase();
@@ -213,7 +227,7 @@ function getTestDataReviewRows(module, filters) {
   });
 
   const totalMatched = rows.length;
-  const stats = computeReviewStats_(rows, cfg);
+  const stats = computeReviewStats_(rows, cfg, !!charFilter);
   const capped = totalMatched > REVIEW_ROW_CAP_;
   rows = rows.slice(0, REVIEW_ROW_CAP_);
 

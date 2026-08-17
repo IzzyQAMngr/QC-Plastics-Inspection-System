@@ -120,7 +120,7 @@
   }
 
   // "Fail" internally (status codes, the saved Status column, computeRowStatus/evalBound) stays
-  // as-is — Dashboard/Inspection Records key off that literal value. Only what the QC tech reads
+  // as-is — Dashboard/Data Analysis key off that literal value. Only what the QC tech reads
   // is relabeled "Deviation".
   function statusBadge(status) {
     if (status === 'FAIL') return '<span class="badge critical">Deviation</span>';
@@ -653,7 +653,7 @@
     google.script.run
       .withSuccessHandler(function (result) {
         document.getElementById('ip-record-id').value = result.recordId;
-        showToast('Record ' + result.recordId + ' has been added to Inspection Records (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
+        showToast('Record ' + result.recordId + ' has been saved (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
           (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
           (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
           result.failCount > 0);

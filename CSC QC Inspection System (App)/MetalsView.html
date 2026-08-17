@@ -489,7 +489,7 @@
     google.script.run
       .withSuccessHandler(function (result) {
         document.getElementById('mei-record-id').value = result.recordId;
-        showToast('Record ' + result.recordId + ' has been added to Inspection Records (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
+        showToast('Record ' + result.recordId + ' has been saved (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
           (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
           (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
           result.failCount > 0);
