@@ -399,6 +399,7 @@
         line.mold = ''; line.product = ''; line.moldDescription = ''; line.bounds = null; line.dimFields = []; line.colorSpec = null;
         document.getElementById('lb-productType').value = '';
         document.getElementById('lb-moldDescription').value = '';
+        refreshReviewIfOpen();
       },
     });
 
@@ -428,6 +429,7 @@
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
       ensureLine(n).cavityRows.push(newCavityRow(''));
       renderLinePanel();
+      refreshReviewIfOpen();
     });
 
     var container = document.getElementById('lb-cavity-rows');
@@ -439,6 +441,7 @@
         ensureLine(n).cavityRows.splice(idx, 1);
         renderLinePanel();
         renderLineTabs();
+        refreshReviewIfOpen();
       }
     });
   }
@@ -464,6 +467,7 @@
     var slot = e.target.closest('.row-card').querySelector('[data-badge-slot]');
     if (slot) slot.innerHTML = badge + ' <button class="ghost" data-remove-row>Remove</button>';
     renderLineTabs();
+    refreshReviewIfOpen();
   }
 
   function fetchMoldDependents(n, regenerateRows) {
@@ -487,6 +491,7 @@
         renderLinePanel();
         renderLineTabs();
         if (line.color) refetchColorSpec(n); // bounds was just replaced wholesale — restore the ΔE bound
+        refreshReviewIfOpen();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getSpecsForRow(line.mold, line.color, line.itemNo);
@@ -509,6 +514,7 @@
         if (!isNaN(max)) line.bounds.deltaE = { lsl: null, usl: max };
         else delete line.bounds.deltaE;
         renderLinePanel();
+        refreshReviewIfOpen();
       })
       .withFailureHandler(function () {})
       .getColorSpecForRow(line.mold, line.color, line.itemNo);
@@ -516,6 +522,14 @@
 
   // ================= REVIEW & SUBMIT =================
   document.getElementById('ip-review-btn').addEventListener('click', renderReview);
+
+  // Called after any edit that can change deviation/review status while the Review panel is
+  // already open, so a stale "all clear" Submit button can never survive a later edit —
+  // see the 2026-08-18 incident where a post-review value change left Submit rendered but stale.
+  function refreshReviewIfOpen() {
+    var area = document.getElementById('ip-review-area');
+    if (area && !area.classList.contains('hidden')) renderReview();
+  }
 
   function activeLinesWithData() {
     return LINE_NUMBERS.filter(function (n) { return ipLines[n] && ipLines[n].mold && ipLines[n].cavityRows.length > 0; });
@@ -621,6 +635,24 @@
   function submitAllLines() {
     var lines = activeLinesWithData();
     if (lines.length === 0) return;
+
+    // Safety net: re-check fresh right before submitting, in case something changed the data
+    // since this Submit button was rendered (the 2026-08-18 incident: a stale "all clear" button
+    // got clicked after a value changed, and only the server caught it).
+    var unresolved = 0;
+    lines.forEach(function (n) {
+      var line = ipLines[n];
+      line.cavityRows.forEach(function (r) {
+        var status = computeRowStatus(r, line.bounds, dimKeysFor(line));
+        if (status === 'FAIL' && !(r.releaseDecision && r.releaseJustification)) unresolved++;
+      });
+    });
+    if (unresolved > 0) {
+      showToast(unresolved + ' deviation(s) changed since you reviewed and still need a Release Decision + Justification — please resolve below before submitting.', true);
+      renderReview();
+      return;
+    }
+
     var inspDateTime = splitDateTimeLocal(document.getElementById('ip-inspDateTime').value);
     var header = {
       inspDate: inspDateTime.date,
@@ -648,10 +680,22 @@
 
     var btn = document.getElementById('ip-submit-all-btn');
     var originalLabel = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    var savingNote = null;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      savingNote = document.createElement('p');
+      savingNote.id = 'ip-saving-note';
+      savingNote.className = 'spec-hint';
+      savingNote.style.color = 'var(--critical, #b3261e)';
+      savingNote.style.fontWeight = '600';
+      savingNote.textContent = 'Saving can take up to a minute — please don\'t close or refresh this tab.';
+      btn.insertAdjacentElement('afterend', savingNote);
+    }
 
     google.script.run
       .withSuccessHandler(function (result) {
+        if (savingNote) savingNote.remove();
         document.getElementById('ip-record-id').value = result.recordId;
         showToast('Record ' + result.recordId + ' has been saved (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
           (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
@@ -662,6 +706,7 @@
         document.getElementById('ip-review-area').classList.add('hidden');
       })
       .withFailureHandler(function (err) {
+        if (savingNote) savingNote.remove();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast(err.message, true);
       })
