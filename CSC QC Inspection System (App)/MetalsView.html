@@ -283,6 +283,7 @@
         line.endSize = ''; line.endCustomer = ''; line.endDescription = ''; line.bounds = null; line.dimFields = [];
         document.getElementById('mei-endcustomer').value = '';
         document.getElementById('mei-enddesc').value = '';
+        meiRefreshReviewIfOpen();
       },
     });
 
@@ -295,6 +296,7 @@
       line.sampleRows.push(meiNewSampleRow());
       meiRenderLinePanel();
       meiRenderLineTabs();
+      meiRefreshReviewIfOpen();
     });
 
     var container = document.getElementById('mei-sample-rows');
@@ -306,6 +308,7 @@
         line.sampleRows.splice(idx, 1);
         meiRenderLinePanel();
         meiRenderLineTabs();
+        meiRefreshReviewIfOpen();
       }
     });
 
@@ -334,6 +337,7 @@
     var slot = e.target.closest('.row-card').querySelector('[data-badge-slot]');
     if (slot) slot.innerHTML = badge + ' <button class="ghost" data-remove-row>Remove</button>';
     meiRenderLineTabs();
+    meiRefreshReviewIfOpen();
   }
 
   function meiFetchMachineIds(n) {
@@ -357,12 +361,21 @@
         line.dimFields = specInfo.fields || [];
         meiRenderLinePanel();
         meiRenderLineTabs();
+        meiRefreshReviewIfOpen();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getSpecsForEndSizeRow(line.endSize);
   }
 
   // ================= REVIEW & SUBMIT =================
+  // Called after any edit that can change deviation/review status while the Review panel is
+  // already open, so a stale "all clear" Submit button can never survive a later edit — mirrors
+  // the fix applied to InProcessView.html for the 2026-08-18 incident.
+  function meiRefreshReviewIfOpen() {
+    var area = document.getElementById('mei-review-area');
+    if (area && !area.classList.contains('hidden')) meiRenderReview();
+  }
+
   function meiActiveLinesWithData() {
     return meiLineNumbers().filter(function (n) { return meiLines[n] && meiLines[n].endSize && meiLines[n].sampleRows.length > 0; });
   }
@@ -459,6 +472,23 @@
   function meiSubmitAllLines() {
     var lines = meiActiveLinesWithData();
     if (lines.length === 0) return;
+
+    // Safety net: re-check fresh right before submitting, in case something changed the data
+    // since this Submit button was rendered — mirrors the InProcessView.html fix.
+    var unresolved = 0;
+    lines.forEach(function (n) {
+      var line = meiLines[n];
+      line.sampleRows.forEach(function (r) {
+        var status = meiComputeRowStatus(r, line.bounds, meiDimKeysFor(line));
+        if (status === 'FAIL' && !(r.releaseDecision && r.releaseJustification)) unresolved++;
+      });
+    });
+    if (unresolved > 0) {
+      showToast(unresolved + ' deviation(s) changed since you reviewed and still need a Release Decision + Justification — please resolve below before submitting.', true);
+      meiRenderReview();
+      return;
+    }
+
     var dt = meiSplitDateTime(document.getElementById('mei-inspDateTime').value);
     var header = {
       inspDate: dt.date, inspTime: dt.time,
@@ -484,10 +514,22 @@
 
     var btn = document.getElementById('mei-submit-all-btn');
     var originalLabel = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    var savingNote = null;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      savingNote = document.createElement('p');
+      savingNote.id = 'mei-saving-note';
+      savingNote.className = 'spec-hint';
+      savingNote.style.color = 'var(--critical, #b3261e)';
+      savingNote.style.fontWeight = '600';
+      savingNote.textContent = 'Saving can take up to a minute — please don\'t close or refresh this tab.';
+      btn.insertAdjacentElement('afterend', savingNote);
+    }
 
     google.script.run
       .withSuccessHandler(function (result) {
+        if (savingNote) savingNote.remove();
         document.getElementById('mei-record-id').value = result.recordId;
         showToast('Record ' + result.recordId + ' has been saved (' + result.savedRows + ' measurement(s), ' + lines.length + ' line(s)).' +
           (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
@@ -498,6 +540,7 @@
         document.getElementById('mei-review-area').classList.add('hidden');
       })
       .withFailureHandler(function (err) {
+        if (savingNote) savingNote.remove();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast(err.message, true);
       })
