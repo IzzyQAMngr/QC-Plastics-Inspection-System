@@ -143,14 +143,28 @@
     Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
       btn.addEventListener('click', function () {
         var runId = btn.dataset.stopRun;
-        google.script.run
-          .withSuccessHandler(function () {
-            arData.activeRuns = arData.activeRuns.filter(function (r) { return r.runId !== runId; });
-            renderActiveRunsTable();
-            showToast('Run ' + runId + ' stopped.');
-          })
-          .withFailureHandler(function (err) { showToast(err.message, true); })
-          .endRun(runId);
+        var run = arData.activeRuns.find(function (r) { return r.runId === runId; });
+        var infoHtml =
+          '<p>Are you sure you want to end this run? It will drop off the Active Runs list.</p>' +
+          '<table class="modal-info-table"><tbody>' +
+            '<tr><th>Run ID</th><td>' + esc(run.runId) + '</td></tr>' +
+            '<tr><th>Line</th><td>' + esc(run.line) + '</td></tr>' +
+            '<tr><th>Shift</th><td>' + esc(run.shift) + '</td></tr>' +
+            '<tr><th>Mold</th><td>' + esc(run.moldId) + '</td></tr>' +
+            '<tr><th>Item</th><td>' + esc(run.item) + '</td></tr>' +
+            '<tr><th>Customer</th><td>' + esc(run.customerName) + '</td></tr>' +
+            '<tr><th>Qty</th><td>' + esc(run.runQty) + '</td></tr>' +
+          '</tbody></table>';
+        showConfirmModal('End Run ' + runId + '?', infoHtml, function () {
+          google.script.run
+            .withSuccessHandler(function () {
+              arData.activeRuns = arData.activeRuns.filter(function (r) { return r.runId !== runId; });
+              renderActiveRunsTable();
+              showToast('Run ' + runId + ' stopped.');
+            })
+            .withFailureHandler(function (err) { showToast(err.message, true); })
+            .endRun(runId);
+        });
       });
     });
   }

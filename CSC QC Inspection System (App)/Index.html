@@ -6,22 +6,22 @@
 
     <div class="nav-group-label">Plastics</div>
     <div class="nav-group">
-      <div class="nav-item active" data-view="dashboard" data-dept="Plastics"><span class="icon">📊</span> Dashboard</div>
-      <div class="nav-item" data-view="addrun" data-dept="Plastics"><span class="icon">🏭</span> Daily Run Setup</div>
-      <div class="nav-item" data-view="startup" data-dept="Plastics"><span class="icon">✅</span> Start-Up Verification</div>
-      <div class="nav-item" data-view="devapproval" data-dept="Plastics"><span class="icon">🔏</span> Deviation Approvals</div>
-      <div class="nav-item" data-view="inprocess" data-dept="Plastics"><span class="icon">📋</span> In-Process Inspection</div>
-      <div class="nav-item" data-view="dropfreeze" data-dept="Plastics"><span class="icon">🧊</span> Drop Freeze Test</div>
-      <div class="nav-item" data-view="testdatareview" data-dept="Plastics"><span class="icon">📈</span> Data Analysis</div>
+      <div class="nav-item active" data-view="dashboard" data-dept="Plastics">Dashboard</div>
+      <div class="nav-item" data-view="addrun" data-dept="Plastics">Daily Run Setup</div>
+      <div class="nav-item" data-view="startup" data-dept="Plastics">Start-Up Verification</div>
+      <div class="nav-item" data-view="devapproval" data-dept="Plastics">Deviation Approvals</div>
+      <div class="nav-item" data-view="inprocess" data-dept="Plastics">In-Process Inspection</div>
+      <div class="nav-item" data-view="dropfreeze" data-dept="Plastics">Drop Freeze Test</div>
+      <div class="nav-item" data-view="testdatareview" data-dept="Plastics">Data Analysis</div>
     </div>
 
     <div class="nav-group-label">Metals</div>
     <div class="nav-group">
-      <div class="nav-item" data-view="metalsdashboard" data-dept="Metals"><span class="icon">📊</span> Dashboard</div>
-      <div class="nav-item" data-view="metalsaddrun" data-dept="Metals"><span class="icon">🏭</span> Daily Run Setup</div>
-      <div class="nav-item" data-view="metalsstartup" data-dept="Metals"><span class="icon">✅</span> Start-Up Verification</div>
-      <div class="nav-item" data-view="devapproval" data-dept="Metals"><span class="icon">🔏</span> Deviation Approvals</div>
-      <div class="nav-item" data-view="metals" data-dept="Metals"><span class="icon">⚙️</span> Ends In-Process Inspection</div>
+      <div class="nav-item" data-view="metalsdashboard" data-dept="Metals">Dashboard</div>
+      <div class="nav-item" data-view="metalsaddrun" data-dept="Metals">Daily Run Setup</div>
+      <div class="nav-item" data-view="metalsstartup" data-dept="Metals">Start-Up Verification</div>
+      <div class="nav-item" data-view="devapproval" data-dept="Metals">Deviation Approvals</div>
+      <div class="nav-item" data-view="metals" data-dept="Metals">Ends In-Process Inspection</div>
     </div>
   </nav>
   <main id="main">
@@ -40,6 +40,17 @@
   </main>
 </div>
 <div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="confirm-modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header" id="confirm-modal-title">Confirm</div>
+    <div class="modal-body" id="confirm-modal-body"></div>
+    <div class="modal-actions">
+      <button class="ghost" id="confirm-modal-no">No</button>
+      <button class="primary" id="confirm-modal-yes">Yes</button>
+    </div>
+  </div>
+</div>
 
 <script>
   var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals'];
@@ -73,6 +84,29 @@
     banner.classList.toggle('plastics', !isMetals);
     banner.textContent = (isMetals ? 'Metals' : 'Plastics') + ' Department';
   }
+
+  // ---- Shared Yes/No confirmation modal, used anywhere an action needs a second look
+  // (e.g. ending a Run) before it fires. Only one confirmation can be pending at a time.
+  var confirmModalYesCb = null;
+  function showConfirmModal(title, bodyHtml, onYes) {
+    document.getElementById('confirm-modal-title').textContent = title;
+    document.getElementById('confirm-modal-body').innerHTML = bodyHtml;
+    confirmModalYesCb = onYes;
+    document.getElementById('confirm-modal-overlay').classList.add('show');
+  }
+  function hideConfirmModal() {
+    document.getElementById('confirm-modal-overlay').classList.remove('show');
+    confirmModalYesCb = null;
+  }
+  document.getElementById('confirm-modal-no').addEventListener('click', hideConfirmModal);
+  document.getElementById('confirm-modal-overlay').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) hideConfirmModal();
+  });
+  document.getElementById('confirm-modal-yes').addEventListener('click', function () {
+    var cb = confirmModalYesCb;
+    hideConfirmModal();
+    if (cb) cb();
+  });
 
   var toastTimer;
   function showToast(msg, isError) {
