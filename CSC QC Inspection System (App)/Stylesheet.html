@@ -162,6 +162,25 @@
   }
   .row-card .section-divider { margin-top: 0; }
 
+  /* Compact variant — used by the Add Run entry form so it takes up less room and
+     doesn't compete visually with the Active Runs list below it. */
+  .form-compact label { font-size: 10px; margin-bottom: 2px; }
+  .form-compact input, .form-compact select { font-size: 12px; padding: 4px 7px; }
+  .form-compact .field { margin-bottom: 6px; }
+  .form-compact h2 { font-size: 13px; }
+
+  /* Emphasis variant — used by the Active Runs list so it stands out as the primary,
+     glanceable content on the page rather than the entry form above it. */
+  section.card.card-highlight { border-left: 4px solid var(--series-1); }
+  section.card.card-highlight.metals { border-left-color: var(--accent-2); }
+  section.card.card-highlight h2 { font-size: 17px; }
+
+  /* Fixed-layout run tables — column widths stay put as rows are added/removed instead
+     of reflowing, and the Line # stands out in bold. */
+  table.run-table { table-layout: fixed; }
+  table.run-table th, table.run-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.run-table td.run-line { font-weight: 700; }
+
   table.dim-table { table-layout: fixed; }
   table.dim-table th, table.dim-table td { padding: 4px 8px; }
   table.dim-table col.dim-narrow { width: 62px; }
