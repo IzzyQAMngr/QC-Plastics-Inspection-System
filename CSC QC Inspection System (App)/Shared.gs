@@ -830,6 +830,45 @@ function readSheetObjects_(sheet) {
   });
 }
 
+/** Like readSheetObjects_, but for a huge append-mostly log (e.g. the 80k+-row In-Process
+ *  data) where the caller only cares about rows on/after `sinceDate` — skips reading the rest
+ *  of the sheet instead of pulling every row just to filter most of them out in JS.
+ *  Finds the cutoff via binary search on a single-column read of `dateColumn` (cheap: one
+ *  column, not the whole width), assuming that column is roughly non-decreasing — true here
+ *  since every write goes through LockService-serialized saves that stamp `new Date()` right
+ *  before appending. Backs the cutoff up an extra 200 rows as a safety margin against any
+ *  near-simultaneous-save reordering or messy pre-app historical rows, so a slightly-imperfect
+ *  sort costs a few hundred extra rows read, never missing data. Falls back to a full
+ *  readSheetObjects_ if the column isn't found or sinceDate is invalid. */
+function readSheetObjectsSince_(sheet, dateColumn, sinceDate) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const dateCol = headers.indexOf(dateColumn);
+  if (dateCol < 0 || !(sinceDate instanceof Date) || isNaN(sinceDate.getTime())) return readSheetObjects_(sheet);
+
+  const n = lastRow - 1;
+  const dates = sheet.getRange(2, dateCol + 1, n, 1).getValues().map(r => r[0]);
+  const sinceTime = sinceDate.getTime();
+  let lo = 0, hi = n; // first index whose date >= sinceDate
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const v = dates[mid];
+    const t = v instanceof Date ? v.getTime() : new Date(v).getTime();
+    if (!isNaN(t) && t >= sinceTime) hi = mid; else lo = mid + 1;
+  }
+  const startIdx = Math.max(0, lo - 200); // safety margin, see comment above
+  if (startIdx >= n) return [];
+  const startRow = 2 + startIdx;
+  const data = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
+  return data.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
+    return obj;
+  });
+}
+
 // Appends plain objects as rows, matching keys to the sheet's current header order.
 // Missing keys are written blank; unknown headers (e.g. legacy formula columns) are left untouched.
 function appendObjectsAsRows_(sheet, objects) {

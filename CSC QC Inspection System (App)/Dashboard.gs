@@ -12,10 +12,18 @@
 
 function getPlasticsLineDashboardData() {
   const runs = getActiveRuns_('Plastics');
+  if (runs.length === 0) return { cards: [], generatedAt: dateToStr_(new Date()) };
+
+  // Only rows saved on/after the earliest Active run's start can possibly match one of these
+  // runs — on an 80k+-row log, reading the whole thing just to filter it down in JS is the
+  // reason this call used to take 27-33s every load. See readSheetObjectsSince_.
+  const earliestCreatedAt = new Date(Math.min.apply(null, runs.map(r => new Date(r.createdAt).getTime())));
 
   const inProcessSheet = getDb_().getSheetByName(INPROCESS_LOG_SHEET_NAME);
-  const inProcessRows = inProcessSheet ? readSheetObjects_(inProcessSheet) : [];
+  const inProcessRows = inProcessSheet ? readSheetObjectsSince_(inProcessSheet, 'Timestamp Saved', earliestCreatedAt) : [];
 
+  // Drop Freeze rows are matched by Run ID, not a timestamp, and this log is nowhere near
+  // In-Process's size — a full read here isn't the slow part.
   const dropFreezeSheet = getDb_().getSheetByName(DROPFREEZE_LOG_SHEET_NAME);
   const dropFreezeRows = dropFreezeSheet ? readSheetObjects_(dropFreezeSheet) : [];
 

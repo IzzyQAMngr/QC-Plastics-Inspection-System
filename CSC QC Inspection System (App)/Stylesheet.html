@@ -217,6 +217,16 @@
     background: var(--page-plane); border: 1px solid var(--border); border-left: 3px solid var(--series-1);
     padding: 8px 12px; margin-bottom: 16px;
   }
+
+  /* Skeleton placeholder rows/bars — shown in place of a table or field before its data
+     has loaded, so the page keeps its final layout/height from the first paint instead of
+     looking blank (or jumping around) while google.script.run is still in flight. */
+  .skeleton-bar {
+    display: inline-block; height: 10px; width: 70%; border-radius: 1px;
+    background: linear-gradient(90deg, var(--gridline) 25%, var(--border) 37%, var(--gridline) 63%);
+    background-size: 400% 100%; animation: skeleton-pulse 1.4s ease infinite;
+  }
+  @keyframes skeleton-pulse { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
   input.oos { border-color: var(--critical); background: var(--critical-bg); }
   input.oos-review { border-color: var(--serious); background: var(--serious-bg); }
 

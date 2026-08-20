@@ -1,15 +1,32 @@
 <h1 class="page-title">🏭 Daily Run Setup</h1>
 <p class="page-sub">Set up a Run once — Line, Shift, Mold, Item, Customer, Resin Lot — and it stays selectable in In-Process and Drop Freeze for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
+<div class="form-loading-banner" id="ar-loading"><span class="spinner"></span> Loading form data…</div>
 
 <section class="card form-compact">
   <h2>Daily Run Setup</h2>
-  <div id="ar-form"></div>
+  <div class="field-row">
+    <div class="field"><label>Line #</label><select id="ar-line"><option value="">— select —</option></select></div>
+    <div class="field"><label>Shift</label><select id="ar-shift"><option value="">— select —</option></select></div>
+    <div class="field"><label>Mold</label><div class="combo"><input id="ar-mold" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Product Type</label><input id="ar-productType" readonly></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Item</label><div class="combo"><input id="ar-item" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="ar-itemDescription" readonly></div>
+    <div class="field"><label>Resin Lot</label><input id="ar-resinLot"></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Customer Name</label><input id="ar-customerName"></div>
+    <div class="field"><label>Run Qty</label><input id="ar-runQty" type="number"></div>
+    <div class="field"><label>Created By</label><select id="ar-createdBy"><option value="">— select —</option></select></div>
+    <div class="field" style="align-self:end;"><button id="ar-add-btn" class="primary">+ Add Run</button></div>
+  </div>
 </section>
 
 <section class="card card-highlight">
   <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
   <div class="field-row">
-    <div class="field"><label>Confirmed By</label><select id="ar-confirmedBy"></select></div>
+    <div class="field"><label>Confirmed By</label><select id="ar-confirmedBy"><option value="">— select —</option></select></div>
     <div class="field" style="align-self:end;">
       <button id="ar-confirm-btn" class="ghost">✅ Confirm Today's Runs</button>
       <div class="spec-hint">Stamps every Active run below as checked/accurate for today — for the record, not a data change.</div>
@@ -20,55 +37,42 @@
 
 <script>
   var arData = null;
+  var AR_TABLE_COLS = 10;
+  var AR_SKELETON_ROWS = 15;
+
+  function arSkeletonTableHtml() {
+    var row = '<tr>' + new Array(AR_TABLE_COLS).fill('<td><span class="skeleton-bar"></span></td>').join('') + '</tr>';
+    return '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' +
+      '<col style="width:12%"><col style="width:6%"><col style="width:6%"><col style="width:11%">' +
+      '<col style="width:8%"><col style="width:12%"><col style="width:6%"><col style="width:11%">' +
+      '<col style="width:16%"><col style="width:12%">' +
+      '</colgroup><thead><tr>' +
+      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Mold</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+      '</tr></thead><tbody>' + new Array(AR_SKELETON_ROWS).fill(row).join('') + '</tbody></table></div>';
+  }
+  document.getElementById('ar-active-runs-table').innerHTML = arSkeletonTableHtml();
 
   function init_addrun() {
     google.script.run
       .withSuccessHandler(function (data) {
         arData = data;
-        renderAddRunForm();
+        document.getElementById('ar-loading').classList.add('hidden');
+        wireAddRunForm();
         renderActiveRunsTable();
         fillSelect('ar-confirmedBy', arData.createdByOptions);
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        document.getElementById('ar-loading').classList.add('hidden');
+        showToast(err.message, true);
+      })
       .getAddRunFormData();
   }
 
-  function fieldSimpleAR(id, label, type, options, value, readonly) {
-    var input;
-    if (type === 'select') {
-      input = '<select id="' + id + '"><option value="">— select —</option>' +
-        (options || []).map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
-    } else {
-      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value || '') + '"' + (readonly ? ' readonly' : '') + '>';
-    }
-    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
-  }
-
-  function renderAddRunForm() {
-    var lineOptions = arData.lines || [];
-    var html =
-      '<div class="field-row">' +
-        fieldSimpleAR('ar-line', 'Line #', 'select', lineOptions) +
-        fieldSimpleAR('ar-shift', 'Shift', 'select', arData.shifts) +
-        '<div class="field"><label>Mold</label><div class="combo"><input id="ar-mold" placeholder="Start typing to search…"></div></div>' +
-        fieldSimpleAR('ar-productType', 'Product Type', 'text', null, '', true) +
-      '</div>' +
-      '<div class="field-row">' +
-        '<div class="field"><label>Item</label><div class="combo"><input id="ar-item" placeholder="Start typing to search…"></div></div>' +
-        fieldSimpleAR('ar-itemDescription', 'Item Description', 'text', null, '', true) +
-        fieldSimpleAR('ar-resinLot', 'Resin Lot', 'text') +
-      '</div>' +
-      '<div class="field-row">' +
-        fieldSimpleAR('ar-customerName', 'Customer Name', 'text') +
-        fieldSimpleAR('ar-runQty', 'Run Qty', 'number') +
-        fieldSimpleAR('ar-createdBy', 'Created By', 'select', arData.createdByOptions) +
-        '<div class="field" style="align-self:end;"><button id="ar-add-btn" class="primary">+ Add Run</button></div>' +
-      '</div>';
-    document.getElementById('ar-form').innerHTML = html;
-    wireAddRunForm();
-  }
-
   function wireAddRunForm() {
+    fillSelect('ar-line', arData.lines || []);
+    fillSelect('ar-shift', arData.shifts);
+    fillSelect('ar-createdBy', arData.createdByOptions);
+
     var moldItems = arData.molds.map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
     initCombobox(document.getElementById('ar-mold'), moldItems, {
       onSelect: function (moldId, item) {
@@ -87,6 +91,15 @@
     });
 
     document.getElementById('ar-add-btn').addEventListener('click', submitAddRun);
+  }
+
+  function resetAddRunFields() {
+    ['ar-mold', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-resinLot', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('ar-line').value = '';
+    document.getElementById('ar-shift').value = '';
+    document.getElementById('ar-createdBy').value = '';
   }
 
   function submitAddRun() {
@@ -110,7 +123,7 @@
       .withSuccessHandler(function (run) {
         arData.activeRuns.unshift(run);
         renderActiveRunsTable();
-        renderAddRunForm();
+        resetAddRunFields();
         showToast('Run ' + run.runId + ' created.');
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
