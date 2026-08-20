@@ -156,7 +156,11 @@
     if (WALL_SW_CHARACTERISTICS.every(function (k) { return dimKeys.indexOf(k) >= 0; })) {
       var wallVals = WALL_SW_CHARACTERISTICS.map(function (k) { return parseFloat(row[k]); });
       if (wallVals.every(function (v) { return !isNaN(v); })) {
-        var swVar = Math.max.apply(null, wallVals) - Math.min.apply(null, wallVals);
+        // Round to 4 decimals before comparing — must match InProcess.gs's evaluateInProcessRow_
+        // exactly, or floating-point variance near the 0.005 boundary (eg. 0.00496) can read as
+        // Pass here but Fail on the server, letting a tech submit without a Release Decision that
+        // the server then rejects with no on-screen warning (the 2026-08-20 "Line 6 Cavity 4" bug).
+        var swVar = Math.round((Math.max.apply(null, wallVals) - Math.min.apply(null, wallVals)) * 10000) / 10000;
         if (swVar >= 0.005) escalate('Fail');
       }
     }
