@@ -39,21 +39,9 @@ function buildDimFields_(specs) {
       });
     }
   });
-  return sortDimFields_(fields);
-}
-
-// Display order requested for the Dimensional section: Weight, Pail Height, Chime A/B Min/Max
-// first (in that order); any other register-defined characteristic keeps its original relative
-// order in the middle; Wall Thickness (the 4 SW sidewall points) always sorts last.
-const DIM_FIELD_PRIORITY_ = ['Weight', 'Pail Height', 'Chime A Min', 'Chime A Max', 'Chime B Min', 'Chime B Max'];
-function sortDimFields_(fields) {
-  const rank = f => {
-    const p = DIM_FIELD_PRIORITY_.indexOf(f.key);
-    if (p >= 0) return p;
-    if (WALL_SW_CHARACTERISTICS.indexOf(f.key) >= 0) return 1000 + WALL_SW_CHARACTERISTICS.indexOf(f.key);
-    return 100;
-  };
-  return fields.map((f, i) => ({ f: f, i: i })).sort((a, b) => (rank(a.f) - rank(b.f)) || (a.i - b.i)).map(x => x.f);
+  // Display order follows the Spec Matrix row order for this mold exactly — no code-side
+  // reordering. Keep each mold's register rows arranged in the sequence you want on the form.
+  return fields;
 }
 
 function getInProcessLogSheet_() {

@@ -233,9 +233,9 @@
   }
 
   /** The Dimensional block as a real table — Characteristic | LSL | Nom | USL | UOM | Actual Value | Remark —
-   *  in the fixed column order requested, with rows in the mold's register order (already
-   *  sorted server-side by sortDimFields_ in InProcess.gs: Weight/Pail Height/Chime first,
-   *  Wall Thickness last). Remark is a compact Pass/Review/Fail flag, never "OOS". Numeric columns
+   *  in the fixed column order requested, with rows in exactly the mold's Spec Matrix row order
+   *  (buildDimFields_ in InProcess.gs no longer reorders anything). Remark is a compact
+   *  Pass/Review/Fail flag, never "OOS". Numeric columns
    *  are 3-decimal formatted; LSL/Nom/USL/UOM/Actual Value stay narrow so Remark gets the room. */
   function dimensionalTableHtml(row, dimFields, bounds) {
     var rowsHtml = dimFields.map(function (f) {
