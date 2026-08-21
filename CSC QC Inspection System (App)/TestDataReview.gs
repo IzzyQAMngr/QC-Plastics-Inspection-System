@@ -35,18 +35,25 @@ const REVIEW_ROW_CAP_ = 500;
  * only ever touches ~13 of them. Reading all 35 for every keystroke-triggered filter is most of
  * why this page felt slow. This reads only the requested columns, grouped into contiguous runs so
  * a handful of getValues() calls cover them instead of one call per column.
+ *
+ * `rowBounds`, if given, is a {start, end} pair (1-based sheet row numbers, inclusive) that
+ * narrows which rows get read at all — see dateRangeRowBounds_. Omit it to read every data row.
  */
-function readReviewLogRows_(sheet, neededHeaders) {
+function readReviewLogRows_(sheet, neededHeaders, rowBounds) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (lastRow < 2 || lastCol < 1) return [];
+  const startRow = rowBounds ? Math.max(2, rowBounds.start) : 2;
+  const endRow = rowBounds ? Math.min(lastRow, rowBounds.end) : lastRow;
+  const numRows = endRow - startRow + 1;
+  if (numRows <= 0) return [];
+
   const allHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
   const wanted = new Set(neededHeaders);
   const wantedCols = [];
   allHeaders.forEach((h, i) => { if (h && wanted.has(h)) wantedCols.push({ idx: i, header: h }); });
   if (!wantedCols.length) return [];
 
-  const numRows = lastRow - 1;
   const rows = new Array(numRows);
   for (let r = 0; r < numRows; r++) rows[r] = {};
 
@@ -54,13 +61,63 @@ function readReviewLogRows_(sheet, neededHeaders) {
   for (let i = 1; i <= wantedCols.length; i++) {
     if (i < wantedCols.length && wantedCols[i].idx === wantedCols[i - 1].idx + 1) continue;
     const run = wantedCols.slice(runStart, i);
-    const values = sheet.getRange(2, run[0].idx + 1, numRows, run.length).getValues();
+    const values = sheet.getRange(startRow, run[0].idx + 1, numRows, run.length).getValues();
     for (let r = 0; r < numRows; r++) {
       for (let c = 0; c < run.length; c++) rows[r][run[c].header] = values[r][c];
     }
     runStart = i;
   }
   return rows;
+}
+
+// Modules whose date field reliably tracks save/append order (no backdating), safe for the
+// binary-search row-bounding below. Drop Freeze's TestDate can be backdated to the sample's
+// actual manufacture date (makeDailyRecordKey_ in DropFreeze.gs takes a baseDate override), so
+// its row order doesn't reliably track TestDate — always full-scanned instead.
+const REVIEW_DATE_MONOTONIC_MODULES_ = { inprocess: true, startup: true };
+
+/** Binary-searches the date column for the row range covering [dateFrom, dateTo] (either may be
+ *  null), assuming the column is roughly non-decreasing top-to-bottom — true for these logs,
+ *  written one row per save under LockService with a save-time timestamp. Returns a {start, end}
+ *  1-based row range (inclusive) to hand to readReviewLogRows_, or null if neither bound is set
+ *  (caller should read everything). A 200-row margin on each side guards against minor
+ *  near-simultaneous-save reordering, same margin as readSheetObjectsSince_ in Shared.gs. */
+function dateRangeRowBounds_(sheet, dateField, dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return null;
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return { start: 2, end: 1 };
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const col = headers.indexOf(dateField);
+  if (col < 0) return null; // can't narrow without the column — caller falls back to a full read
+
+  const numRows = lastRow - 1;
+  const dates = sheet.getRange(2, col + 1, numRows, 1).getValues().map(r => r[0]);
+  const timeOf = v => { const t = (v instanceof Date) ? v.getTime() : new Date(v).getTime(); return isNaN(t) ? null : t; };
+
+  let startIdx = 0;
+  if (dateFrom) {
+    const target = dateFrom.getTime();
+    let lo = 0, hi = numRows;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const t = timeOf(dates[mid]);
+      if (t !== null && t >= target) hi = mid; else lo = mid + 1;
+    }
+    startIdx = Math.max(0, lo - 200);
+  }
+  let endIdx = numRows - 1;
+  if (dateTo) {
+    const target = dateTo.getTime();
+    let lo = 0, hi = numRows;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const t = timeOf(dates[mid]);
+      if (t !== null && t > target) hi = mid; else lo = mid + 1;
+    }
+    endIdx = Math.min(numRows - 1, (lo - 1) + 200);
+  }
+  return { start: startIdx + 2, end: endIdx + 2 };
 }
 
 /** Every field the review ever reads off a module's log — the display columns plus whichever
@@ -202,7 +259,10 @@ function getTestDataReviewRows(module, filters) {
   const dateFrom = filters.dateFrom ? toDateSafe_(filters.dateFrom) : null;
   const dateTo = filters.dateTo ? toDateSafe_(filters.dateTo) : null;
 
-  let rows = readReviewLogRows_(sheet, reviewNeededHeaders_(cfg)).filter(r => {
+  const rowBounds = REVIEW_DATE_MONOTONIC_MODULES_[module]
+    ? dateRangeRowBounds_(sheet, cfg.dateField, dateFrom, dateTo)
+    : null;
+  let rows = readReviewLogRows_(sheet, reviewNeededHeaders_(cfg), rowBounds).filter(r => {
     if (moldFilter && String(r[cfg.moldField] || '').toLowerCase().indexOf(moldFilter) < 0) return false;
     if (itemFilter && cfg.itemField && String(r[cfg.itemField] || '').toLowerCase().indexOf(itemFilter) < 0) return false;
     if (colorFilter && cfg.colorField && String(r[cfg.colorField] || '').toLowerCase().indexOf(colorFilter) < 0) return false;

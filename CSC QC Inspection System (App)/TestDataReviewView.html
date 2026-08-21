@@ -1,5 +1,6 @@
 <h1 class="page-title">📈 Data Analysis</h1>
 <p class="page-sub">Filter and analyze inspection data across In-Process, Drop Freeze, and Start-Up Verification — spot trends and pass rates to help decide whether a flag is a minor deviation you can accept, or something that needs action.</p>
+<p class="spec-hint" id="tdr-range-hint" style="margin:-4px 0 16px;"></p>
 
 <div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px;">
   <section class="card" style="flex:0 0 300px;margin:0;">
@@ -104,7 +105,10 @@
 
     toggleTdrColorField();
     loadGlobalFilterOptions();
-    loadTdr();
+    // Default to a recent window rather than the full 80k+-row history — this module is for
+    // quick on-the-fly lookups, and an unfiltered first load meant scanning everything before
+    // you'd even had a chance to narrow it down. "All Time" is one click away in Filters.
+    applyDatePreset('30d');
   }
 
   /** Only In-Process records a Color per row today — hide the filter for the other modules rather
@@ -179,7 +183,16 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  function updateTdrRangeHint() {
+    var from = document.getElementById('tdr-datefrom').value;
+    var to = document.getElementById('tdr-dateto').value;
+    var el = document.getElementById('tdr-range-hint');
+    if (!from && !to) { el.textContent = 'Showing all time — this can take a while to load on In-Process’s full history.'; return; }
+    el.textContent = 'Showing ' + (from || 'the beginning') + ' through ' + (to || 'today') + ' — expand Filters below to widen or narrow this.';
+  }
+
   function loadTdr() {
+    updateTdrRangeHint();
     var filters = {
       moldId: document.getElementById('tdr-mold').value,
       itemNo: document.getElementById('tdr-item').value,
