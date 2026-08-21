@@ -317,6 +317,12 @@
   }
   .tdr-tooltip-date { font-weight: 700; }
   .tdr-tooltip-total { border-top: 1px solid rgba(255,255,255,0.25); margin-top: 2px; padding-top: 2px; }
+  .tdr-spec-line-lsl, .tdr-spec-line-usl { stroke: var(--warning); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .tdr-spec-line-label { font-size: 10px; fill: var(--warning); font-family: inherit; }
+  .tdr-spec-path { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .tdr-dot-pass { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  .tdr-dot-fail { fill: var(--critical); stroke: var(--surface-1); stroke-width: 2; }
+  .tdr-spec-hit { cursor: pointer; }
 
   .placeholder-box {
     border: 1px dashed var(--border); border-radius: 0; padding: 40px 20px; text-align: center; color: var(--text-muted);

@@ -124,7 +124,9 @@ function dateRangeRowBounds_(sheet, dateField, dateFrom, dateTo) {
  *  filter/stat fields aren't already in that list (e.g. In-Process's date filter runs off
  *  Timestamp Saved, not the Inspection Date column shown in the table). */
 function reviewNeededHeaders_(cfg) {
-  const extra = [cfg.moldField, cfg.itemField, cfg.colorField, cfg.charField, cfg.statusField, cfg.dateField, cfg.valueField, cfg.unitField];
+  // LSL/USL only exist on In-Process's log (and Metals Ends', which this review doesn't cover)
+  // — harmless to always request them, readReviewLogRows_ just won't find the column elsewhere.
+  const extra = [cfg.moldField, cfg.itemField, cfg.colorField, cfg.charField, cfg.statusField, cfg.dateField, cfg.valueField, cfg.unitField, 'LSL', 'USL'];
   return Array.from(new Set(cfg.columns.concat(extra.filter(Boolean))));
 }
 
@@ -243,6 +245,61 @@ function computeReviewStats_(rows, cfg, includeNumeric) {
 }
 
 /**
+ * One (date, value) point per matched row that has a numeric reading, for the spec-limit line
+ * chart — only meaningful once a single Characteristic is filtered to (same reasoning as
+ * computeReviewStats_'s includeNumeric), and only where the log actually carries per-row LSL/USL
+ * (today: In-Process only — Start-Up's log never stored spec limits, Drop Freeze has no
+ * numeric value field at all). Returns null when there's nothing to chart.
+ *
+ * A Characteristic can carry different LSL/USL across molds if no Mold filter is active, so this
+ * picks the most-common (lsl, usl) pair among matched rows to draw as the reference lines and
+ * flags `mixedSpec` when more than one distinct pair was seen, so the client can say so rather
+ * than silently mislabeling some points' limits.
+ */
+function computeReviewSpecSeries_(rows, cfg, tz) {
+  if (!cfg.valueField) return null;
+  const points = [];
+  rows.forEach(r => {
+    const v = parseFloat(r[cfg.valueField]);
+    if (isNaN(v) || !isFinite(v)) return;
+    const d = toDateSafe_(r[cfg.dateField]);
+    if (!d) return;
+    const lslRaw = parseFloat(r['LSL']), uslRaw = parseFloat(r['USL']);
+    points.push({
+      t: d.getTime(),
+      date: Utilities.formatDate(d, tz, 'yyyy-MM-dd'),
+      value: v,
+      lsl: isNaN(lslRaw) ? null : lslRaw,
+      usl: isNaN(uslRaw) ? null : uslRaw,
+      unit: cfg.unitField ? String(r[cfg.unitField] || '').trim() : '',
+    });
+  });
+  if (!points.length) return null;
+  points.sort((a, b) => a.t - b.t);
+
+  const pairCounts = {};
+  points.forEach(p => {
+    if (p.lsl === null && p.usl === null) return;
+    const key = p.lsl + '|' + p.usl;
+    pairCounts[key] = (pairCounts[key] || 0) + 1;
+  });
+  const pairKeys = Object.keys(pairCounts);
+  let lsl = null, usl = null;
+  if (pairKeys.length) {
+    const best = pairKeys.sort((a, b) => pairCounts[b] - pairCounts[a])[0].split('|');
+    lsl = best[0] === 'null' ? null : Number(best[0]);
+    usl = best[1] === 'null' ? null : Number(best[1]);
+  }
+  const unit = (points[points.length - 1] || {}).unit || '';
+
+  return {
+    points: points.map(p => ({ date: p.date, value: p.value })),
+    lsl: lsl, usl: usl, unit: unit,
+    mixedSpec: pairKeys.length > 1,
+  };
+}
+
+/**
  * filters: {moldId, itemNo, color, characteristic, search, dateFrom, dateTo, status} — all optional.
  * Mold/Item Number/Color/Characteristic/search are typed, substring matches. Status is a single exact
  * match off the fixed Settings list. Returns { columns, rows, totalMatched, capped, stats }. Rows are
@@ -296,11 +353,12 @@ function getTestDataReviewRows(module, filters) {
   const tz = getDb_().getSpreadsheetTimeZone();
   const stats = computeReviewStats_(rows, cfg, !!charFilter);
   const trend = computeReviewTrend_(rows, cfg, tz);
+  const specSeries = charFilter ? computeReviewSpecSeries_(rows, cfg, tz) : null;
   const capped = totalMatched > REVIEW_ROW_CAP_;
   rows = rows.slice(0, REVIEW_ROW_CAP_);
 
   const outRows = rows.map(r => cfg.columns.map(c => sanitizeForClient_(r[c], tz)));
-  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats, trend: trend };
+  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats, trend: trend, specSeries: specSeries };
 }
 
 /**

@@ -59,6 +59,7 @@
 <section class="card">
   <h2 style="margin:0 0 10px;">Characteristic Analysis</h2>
   <div id="tdr-char-analysis-body"><p class="spec-hint" style="margin:0;">Select a Characteristic above to see its average, min, and max.</p></div>
+  <div id="tdr-spec-chart-body" style="margin-top:14px;"></div>
 </section>
 
 <section class="card">
@@ -244,6 +245,7 @@
         renderTdr();
         renderTdrStats(data.stats);
         renderTdrTrend(data.trend);
+        renderTdrSpecChart(data.specSeries);
       })
       .withFailureHandler(function (err) {
         document.getElementById('tdr-loading').classList.add('hidden');
@@ -436,20 +438,121 @@
     var span = n.max - n.min;
     var markerPct = span > 0 ? ((n.avg - n.min) / span) * 100 : 50;
     var p = stats.passRate;
-    body.innerHTML = '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">' +
-      '<div class="range-bar" style="max-width:420px;flex:1 1 320px;">' +
+    // Pass/Fail/Total ride the same caption line as the reading count instead of separate stat
+    // tiles below the bar — three tiles wrapped to one-per-row in this card's width and ate a lot
+    // of vertical space for three numbers.
+    var caption = n.count + ' reading' + (n.count === 1 ? '' : 's') + ' &middot; ' +
+      '<b style="color:var(--good);">' + (p ? p.passCount : 0) + '</b> Pass &middot; ' +
+      '<b style="color:var(--critical);">' + (p ? p.failCount : 0) + '</b> Fail &middot; ' +
+      '<b>' + stats.total + '</b> total';
+    body.innerHTML = '<div class="range-bar" style="max-width:420px;">' +
       '<div class="range-bar-labels"><span>Min <b>' + fmtTdrNum(n.min) + unit + '</b></span>' +
       '<span>Avg <b>' + fmtTdrNum(n.avg) + unit + '</b></span>' +
       '<span>Max <b>' + fmtTdrNum(n.max) + unit + '</b></span></div>' +
       '<div class="range-bar-track"><div class="range-bar-marker" style="left:' + markerPct + '%;"></div></div>' +
-      '<div class="spec-hint" style="margin:0;">' + n.count + ' reading' + (n.count === 1 ? '' : 's') + '</div>' +
-      '</div>' +
-      '<div class="tiles">' +
-      '<div class="tile"><div class="label">Pass Count</div><div class="value good">' + (p ? p.passCount : 0) + '</div></div>' +
-      '<div class="tile"><div class="label">Fail Count</div><div class="value critical">' + (p ? p.failCount : 0) + '</div></div>' +
-      '<div class="tile"><div class="label">Total Count</div><div class="value">' + stats.total + '</div></div>' +
-      '</div>' +
+      '<div class="spec-hint" style="margin:0;">' + caption + '</div>' +
       '</div>';
+  }
+
+  var TDR_SPEC_CHART_W = 760, TDR_SPEC_CHART_H = 260;
+  var TDR_SPEC_PAD = { left: 48, right: 16, top: 16, bottom: 30 };
+
+  /** Readings-over-time line chart for the selected Characteristic, with the register's LSL/USL
+   *  as two reference lines — a run/control chart, basically. Only possible where the log stores
+   *  spec limits per row (today: In-Process only; computeReviewSpecSeries_ returns null for
+   *  Start-Up/Drop Freeze or a non-numeric Characteristic), so a blank state here is expected and
+   *  fine for those, not a bug. When a Characteristic's LSL/USL vary by mold (no Mold filter
+   *  active), the chart draws the most common pair and says so rather than silently picking one
+   *  mold's limits and mislabeling the rest. */
+  function renderTdrSpecChart(spec) {
+    var el = document.getElementById('tdr-spec-chart-body');
+    if (!spec || !spec.points || !spec.points.length) {
+      if (!document.getElementById('tdr-characteristic').value) { el.innerHTML = ''; return; }
+      var why = tdrModule === 'startup' ? 'Start-Up Verification doesn\'t store LSL/USL per record.'
+        : tdrModule === 'dropfreeze' ? 'Drop Freeze doesn\'t have a numeric value or spec limits to chart.'
+        : 'This characteristic has no numeric readings to chart (e.g. a visual or text field).';
+      el.innerHTML = '<p class="spec-hint" style="margin:0;">No spec-limit chart available — ' + why + '</p>';
+      return;
+    }
+    var pts = spec.points;
+    var unit = spec.unit ? (' ' + esc(spec.unit)) : '';
+    var values = pts.map(function (p) { return p.value; });
+    var lo = Math.min.apply(null, values.concat(spec.lsl !== null ? [spec.lsl] : []));
+    var hi = Math.max.apply(null, values.concat(spec.usl !== null ? [spec.usl] : []));
+    var padAmt = (hi - lo) * 0.1 || 1;
+    lo -= padAmt; hi += padAmt;
+
+    var innerW = TDR_SPEC_CHART_W - TDR_SPEC_PAD.left - TDR_SPEC_PAD.right;
+    var innerH = TDR_SPEC_CHART_H - TDR_SPEC_PAD.top - TDR_SPEC_PAD.bottom;
+    function xOf(i) { return pts.length > 1 ? TDR_SPEC_PAD.left + (innerW * i / (pts.length - 1)) : TDR_SPEC_PAD.left + innerW / 2; }
+    function yOf(v) { return TDR_SPEC_PAD.top + innerH - ((v - lo) / (hi - lo)) * innerH; }
+
+    var yTicks = [lo + padAmt, (lo + hi) / 2, hi - padAmt];
+    var gridSvg = yTicks.map(function (t) {
+      var ty = yOf(t);
+      return '<line x1="' + TDR_SPEC_PAD.left + '" y1="' + ty + '" x2="' + (TDR_SPEC_CHART_W - TDR_SPEC_PAD.right) + '" y2="' + ty + '" class="tdr-gridline"></line>' +
+        '<text x="' + (TDR_SPEC_PAD.left - 8) + '" y="' + (ty + 3) + '" text-anchor="end" class="tdr-axis-label">' + fmtTdrNum(t) + '</text>';
+    }).join('');
+
+    function specLine(v, cls, labelText) {
+      if (v === null) return '';
+      var ly = yOf(v);
+      return '<line x1="' + TDR_SPEC_PAD.left + '" y1="' + ly + '" x2="' + (TDR_SPEC_CHART_W - TDR_SPEC_PAD.right) + '" y2="' + ly + '" class="' + cls + '"></line>' +
+        '<text x="' + (TDR_SPEC_CHART_W - TDR_SPEC_PAD.right) + '" y="' + (ly - 4) + '" text-anchor="end" class="tdr-spec-line-label">' + esc(labelText) + ' ' + fmtTdrNum(v) + '</text>';
+    }
+    var specLinesSvg = specLine(spec.lsl, 'tdr-spec-line-lsl', 'LSL') + specLine(spec.usl, 'tdr-spec-line-usl', 'USL');
+
+    var pathD = pts.map(function (p, i) { return (i === 0 ? 'M' : 'L') + xOf(i) + ' ' + yOf(p.value); }).join(' ');
+    var labelEvery = Math.max(1, Math.ceil(pts.length / 8));
+    var dotsSvg = pts.map(function (p, i) {
+      var outOfSpec = (spec.lsl !== null && p.value < spec.lsl) || (spec.usl !== null && p.value > spec.usl);
+      var cx = xOf(i), cy = yOf(p.value);
+      var labelSvg = (i % labelEvery === 0 || i === pts.length - 1)
+        ? '<text x="' + cx + '" y="' + (TDR_SPEC_CHART_H - TDR_SPEC_PAD.bottom + 16) + '" text-anchor="middle" class="tdr-axis-label">' + esc(p.date.slice(5).replace('-', '/')) + '</text>' : '';
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="4" class="' + (outOfSpec ? 'tdr-dot-fail' : 'tdr-dot-pass') + '"></circle>' + labelSvg +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="10" fill="transparent" class="tdr-spec-hit" data-date="' + esc(p.date) + '" data-value="' + fmtTdrNum(p.value) + unit + '" data-oos="' + (outOfSpec ? '1' : '0') + '"></circle>';
+    }).join('');
+
+    var svg = '<svg viewBox="0 0 ' + TDR_SPEC_CHART_W + ' ' + TDR_SPEC_CHART_H + '" class="tdr-svg" style="height:260px;" preserveAspectRatio="none">' +
+      gridSvg + specLinesSvg + '<path d="' + pathD + '" class="tdr-spec-path"></path>' + dotsSvg + '</svg>';
+
+    var specTable = '<table class="modal-info-table" style="margin:0;">' +
+      '<tbody>' +
+      '<tr><th>Characteristic</th><td>' + esc(document.getElementById('tdr-characteristic').value) + '</td></tr>' +
+      '<tr><th>LSL</th><td>' + (spec.lsl !== null ? fmtTdrNum(spec.lsl) + unit : '—') + '</td></tr>' +
+      '<tr><th>USL</th><td>' + (spec.usl !== null ? fmtTdrNum(spec.usl) + unit : '—') + '</td></tr>' +
+      '<tr><th>Readings</th><td>' + pts.length + '</td></tr>' +
+      '</tbody></table>' +
+      (spec.mixedSpec ? '<p class="spec-hint" style="margin:6px 0 0;">Spec varies by mold — showing the most common LSL/USL. Add a Mold filter above for one mold\'s exact limits.</p>' : '');
+
+    el.innerHTML = '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">' +
+      '<div style="flex:1 1 480px;min-width:280px;">' + svg + '</div>' +
+      '<div style="flex:0 0 240px;">' + specTable + '</div>' +
+      '</div>';
+    wireTdrSpecTooltip(el);
+  }
+
+  function wireTdrSpecTooltip(container) {
+    var tip = document.getElementById('tdr-trend-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'tdr-trend-tooltip';
+      tip.className = 'tdr-tooltip hidden';
+      document.body.appendChild(tip);
+    }
+    Array.prototype.forEach.call(container.querySelectorAll('.tdr-spec-hit'), function (hit) {
+      function showTip(e) {
+        var d = hit.dataset;
+        tip.innerHTML = '<div class="tdr-tooltip-date">' + esc(d.date) + '</div><div><b>' + esc(d.value) + '</b>' +
+          (d.oos === '1' ? ' — out of spec' : '') + '</div>';
+        tip.classList.remove('hidden');
+        tip.style.left = (e.clientX + 12) + 'px';
+        tip.style.top = (e.clientY + 12) + 'px';
+      }
+      hit.addEventListener('mouseenter', showTip);
+      hit.addEventListener('mousemove', showTip);
+      hit.addEventListener('mouseleave', function () { tip.classList.add('hidden'); });
+    });
   }
 
   function fmtTdrNum(v) {
