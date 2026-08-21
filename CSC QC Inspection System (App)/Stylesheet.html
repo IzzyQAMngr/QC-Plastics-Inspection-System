@@ -294,6 +294,29 @@
   .barchart .bar-fill { height: 100%; border-radius: 0; min-width: 2px; }
   .barchart .bar-value { flex: 0 0 34px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
+  /* ---- Data Analysis — Trend chart (plain inline SVG, no charting library) ---- */
+  .tdr-legend { display: flex; gap: 16px; margin-bottom: 6px; font-size: 12px; color: var(--text-secondary); }
+  .tdr-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .tdr-swatch { display: inline-block; width: 10px; height: 10px; }
+  .tdr-swatch-pass { background: var(--good); }
+  .tdr-swatch-fail { background: var(--critical); }
+  .tdr-svg { width: 100%; height: 220px; display: block; overflow: visible; }
+  .tdr-gridline { stroke: var(--gridline); stroke-width: 1; }
+  .tdr-axis-label { font-size: 10px; fill: var(--text-muted); font-family: inherit; }
+  .tdr-bar-pass { fill: var(--good); }
+  .tdr-bar-fail { fill: var(--critical); }
+  .tdr-bar-other { fill: var(--text-muted); }
+  .tdr-bar-total { fill: var(--series-1); }
+  .tdr-bar-group:hover .tdr-bar { opacity: 0.7; }
+  .tdr-hit { cursor: pointer; }
+  .tdr-tooltip {
+    position: fixed; z-index: 1000; background: var(--text-primary); color: var(--surface-1);
+    padding: 6px 10px; font-size: 12px; pointer-events: none; line-height: 1.5; white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  .tdr-tooltip-date { font-weight: 700; }
+  .tdr-tooltip-total { border-top: 1px solid rgba(255,255,255,0.25); margin-top: 2px; padding-top: 2px; }
+
   .placeholder-box {
     border: 1px dashed var(--border); border-radius: 0; padding: 40px 20px; text-align: center; color: var(--text-muted);
   }

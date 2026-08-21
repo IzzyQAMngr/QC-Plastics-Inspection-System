@@ -51,6 +51,12 @@
 <div class="form-loading-banner hidden" id="tdr-loading"><span class="spinner"></span> Loading records…</div>
 
 <section class="card">
+  <h2 style="margin:0 0 2px;">Trend</h2>
+  <p class="spec-hint" id="tdr-trend-caption" style="margin:0 0 10px;"></p>
+  <div id="tdr-trend-body"></div>
+</section>
+
+<section class="card">
   <h2 style="margin:0 0 10px;">Characteristic Analysis</h2>
   <div id="tdr-char-analysis-body"><p class="spec-hint" style="margin:0;">Select a Characteristic above to see its average, min, and max.</p></div>
 </section>
@@ -237,6 +243,7 @@
         tdrSortCol = -1;
         renderTdr();
         renderTdrStats(data.stats);
+        renderTdrTrend(data.trend);
       })
       .withFailureHandler(function (err) {
         document.getElementById('tdr-loading').classList.add('hidden');
@@ -255,6 +262,125 @@
   function renderTdrStats(stats) {
     renderTdrOverallSummary(stats);
     renderTdrCharAnalysis(stats);
+  }
+
+  var TDR_CHART_W = 1000, TDR_CHART_H = 220;
+  var TDR_PAD = { left: 44, right: 12, top: 12, bottom: 34 };
+
+  /** Rounds up to a "clean" axis max (1/2/5 * 10^n) rather than the raw data max. */
+  function tdrNiceMax(v) {
+    if (v <= 0) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+    var norm = v / mag;
+    var step = norm <= 1 ? 1 : (norm <= 2 ? 2 : (norm <= 5 ? 5 : 10));
+    return step * mag;
+  }
+
+  function tdrBucketLabel(key, granularity) {
+    var p = key.split('-');
+    if (granularity === 'month') {
+      var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[Number(p[1]) - 1] + ' ' + p[0];
+    }
+    return Number(p[1]) + '/' + Number(p[2]); // day or week-start, both yyyy-MM-dd -> M/D
+  }
+
+  /** Stacked Pass/Fail bar chart (or a single-color total-count chart for modules with no
+   *  Pass/Fail convention, e.g. Drop Freeze) over computeReviewTrend_'s day/week/month buckets —
+   *  every matched row, same as the Summary stats above, not just the 500-row display cap.
+   *  Plain inline SVG: no charting library, matches how every other stat/meter on this page is
+   *  already built by hand. Pass/Fail bars are stacked in a fixed order (Pass always at the
+   *  baseline, Fail always on top) with a 2px gap between them, and both carry a legend + tooltip
+   *  text label rather than relying on the Pass/Fail hue difference alone — the app's existing
+   *  good/critical colors read almost identically to someone with red-green color blindness. */
+  function renderTdrTrend(trend) {
+    var caption = document.getElementById('tdr-trend-caption');
+    var body = document.getElementById('tdr-trend-body');
+    var buckets = (trend && trend.buckets) || [];
+    if (!buckets.length) {
+      caption.textContent = '';
+      body.innerHTML = '<p class="spec-hint" style="margin:0;">No matching records to chart.</p>';
+      return;
+    }
+    var granularity = trend.granularity;
+    var hasPassFail = buckets.some(function (b) { return b.pass > 0 || b.fail > 0; });
+    var maxVal = tdrNiceMax(Math.max.apply(null, buckets.map(function (b) { return b.total; })));
+    caption.textContent = (granularity === 'month' ? 'By month' : granularity === 'week' ? 'By week' : 'By day') +
+      (hasPassFail ? ' — Pass vs Fail.' : ' — record count.');
+
+    var innerW = TDR_CHART_W - TDR_PAD.left - TDR_PAD.right;
+    var innerH = TDR_CHART_H - TDR_PAD.top - TDR_PAD.bottom;
+    var n = buckets.length;
+    var slot = innerW / n;
+    var barW = Math.min(24, slot * 0.62);
+    var gap = 2;
+    function yOf(v) { return TDR_PAD.top + innerH - (v / maxVal) * innerH; }
+    function hOf(v) { return (v / maxVal) * innerH; }
+    var baseline = yOf(0);
+
+    var gridSvg = [0, 0.5, 1].map(function (f) {
+      var t = Math.round(maxVal * f), ty = yOf(t);
+      return '<line x1="' + TDR_PAD.left + '" y1="' + ty + '" x2="' + (TDR_CHART_W - TDR_PAD.right) + '" y2="' + ty + '" class="tdr-gridline"></line>' +
+        '<text x="' + (TDR_PAD.left - 8) + '" y="' + (ty + 3) + '" text-anchor="end" class="tdr-axis-label">' + t + '</text>';
+    }).join('');
+
+    var labelEvery = Math.max(1, Math.ceil(n / 10));
+    var barsSvg = buckets.map(function (b, i) {
+      var cx = TDR_PAD.left + slot * i + slot / 2;
+      var x = cx - barW / 2;
+      var segs = '';
+      if (hasPassFail) {
+        var passH = hOf(b.pass), failH = hOf(b.fail), otherH = hOf(b.other), yTop = baseline;
+        if (b.pass > 0) { segs += '<rect x="' + x + '" y="' + (baseline - passH) + '" width="' + barW + '" height="' + passH + '" class="tdr-bar tdr-bar-pass"></rect>'; yTop -= (passH + gap); }
+        if (b.other > 0) { segs += '<rect x="' + x + '" y="' + (yTop - otherH) + '" width="' + barW + '" height="' + otherH + '" class="tdr-bar tdr-bar-other"></rect>'; yTop -= (otherH + gap); }
+        if (b.fail > 0) { segs += '<rect x="' + x + '" y="' + (yTop - failH) + '" width="' + barW + '" height="' + failH + '" class="tdr-bar tdr-bar-fail"></rect>'; }
+      } else if (b.total > 0) {
+        var totH = hOf(b.total);
+        segs += '<rect x="' + x + '" y="' + (baseline - totH) + '" width="' + barW + '" height="' + totH + '" class="tdr-bar tdr-bar-total"></rect>';
+      }
+      var label = esc(tdrBucketLabel(b.key, granularity));
+      var labelSvg = (i % labelEvery === 0)
+        ? '<text x="' + cx + '" y="' + (TDR_CHART_H - TDR_PAD.bottom + 16) + '" text-anchor="middle" class="tdr-axis-label">' + label + '</text>' : '';
+      var hit = '<rect x="' + (cx - slot / 2) + '" y="' + TDR_PAD.top + '" width="' + slot + '" height="' + innerH + '" fill="transparent" class="tdr-hit" ' +
+        'data-label="' + label + '" data-pass="' + b.pass + '" data-fail="' + b.fail + '" data-total="' + b.total + '"></rect>';
+      return '<g class="tdr-bar-group">' + segs + labelSvg + hit + '</g>';
+    }).join('');
+
+    var legendHtml = hasPassFail
+      ? '<div class="tdr-legend"><span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-pass"></span>Pass</span>' +
+        '<span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-fail"></span>Fail</span></div>'
+      : '';
+
+    body.innerHTML = legendHtml +
+      '<svg viewBox="0 0 ' + TDR_CHART_W + ' ' + TDR_CHART_H + '" class="tdr-svg" preserveAspectRatio="none">' + gridSvg + barsSvg + '</svg>';
+    wireTdrTrendTooltip(body, hasPassFail);
+  }
+
+  function wireTdrTrendTooltip(container, hasPassFail) {
+    var tip = document.getElementById('tdr-trend-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'tdr-trend-tooltip';
+      tip.className = 'tdr-tooltip hidden';
+      document.body.appendChild(tip);
+    }
+    Array.prototype.forEach.call(container.querySelectorAll('.tdr-hit'), function (hit) {
+      function showTip(e) {
+        var d = hit.dataset;
+        var lines = ['<div class="tdr-tooltip-date">' + d.label + '</div>'];
+        if (hasPassFail) {
+          lines.push('<div><b>' + d.pass + '</b> Pass &middot; <b>' + d.fail + '</b> Fail</div>');
+        }
+        lines.push('<div class="tdr-tooltip-total"><b>' + d.total + '</b> total</div>');
+        tip.innerHTML = lines.join('');
+        tip.classList.remove('hidden');
+        tip.style.left = (e.clientX + 12) + 'px';
+        tip.style.top = (e.clientY + 12) + 'px';
+      }
+      hit.addEventListener('mouseenter', showTip);
+      hit.addEventListener('mousemove', showTip);
+      hit.addEventListener('mouseleave', function () { tip.classList.add('hidden'); });
+    });
   }
 
   function renderTdrOverallSummary(stats) {

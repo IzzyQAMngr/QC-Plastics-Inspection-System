@@ -293,11 +293,50 @@ function getTestDataReviewRows(module, filters) {
   });
 
   const totalMatched = rows.length;
+  const tz = getDb_().getSpreadsheetTimeZone();
   const stats = computeReviewStats_(rows, cfg, !!charFilter);
+  const trend = computeReviewTrend_(rows, cfg, tz);
   const capped = totalMatched > REVIEW_ROW_CAP_;
   rows = rows.slice(0, REVIEW_ROW_CAP_);
 
-  const tz = getDb_().getSpreadsheetTimeZone();
   const outRows = rows.map(r => cfg.columns.map(c => sanitizeForClient_(r[c], tz)));
-  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats };
+  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats, trend: trend };
+}
+
+/**
+ * Buckets every matched row (not just the capped page) by day/week/month — whichever keeps the
+ * chart to a legible number of bars given the actual span of matched dates — and counts
+ * Pass/Fail/other per bucket, for the daily trend chart on Data Analysis. Granularity: day up to
+ * a 60-day span, week up to 370 days, month beyond that. Buckets are only emitted for
+ * Pass/Fail-style modules (byStatus keys 'Pass'/'Fail' exactly, same convention as
+ * computeReviewStats_) — Drop Freeze's Result field uses different text, so its trend is counts
+ * only (no pass/fail split), still useful for spotting volume shifts.
+ */
+function computeReviewTrend_(rows, cfg, tz) {
+  const dated = rows.map(r => ({ d: toDateSafe_(r[cfg.dateField]), status: String(r[cfg.statusField] || '').trim() })).filter(x => x.d);
+  if (!dated.length) return { granularity: 'day', buckets: [] };
+
+  const times = dated.map(x => x.d.getTime());
+  const spanDays = (Math.max.apply(null, times) - Math.min.apply(null, times)) / 86400000;
+  const granularity = spanDays > 370 ? 'month' : (spanDays > 60 ? 'week' : 'day');
+
+  function bucketKey(d) {
+    if (granularity === 'month') return Utilities.formatDate(d, tz, 'yyyy-MM');
+    if (granularity === 'week') {
+      const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+      return Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
+    }
+    return Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+  }
+
+  const buckets = {};
+  dated.forEach(x => {
+    const key = bucketKey(x.d);
+    if (!buckets[key]) buckets[key] = { key: key, pass: 0, fail: 0, other: 0, total: 0 };
+    const b = buckets[key];
+    if (x.status === 'Pass') b.pass++; else if (x.status === 'Fail') b.fail++; else b.other++;
+    b.total++;
+  });
+  const sortedKeys = Object.keys(buckets).sort();
+  return { granularity: granularity, buckets: sortedKeys.map(k => buckets[k]) };
 }
