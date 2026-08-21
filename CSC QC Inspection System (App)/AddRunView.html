@@ -185,7 +185,7 @@
         '<td>' + esc(r.runQty) + '</td>' +
         '<td>' + qualifiedBadge + '</td>' +
         '<td>' + confirmedText + '</td>' +
-        '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop Run</button></td>' +
+        '<td><button class="danger" data-stop-run="' + esc(r.runId) + '">Stop Run</button></td>' +
         '</tr>';
     }).join('');
     el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + AR_TABLE_COLGROUP +

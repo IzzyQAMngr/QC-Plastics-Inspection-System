@@ -1,15 +1,33 @@
 <h1 class="page-title">⚙️ Daily Run Setup — Metals</h1>
 <p class="page-sub">Set up a Run once — Line, Shift, Can Size, Item, Customer, Material Lot — and it stays selectable for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
+<div class="form-loading-banner" id="mar-loading"><span class="spinner"></span> Loading form data…</div>
 
 <section class="card form-compact">
   <h2>Daily Run Setup</h2>
-  <div id="mar-form"></div>
+  <div class="field-row">
+    <div class="field"><label>Line #</label><select id="mar-line"><option value="">— select —</option></select></div>
+    <div class="field"><label>Shift</label><select id="mar-shift"><option value="">— select —</option></select></div>
+    <div class="field"><label>Can Size</label><div class="combo"><input id="mar-cansize" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Can Description</label><input id="mar-canDescription" readonly></div>
+    <div class="field"><label>Product Type</label><input id="mar-productType" readonly></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Item</label><div class="combo"><input id="mar-item" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="mar-itemDescription" readonly></div>
+    <div class="field"><label>Material Lot</label><input id="mar-materialLot" placeholder="Control Tag #"></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Customer Name</label><input id="mar-customerName"></div>
+    <div class="field"><label>Run Qty</label><input id="mar-runQty" type="number"></div>
+    <div class="field"><label>Created By</label><select id="mar-createdBy"><option value="">— select —</option></select></div>
+    <div class="field" style="align-self:end;"><button id="mar-add-btn" class="primary">+ Add Run</button></div>
+  </div>
 </section>
 
 <section class="card card-highlight metals">
   <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
   <div class="field-row">
-    <div class="field"><label>Confirmed By</label><select id="mar-confirmedBy"></select></div>
+    <div class="field"><label>Confirmed By</label><select id="mar-confirmedBy"><option value="">— select —</option></select></div>
     <div class="field" style="align-self:end;">
       <button id="mar-confirm-btn" class="ghost">✅ Confirm Today's Runs</button>
       <div class="spec-hint">Stamps every Active run below as checked/accurate for today — for the record, not a data change.</div>
@@ -20,63 +38,55 @@
 
 <script>
   var marData = null;
+  var MAR_SKELETON_ROWS = 15;
+  var MAR_TABLE_COLGROUP =
+    '<col style="width:10%"><col style="width:4%"><col style="width:6%"><col style="width:10%">' +
+    '<col style="width:13%"><col style="width:6%"><col style="width:11%"><col style="width:9%">' +
+    '<col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:10%">';
+  var MAR_TABLE_HEADER =
+    '<th>Run ID</th><th>Line</th><th>Start Shift</th><th>Start Date</th><th>Can Description</th>' +
+    '<th>Item</th><th>Item Description</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>';
+  var MAR_TABLE_COLS = MAR_TABLE_HEADER.split('<th').length - 1;
+
+  function marSkeletonTableHtml() {
+    var row = '<tr>' + new Array(MAR_TABLE_COLS).fill('<td><span class="skeleton-bar"></span></td>').join('') + '</tr>';
+    return '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + MAR_TABLE_COLGROUP +
+      '</colgroup><thead><tr>' + MAR_TABLE_HEADER +
+      '</tr></thead><tbody>' + new Array(MAR_SKELETON_ROWS).fill(row).join('') + '</tbody></table></div>';
+  }
+  document.getElementById('mar-active-runs-table').innerHTML = marSkeletonTableHtml();
 
   function init_metalsaddrun() {
     google.script.run
       .withSuccessHandler(function (data) {
         marData = data;
-        renderMetalsAddRunForm();
+        document.getElementById('mar-loading').classList.add('hidden');
+        wireMetalsAddRunForm();
         renderMetalsActiveRunsTable();
         fillSelect('mar-confirmedBy', marData.createdByOptions);
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        document.getElementById('mar-loading').classList.add('hidden');
+        showToast(err.message, true);
+      })
       .getAddMetalsRunFormData();
   }
 
-  function fieldSimpleMAR(id, label, type, options, value, readonly, placeholder) {
-    var input;
-    if (type === 'select') {
-      input = '<select id="' + id + '"><option value="">— select —</option>' +
-        (options || []).map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
-    } else {
-      input = '<input type="' + type + '" id="' + id + '" value="' + esc(value || '') + '"' +
-        (readonly ? ' readonly' : '') + (placeholder ? ' placeholder="' + esc(placeholder) + '"' : '') + '>';
-    }
-    return '<div class="field"><label>' + label + '</label>' + input + '</div>';
-  }
-
-  function renderMetalsAddRunForm() {
-    var html =
-      '<div class="field-row">' +
-        fieldSimpleMAR('mar-line', 'Line #', 'select', marData.lines) +
-        fieldSimpleMAR('mar-shift', 'Shift', 'select', marData.shifts) +
-        '<div class="field"><label>Can Size</label><div class="combo"><input id="mar-cansize" placeholder="Start typing to search…"></div></div>' +
-        fieldSimpleMAR('mar-productType', 'Product Type', 'text', null, '', true) +
-      '</div>' +
-      '<div class="field-row">' +
-        '<div class="field"><label>Item</label><div class="combo"><input id="mar-item" placeholder="Start typing to search…"></div></div>' +
-        fieldSimpleMAR('mar-itemDescription', 'Item Description', 'text', null, '', true) +
-        fieldSimpleMAR('mar-materialLot', 'Material Lot', 'text', null, '', false, 'Control Tag #') +
-      '</div>' +
-      '<div class="field-row">' +
-        fieldSimpleMAR('mar-customerName', 'Customer Name', 'text') +
-        fieldSimpleMAR('mar-runQty', 'Run Qty', 'number') +
-        fieldSimpleMAR('mar-createdBy', 'Created By', 'select', marData.createdByOptions) +
-        '<div class="field" style="align-self:end;"><button id="mar-add-btn" class="primary">+ Add Run</button></div>' +
-      '</div>';
-    document.getElementById('mar-form').innerHTML = html;
-    wireMetalsAddRunForm();
-  }
-
   function wireMetalsAddRunForm() {
+    fillSelect('mar-line', marData.lines || []);
+    fillSelect('mar-shift', marData.shifts);
+    fillSelect('mar-createdBy', marData.createdByOptions);
+
     var sizeItems = (marData.sizeCans || []).map(function (s) { return { value: s.sizeId, label: s.sizeId, sublabel: s.productType }; });
     initCombobox(document.getElementById('mar-cansize'), sizeItems, {
       onSelect: function (sizeId, item) {
         var s = marData.sizeCans.find(function (x) { return x.sizeId === sizeId; });
         document.getElementById('mar-productType').value = s ? s.productType : '';
+        document.getElementById('mar-canDescription').value = s ? s.description : '';
       },
       onInvalid: function () {
         document.getElementById('mar-productType').value = '';
+        document.getElementById('mar-canDescription').value = '';
       },
     });
 
@@ -89,32 +99,56 @@
     document.getElementById('mar-add-btn').addEventListener('click', submitMetalsAddRun);
   }
 
+  function resetMetalsAddRunFields() {
+    ['mar-cansize', 'mar-canDescription', 'mar-productType', 'mar-item', 'mar-itemDescription', 'mar-materialLot', 'mar-customerName', 'mar-runQty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('mar-line').value = '';
+    document.getElementById('mar-shift').value = '';
+    document.getElementById('mar-createdBy').value = '';
+  }
+
   function submitMetalsAddRun() {
     var line = document.getElementById('mar-line').value;
     var sizeId = document.getElementById('mar-cansize').value;
+    var item = document.getElementById('mar-item').value;
     if (!line) { showToast('Pick a Line #.', true); return; }
     if (!sizeId) { showToast('Pick a Can Size.', true); return; }
+    if (!item) { showToast('Pick an Item.', true); return; }
     var fields = {
       line: line,
       shift: document.getElementById('mar-shift').value,
       productType: document.getElementById('mar-productType').value,
       sizeId: sizeId,
+      canDescription: document.getElementById('mar-canDescription').value,
       materialLot: document.getElementById('mar-materialLot').value,
-      item: document.getElementById('mar-item').value,
+      item: item,
       itemDescription: document.getElementById('mar-itemDescription').value,
       customerName: document.getElementById('mar-customerName').value,
       runQty: document.getElementById('mar-runQty').value,
       createdBy: document.getElementById('mar-createdBy').value,
     };
-    google.script.run
-      .withSuccessHandler(function (run) {
-        marData.activeRuns.unshift(run);
-        renderMetalsActiveRunsTable();
-        renderMetalsAddRunForm();
-        showToast('Run ' + run.runId + ' created.');
-      })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
-      .addMetalsRun(fields);
+    var infoHtml =
+      '<p>Add this to the Active Runs list?</p>' +
+      '<table class="modal-info-table"><tbody>' +
+        '<tr><th>Line</th><td>' + esc(fields.line) + '</td></tr>' +
+        '<tr><th>Shift</th><td>' + esc(fields.shift) + '</td></tr>' +
+        '<tr><th>Can Size</th><td>' + esc(fields.sizeId) + '</td></tr>' +
+        '<tr><th>Item</th><td>' + esc(fields.item) + '</td></tr>' +
+        '<tr><th>Customer</th><td>' + esc(fields.customerName) + '</td></tr>' +
+        '<tr><th>Qty</th><td>' + esc(fields.runQty) + '</td></tr>' +
+      '</tbody></table>';
+    showConfirmModal('Add Run?', infoHtml, function () {
+      google.script.run
+        .withSuccessHandler(function (run) {
+          marData.activeRuns.unshift(run);
+          renderMetalsActiveRunsTable();
+          resetMetalsAddRunFields();
+          showToast('Run ' + run.runId + ' created.');
+        })
+        .withFailureHandler(function (err) { showToast(err.message, true); })
+        .addMetalsRun(fields);
+    });
   }
 
   function sortByLine_(runs) {
@@ -136,21 +170,19 @@
         '<td>' + esc(r.runId) + '</td>' +
         '<td class="run-line">' + esc(r.line) + '</td>' +
         '<td>' + esc(r.shift) + '</td>' +
-        '<td>' + esc(r.sizeId) + '</td>' +
+        '<td>' + esc(fmtStartDate(r.createdAt)) + '</td>' +
+        '<td>' + esc(r.canDescription) + '</td>' +
         '<td>' + esc(r.item) + '</td>' +
+        '<td>' + esc(r.itemDescription) + '</td>' +
         '<td>' + esc(r.customerName) + '</td>' +
         '<td>' + esc(r.runQty) + '</td>' +
         '<td>' + qualifiedBadge + '</td>' +
         '<td>' + confirmedText + '</td>' +
-        '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop</button></td>' +
+        '<td><button class="danger" data-stop-run="' + esc(r.runId) + '">Stop Run</button></td>' +
         '</tr>';
     }).join('');
-    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' +
-      '<col style="width:12%"><col style="width:6%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:8%"><col style="width:12%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:16%"><col style="width:12%">' +
-      '</colgroup><thead><tr>' +
-      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Can Size</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + MAR_TABLE_COLGROUP +
+      '</colgroup><thead><tr>' + MAR_TABLE_HEADER +
       '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
       btn.addEventListener('click', function () {

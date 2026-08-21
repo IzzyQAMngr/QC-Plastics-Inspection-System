@@ -391,13 +391,29 @@ function getAllMoldsList() { return getAllMoldsList_(); }
 /**
  * Metals equivalent of getAllMoldsList_ — reads the deduped "Unique Can Size List" helper
  * column (Size ID repeats in the raw list due to customer-specific Spec Matrix rows) plus
- * Product Type right next to it. No description column here — too specific/near-duplicate
- * of the Item Description already captured separately on Add Run.
+ * Product Type right next to it, and (2026-08-20, same fix as getAllMoldsList_) Description
+ * from the primary Size ID / Can Description columns earlier in the same tab.
  */
 function getAllSizeCansList_() {
   const mr = getMasterRegister_('Metals');
   const tab = mr.getSheetByName(ALL_CANS_SIZE_LIST_SHEET);
   if (!tab) throw new Error('"' + ALL_CANS_SIZE_LIST_SHEET + '" tab not found in Metals Spec Register.');
+
+  const descBySizeId = {};
+  const idPos = findHeaderRowAndCol_(tab, 'Size ID', 5);
+  const descPos = findHeaderRowAndCol_(tab, 'Can Description', 5);
+  if (idPos && descPos) {
+    const lastRow = tab.getLastRow();
+    if (lastRow > idPos.row) {
+      const idVals = tab.getRange(idPos.row + 1, idPos.col, lastRow - idPos.row, 1).getValues();
+      const descVals = tab.getRange(descPos.row + 1, descPos.col, lastRow - descPos.row, 1).getValues();
+      idVals.forEach((r, i) => {
+        const id = String(r[0] || '').trim();
+        if (id && !descBySizeId[id]) descBySizeId[id] = String((descVals[i] || [])[0] || '').trim();
+      });
+    }
+  }
+
   const pos = findHeaderRowAndCol_(tab, 'Unique Can Size List', 5);
   if (!pos) throw new Error('"Unique Can Size List" helper column not found in "' + ALL_CANS_SIZE_LIST_SHEET + '".');
   const lastRow = tab.getLastRow();
@@ -407,7 +423,7 @@ function getAllSizeCansList_() {
   for (const row of data) {
     const sizeId = String(row[0] || '').trim();
     if (!sizeId) continue;
-    out.push({ sizeId: sizeId, productType: String(row[1] || '').trim() });
+    out.push({ sizeId: sizeId, productType: String(row[1] || '').trim(), description: descBySizeId[sizeId] || '' });
   }
   return out;
 }
