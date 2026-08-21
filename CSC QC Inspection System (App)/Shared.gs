@@ -754,6 +754,9 @@ function runRowToObject_(row) {
  * Returns the created Run. department defaults to Plastics.
  */
 function createRun_(fields, department) {
+  // Item is now baked into the Run ID (makeRunId_) — enforced here too, not just client-side,
+  // since a blank Item would otherwise silently land as "NOITEM" in a permanent record ID.
+  if (!String(fields.item || '').trim()) throw new Error('Item is required to create a Run.');
   const sheet = getRunsSheet_(department);
   const runId = makeRunId_(department, fields.line, fields.item);
   appendObjectsAsRows_(sheet, [{
