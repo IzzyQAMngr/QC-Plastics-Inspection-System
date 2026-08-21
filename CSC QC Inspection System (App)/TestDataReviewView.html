@@ -11,7 +11,8 @@
     </div>
   </section>
   <section class="card" style="flex:1 1 380px;margin:0;">
-    <h2 style="margin:0 0 10px;">Overall Summary</h2>
+    <h2 style="margin:0 0 2px;" id="tdr-summary-heading">Summary</h2>
+    <p class="spec-hint" id="tdr-summary-scope" style="margin:0 0 10px;"></p>
     <div id="tdr-overall-body"><p class="spec-hint" style="margin:0;">No data yet.</p></div>
   </section>
 </div>
@@ -84,8 +85,7 @@
         tdrCharOptionsLoaded = false;
         toggleTdrColorField();
         loadTdr();
-        // Filters were already open when the module changed — these options are module-scoped, refresh them.
-        if (!document.getElementById('tdr-filters-body').classList.contains('hidden')) maybeLoadLogFilterOptions();
+        maybeLoadLogFilterOptions();
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-preset]'), function (btn) {
@@ -100,8 +100,9 @@
       document.getElementById(id).addEventListener('input', debounceLoadTdr);
     });
     document.getElementById('tdr-status').addEventListener('change', loadTdr);
-    document.getElementById('tdr-datefrom').addEventListener('change', loadTdr);
-    document.getElementById('tdr-dateto').addEventListener('change', loadTdr);
+    ['tdr-datefrom', 'tdr-dateto'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', function () { loadTdr(); reloadLogFilterOptionsForNewRange(); });
+    });
 
     toggleTdrColorField();
     loadGlobalFilterOptions();
@@ -146,8 +147,12 @@
   }
 
   /** Characteristic/Item Number/Color are the filters still scanning the module's log data
-   *  (high-cardinality, no sensible fixed list) — lazy-loaded in one call the first time Filters
-   *  is opened for a module, not on every switch, and never blocks the table from loading. */
+   *  (high-cardinality, no sensible fixed list) — date-range-bounded server-side the same way
+   *  the main table read is, and re-fetched whenever the module or the active date range
+   *  changes (tdrCharOptionsLoaded guards against re-fetching for anything else, e.g. typing
+   *  in another filter). Fired eagerly right after the date range is set, not lazily waiting
+   *  for Filters to be opened — otherwise Characteristic/Item/Color sit with no dropdown
+   *  wired up yet (indistinguishable from a plain text box) for however long the scan takes. */
   function maybeLoadLogFilterOptions() {
     if (tdrCharOptionsLoaded) return;
     tdrCharOptionsLoaded = true;
@@ -159,7 +164,12 @@
         if (opts.hasColor) initCombobox(document.getElementById('tdr-color'), (opts.colors || []).map(function (c) { return { value: c, label: c }; }), { onSelect: loadTdr });
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .getReviewFilterOptions(tdrModule);
+      .getReviewFilterOptions(tdrModule, document.getElementById('tdr-datefrom').value, document.getElementById('tdr-dateto').value);
+  }
+
+  function reloadLogFilterOptionsForNewRange() {
+    tdrCharOptionsLoaded = false;
+    maybeLoadLogFilterOptions();
   }
 
   function tdrTodayStr() {
@@ -177,6 +187,7 @@
     document.getElementById('tdr-datefrom').value = from ? toDateInputStr(from) : '';
     document.getElementById('tdr-dateto').value = preset === 'all' ? '' : tdrTodayStr();
     loadTdr();
+    reloadLogFilterOptionsForNewRange();
   }
 
   function toDateInputStr(d) {
@@ -191,6 +202,20 @@
     el.textContent = 'Showing ' + (from || 'the beginning') + ' through ' + (to || 'today') + ' — expand Filters below to widen or narrow this.';
   }
 
+  /** Plain-language description of what's currently filtered, shown under the "Summary" heading
+   *  so it's clear that panel reflects the active filters — not some separate unfiltered total. */
+  function updateTdrSummaryScope(filters) {
+    var parts = [];
+    if (filters.moldId) parts.push('Mold ' + filters.moldId);
+    if (filters.itemNo) parts.push('Item ' + filters.itemNo);
+    if (filters.color) parts.push('Color ' + filters.color);
+    if (filters.characteristic) parts.push((document.getElementById('tdr-char-label').textContent || 'Characteristic') + ': ' + filters.characteristic);
+    if (filters.status) parts.push('Status: ' + filters.status);
+    if (filters.search) parts.push('Search: "' + filters.search + '"');
+    parts.push((!filters.dateFrom && !filters.dateTo) ? 'all time' : ('from ' + (filters.dateFrom || 'the beginning') + ' to ' + (filters.dateTo || 'today')));
+    document.getElementById('tdr-summary-scope').textContent = parts.join(' · ');
+  }
+
   function loadTdr() {
     updateTdrRangeHint();
     var filters = {
@@ -203,6 +228,7 @@
       dateTo: document.getElementById('tdr-dateto').value,
       search: document.getElementById('tdr-search').value,
     };
+    updateTdrSummaryScope(filters);
     document.getElementById('tdr-loading').classList.remove('hidden');
     google.script.run
       .withSuccessHandler(function (data) {
@@ -280,12 +306,20 @@
     var unit = n.unit ? (' ' + esc(n.unit)) : '';
     var span = n.max - n.min;
     var markerPct = span > 0 ? ((n.avg - n.min) / span) * 100 : 50;
-    body.innerHTML = '<div class="range-bar" style="max-width:420px;">' +
+    var p = stats.passRate;
+    body.innerHTML = '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">' +
+      '<div class="range-bar" style="max-width:420px;flex:1 1 320px;">' +
       '<div class="range-bar-labels"><span>Min <b>' + fmtTdrNum(n.min) + unit + '</b></span>' +
       '<span>Avg <b>' + fmtTdrNum(n.avg) + unit + '</b></span>' +
       '<span>Max <b>' + fmtTdrNum(n.max) + unit + '</b></span></div>' +
       '<div class="range-bar-track"><div class="range-bar-marker" style="left:' + markerPct + '%;"></div></div>' +
       '<div class="spec-hint" style="margin:0;">' + n.count + ' reading' + (n.count === 1 ? '' : 's') + '</div>' +
+      '</div>' +
+      '<div class="tiles">' +
+      '<div class="tile"><div class="label">Pass Count</div><div class="value good">' + (p ? p.passCount : 0) + '</div></div>' +
+      '<div class="tile"><div class="label">Fail Count</div><div class="value critical">' + (p ? p.failCount : 0) + '</div></div>' +
+      '<div class="tile"><div class="label">Total Count</div><div class="value">' + stats.total + '</div></div>' +
+      '</div>' +
       '</div>';
   }
 

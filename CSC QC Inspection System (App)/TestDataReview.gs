@@ -150,15 +150,21 @@ function getReviewStatusOptions() { return getReviewStatusOptions_(); }
 /**
  * Distinct Characteristic/Item Number/Color values for the module's own log data — all
  * high-cardinality (dimensional points, verification items, item numbers, colors) and vary by
- * mold, so there's no sensible fixed list for any of them. Lazy-loaded client-side (first time
- * Filters is expanded for a module), not on every switch, and in one scan of the sheet.
+ * mold, so there's no sensible fixed list for any of them. Scoped to the same date range
+ * (dateFrom/dateTo, ISO 'yyyy-MM-dd' strings, either optional) as the main table read, and
+ * date-range-bounded the same way (see dateRangeRowBounds_) for the same modules — this used to
+ * always full-scan the log, which is why the Characteristic field could sit with no dropdown
+ * behavior wired up yet (still a plain input) for a few seconds after opening Filters.
  */
-function getReviewFilterOptions(module) {
+function getReviewFilterOptions(module, dateFrom, dateTo) {
   const cfg = REVIEW_MODULES_[module];
   if (!cfg) throw new Error('Unknown review module: ' + module);
   const sheet = getDb_().getSheetByName(cfg.sheetName);
   const optionFields = Array.from(new Set([cfg.charField, cfg.itemField, cfg.colorField].filter(Boolean)));
-  const rows = sheet ? readReviewLogRows_(sheet, optionFields) : [];
+  const rowBounds = (sheet && REVIEW_DATE_MONOTONIC_MODULES_[module])
+    ? dateRangeRowBounds_(sheet, cfg.dateField, dateFrom ? toDateSafe_(dateFrom) : null, dateTo ? toDateSafe_(dateTo) : null)
+    : null;
+  const rows = sheet ? readReviewLogRows_(sheet, optionFields, rowBounds) : [];
   const characteristics = new Set();
   const itemNumbers = new Set();
   const colors = new Set();
