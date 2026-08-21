@@ -177,8 +177,12 @@
 
   /* Fixed-layout run tables — column widths stay put as rows are added/removed instead
      of reflowing, and the Line # stands out in bold. */
-  table.run-table { table-layout: fixed; }
-  table.run-table th, table.run-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Smaller font/padding than the base qc-table — the Active Runs table carries enough
+     columns (Run ID, Line, Start Shift, Start Date, Mold Description, Item, Item
+     Description, Customer, Qty, Qualified, Last Confirmed By, action) that the default
+     size doesn't comfortably fit. */
+  table.run-table { table-layout: fixed; font-size: 11.5px; }
+  table.run-table th, table.run-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px; }
   table.run-table td.run-line { font-weight: 700; }
 
   table.dim-table { table-layout: fixed; }

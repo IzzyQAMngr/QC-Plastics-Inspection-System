@@ -348,13 +348,31 @@ function findHeaderRowAndCol_(sheet, label, maxRows) {
 
 /**
  * Full deduped mold list — reads the register's "Unique Mold List" helper column plus
- * Product Type right next to it. No description column anymore (removed from the register) —
- * every caller now shows Mold ID / Product Type only.
+ * Product Type right next to it, and (2026-08-20) Description from the primary Mold ID /
+ * Mold Description columns earlier in the same tab — that table has one row per cavity
+ * variant (so it's not itself deduped/usable as the list), but every row for a given Mold ID
+ * carries the same description, so a simple first-seen lookup is enough.
  */
 function getAllMoldsList_() {
   const mr = getMasterRegister_();
   const tab = mr.getSheetByName(ALL_MOLDS_LIST_SHEET);
   if (!tab) throw new Error('"' + ALL_MOLDS_LIST_SHEET + '" tab not found in Spec Register.');
+
+  const descByMoldId = {};
+  const idPos = findHeaderRowAndCol_(tab, 'Mold ID', 5);
+  const descPos = findHeaderRowAndCol_(tab, 'Mold Description', 5);
+  if (idPos && descPos) {
+    const lastRow = tab.getLastRow();
+    if (lastRow > idPos.row) {
+      const idVals = tab.getRange(idPos.row + 1, idPos.col, lastRow - idPos.row, 1).getValues();
+      const descVals = tab.getRange(descPos.row + 1, descPos.col, lastRow - descPos.row, 1).getValues();
+      idVals.forEach((r, i) => {
+        const id = String(r[0] || '').trim();
+        if (id && !descByMoldId[id]) descByMoldId[id] = String((descVals[i] || [])[0] || '').trim();
+      });
+    }
+  }
+
   const pos = findHeaderRowAndCol_(tab, 'Unique Mold List', 5);
   if (!pos) throw new Error('"Unique Mold List" helper column not found in "' + ALL_MOLDS_LIST_SHEET + '".');
   const lastRow = tab.getLastRow();
@@ -364,7 +382,7 @@ function getAllMoldsList_() {
   for (const row of data) {
     const moldId = String(row[0] || '').trim();
     if (!moldId) continue;
-    out.push({ moldId: moldId, productType: String(row[1] || '').trim() });
+    out.push({ moldId: moldId, productType: String(row[1] || '').trim(), description: descByMoldId[moldId] || '' });
   }
   return out;
 }

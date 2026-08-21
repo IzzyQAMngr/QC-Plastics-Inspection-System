@@ -8,6 +8,7 @@
     <div class="field"><label>Line #</label><select id="ar-line"><option value="">— select —</option></select></div>
     <div class="field"><label>Shift</label><select id="ar-shift"><option value="">— select —</option></select></div>
     <div class="field"><label>Mold</label><div class="combo"><input id="ar-mold" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Mold Description</label><input id="ar-moldDescription" readonly></div>
     <div class="field"><label>Product Type</label><input id="ar-productType" readonly></div>
   </div>
   <div class="field-row">
@@ -37,17 +38,27 @@
 
 <script>
   var arData = null;
-  var AR_TABLE_COLS = 10;
   var AR_SKELETON_ROWS = 15;
+  var AR_TABLE_COLGROUP =
+    '<col style="width:10%"><col style="width:4%"><col style="width:6%"><col style="width:10%">' +
+    '<col style="width:13%"><col style="width:6%"><col style="width:11%"><col style="width:9%">' +
+    '<col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:10%">';
+  var AR_TABLE_HEADER =
+    '<th>Run ID</th><th>Line</th><th>Start Shift</th><th>Start Date</th><th>Mold Description</th>' +
+    '<th>Item</th><th>Item Description</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>';
+  var AR_TABLE_COLS = AR_TABLE_HEADER.split('<th').length - 1;
+
+  /** e.g. "8/20/2026, 5:17 PM" -> "8/20/2026 5:17 PM" (no time = "—"). */
+  function fmtStartDate(v) {
+    var d = v ? new Date(v) : null;
+    if (!d || isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
 
   function arSkeletonTableHtml() {
     var row = '<tr>' + new Array(AR_TABLE_COLS).fill('<td><span class="skeleton-bar"></span></td>').join('') + '</tr>';
-    return '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' +
-      '<col style="width:12%"><col style="width:6%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:8%"><col style="width:12%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:16%"><col style="width:12%">' +
-      '</colgroup><thead><tr>' +
-      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Mold</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+    return '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + AR_TABLE_COLGROUP +
+      '</colgroup><thead><tr>' + AR_TABLE_HEADER +
       '</tr></thead><tbody>' + new Array(AR_SKELETON_ROWS).fill(row).join('') + '</tbody></table></div>';
   }
   document.getElementById('ar-active-runs-table').innerHTML = arSkeletonTableHtml();
@@ -78,9 +89,11 @@
       onSelect: function (moldId, item) {
         var m = arData.molds.find(function (x) { return x.moldId === moldId; });
         document.getElementById('ar-productType').value = m ? m.productType : '';
+        document.getElementById('ar-moldDescription').value = m ? m.description : '';
       },
       onInvalid: function () {
         document.getElementById('ar-productType').value = '';
+        document.getElementById('ar-moldDescription').value = '';
       },
     });
 
@@ -94,7 +107,7 @@
   }
 
   function resetAddRunFields() {
-    ['ar-mold', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-resinLot', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
+    ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-resinLot', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('ar-line').value = '';
@@ -114,6 +127,7 @@
       shift: document.getElementById('ar-shift').value,
       productType: document.getElementById('ar-productType').value,
       moldId: moldId,
+      moldDescription: document.getElementById('ar-moldDescription').value,
       resinLot: document.getElementById('ar-resinLot').value,
       item: item,
       itemDescription: document.getElementById('ar-itemDescription').value,
@@ -163,8 +177,10 @@
         '<td>' + esc(r.runId) + '</td>' +
         '<td class="run-line">' + esc(r.line) + '</td>' +
         '<td>' + esc(r.shift) + '</td>' +
-        '<td>' + esc(r.moldId) + '</td>' +
+        '<td>' + esc(fmtStartDate(r.createdAt)) + '</td>' +
+        '<td>' + esc(r.moldDescription) + '</td>' +
         '<td>' + esc(r.item) + '</td>' +
+        '<td>' + esc(r.itemDescription) + '</td>' +
         '<td>' + esc(r.customerName) + '</td>' +
         '<td>' + esc(r.runQty) + '</td>' +
         '<td>' + qualifiedBadge + '</td>' +
@@ -172,12 +188,8 @@
         '<td><button class="ghost" data-stop-run="' + esc(r.runId) + '">Stop Run</button></td>' +
         '</tr>';
     }).join('');
-    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' +
-      '<col style="width:12%"><col style="width:6%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:8%"><col style="width:12%"><col style="width:6%"><col style="width:11%">' +
-      '<col style="width:16%"><col style="width:12%">' +
-      '</colgroup><thead><tr>' +
-      '<th>Run ID</th><th>Line</th><th>Shift</th><th>Mold</th><th>Item</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>' +
+    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + AR_TABLE_COLGROUP +
+      '</colgroup><thead><tr>' + AR_TABLE_HEADER +
       '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
       btn.addEventListener('click', function () {
