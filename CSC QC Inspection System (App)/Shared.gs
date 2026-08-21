@@ -704,8 +704,33 @@ function getRunsSheet_(department) {
   return sheet;
 }
 
-function makeRunId_(department) {
-  return makeSequentialId_(getRunsSheet_(department), 'Run ID', 'RUN');
+/** Run ID format (changed 2026-08-20 at Izzy's request — see [[project-record-id-scheme]]):
+ *  RUN-<Line>-<Item>-<seq>, e.g. RUN-1-243807-0015. No date component, so — unlike
+ *  makeSequentialId_'s PREFIX-yyMMdd-N scheme still used for every other record ID — the
+ *  sequence is a single global counter for this Runs sheet that never resets; uniqueness
+ *  depends entirely on it never repeating. Seeded from the highest trailing number found in
+ *  ANY existing Run ID (old-format included), so numbers keep climbing rather than
+ *  restarting. Line/Item are just for at-a-glance readability, not what guarantees
+ *  uniqueness — a blank Item falls back to 'NOITEM' rather than leaving a bare "--" in the ID. */
+function makeRunId_(department, line, item) {
+  const sheet = getRunsSheet_(department);
+  const lastRow = sheet.getLastRow();
+  let maxSeq = 0;
+  if (lastRow >= 2) {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    const col = headers.indexOf('Run ID');
+    if (col >= 0) {
+      const ids = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues().flat();
+      ids.forEach(id => {
+        const m = String(id || '').match(/-(\d+)$/);
+        if (m) { const seq = Number(m[1]); if (seq > maxSeq) maxSeq = seq; }
+      });
+    }
+  }
+  const seq = String(maxSeq + 1).padStart(4, '0');
+  const lineStr = String(line || '').trim() || 'NOLINE';
+  const itemStr = String(item || '').trim() || 'NOITEM';
+  return 'RUN-' + lineStr + '-' + itemStr + '-' + seq;
 }
 
 // Reads both Plastics' and Metals' domain-specific columns — whichever set the row's sheet
@@ -730,7 +755,7 @@ function runRowToObject_(row) {
  */
 function createRun_(fields, department) {
   const sheet = getRunsSheet_(department);
-  const runId = makeRunId_(department);
+  const runId = makeRunId_(department, fields.line, fields.item);
   appendObjectsAsRows_(sheet, [{
     'Run ID': runId, 'Created At': new Date(), 'Shift': fields.shift || '', 'Status': 'Active',
     'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
