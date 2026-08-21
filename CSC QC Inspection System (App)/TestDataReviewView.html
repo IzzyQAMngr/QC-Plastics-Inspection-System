@@ -342,13 +342,16 @@
       var labelSvg = (i % labelEvery === 0)
         ? '<text x="' + cx + '" y="' + (TDR_CHART_H - TDR_PAD.bottom + 16) + '" text-anchor="middle" class="tdr-axis-label">' + label + '</text>' : '';
       var hit = '<rect x="' + (cx - slot / 2) + '" y="' + TDR_PAD.top + '" width="' + slot + '" height="' + innerH + '" fill="transparent" class="tdr-hit" ' +
-        'data-label="' + label + '" data-pass="' + b.pass + '" data-fail="' + b.fail + '" data-total="' + b.total + '"></rect>';
+        'data-label="' + label + '" data-pass="' + b.pass + '" data-fail="' + b.fail + '" data-other="' + b.other + '" data-total="' + b.total + '"></rect>';
       return '<g class="tdr-bar-group">' + segs + labelSvg + hit + '</g>';
     }).join('');
 
+    var hasOther = buckets.some(function (b) { return b.other > 0; });
     var legendHtml = hasPassFail
       ? '<div class="tdr-legend"><span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-pass"></span>Pass</span>' +
-        '<span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-fail"></span>Fail</span></div>'
+        '<span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-fail"></span>Fail</span>' +
+        (hasOther ? '<span class="tdr-legend-item"><span class="tdr-swatch tdr-swatch-other"></span>No verdict (readings logged with no Pass/Fail, e.g. ΔL/ΔA/ΔB, Visual Observations)</span>' : '') +
+        '</div>'
       : '';
 
     body.innerHTML = legendHtml +
@@ -369,7 +372,7 @@
         var d = hit.dataset;
         var lines = ['<div class="tdr-tooltip-date">' + d.label + '</div>'];
         if (hasPassFail) {
-          lines.push('<div><b>' + d.pass + '</b> Pass &middot; <b>' + d.fail + '</b> Fail</div>');
+          lines.push('<div><b>' + d.pass + '</b> Pass &middot; <b>' + d.fail + '</b> Fail' + (Number(d.other) > 0 ? ' &middot; <b>' + d.other + '</b> no verdict' : '') + '</div>');
         }
         lines.push('<div class="tdr-tooltip-total"><b>' + d.total + '</b> total</div>');
         tip.innerHTML = lines.join('');
