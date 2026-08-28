@@ -63,20 +63,24 @@
     border-right: 1px solid var(--nav-border); padding: 20px 0; position: sticky; top: 0; height: 100vh;
     overflow-y: auto;
   }
-  #sidenav .brand { font-weight: 700; font-size: 15px; padding: 0 20px 18px; letter-spacing: 0.2px; color: var(--nav-text); border-bottom: 1px solid var(--nav-border); margin-bottom: 10px; }
-  #sidenav .brand small { display: block; font-weight: 400; color: var(--nav-text-dim); font-size: 10.5px; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase; }
-  /* Excel-style grid: each department's items sit in one bordered "column" range, one row
-     per menu item, gridlines between rows like adjacent spreadsheet cells. */
+  #sidenav .brand { padding: 0 20px 18px; border-bottom: 1px solid var(--nav-border); margin-bottom: 10px; }
+  #sidenav .brand-logo {
+    background: #fff; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  #sidenav .brand-logo svg { display: block; width: 100%; height: auto; }
+  #sidenav .brand-title { font-weight: 700; font-size: 13px; letter-spacing: 0.2px; color: var(--nav-text); }
   .nav-group {
-    margin: 0 14px 16px; border: 1px solid var(--nav-border);
+    margin: 0 14px 16px;
+  }
+  .nav-separator {
+    height: 1px; background: var(--nav-border); margin: 0 20px 16px;
   }
   .nav-item {
-    display: flex; align-items: center; padding: 9px 14px; border-radius: 0;
-    border-left: 3px solid transparent; border-bottom: 1px solid var(--nav-border);
+    display: flex; align-items: center; padding: 9px 14px; border-radius: 6px;
+    border-left: 3px solid transparent;
     color: var(--nav-text-dim); cursor: pointer; font-size: 12px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.05em; user-select: none;
   }
-  .nav-item:last-child { border-bottom: none; }
   .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--nav-text); }
   .nav-item.active { background: var(--nav-active-bg); color: var(--nav-text); border-left-color: var(--series-1); font-weight: 700; }
   .nav-group-label {
