@@ -1,60 +1,92 @@
-<h1 class="page-title">⚙️ Daily Run Setup — Metals</h1>
-<p class="page-sub">Set up a Run once — Line, Shift, Can Size, Item, Customer, Material Lot — and it stays selectable for as long as it's Active, across shifts and days. Stop a Run when the job's done; nothing is ever deleted, it just drops off this daily list.</p>
+<div class="page-banner metals">
+  <div class="page-banner-title">Daily Run Setup — Metals</div>
+  <div class="page-head-actions">
+    <div class="confirm-row">
+      <select id="mar-confirmedBy"><option value="">— confirmed by —</option></select>
+      <button id="mar-confirm-btn" class="ghost">Confirm Today's Runs</button>
+    </div>
+    <button id="mar-open-drawer-btn" class="primary">+ Add Run</button>
+  </div>
+</div>
+<p class="page-sub">Set up once, active until stopped — nothing is ever deleted.</p>
 <div class="form-loading-banner" id="mar-loading"><span class="spinner"></span> Loading form data…</div>
 
-<section class="card form-compact">
-  <h2>Daily Run Setup</h2>
-  <div class="field-row">
-    <div class="field"><label>Line #</label><select id="mar-line"><option value="">— select —</option></select></div>
-    <div class="field"><label>Shift</label><select id="mar-shift"><option value="">— select —</option></select></div>
-    <div class="field"><label>Can Size</label><div class="combo"><input id="mar-cansize" placeholder="Start typing to search…"></div></div>
-    <div class="field"><label>Can Description</label><input id="mar-canDescription" readonly></div>
-    <div class="field"><label>Product Type</label><input id="mar-productType" readonly></div>
-  </div>
-  <div class="field-row">
-    <div class="field"><label>Item</label><div class="combo"><input id="mar-item" placeholder="Start typing to search…"></div></div>
-    <div class="field"><label>Item Description</label><input id="mar-itemDescription" readonly></div>
-    <div class="field"><label>Material Lot</label><input id="mar-materialLot" placeholder="Control Tag #"></div>
-  </div>
-  <div class="field-row">
-    <div class="field"><label>Customer Name</label><input id="mar-customerName"></div>
-    <div class="field"><label>Run Qty</label><input id="mar-runQty" type="number"></div>
-    <div class="field"><label>Created By</label><select id="mar-createdBy"><option value="">— select —</option></select></div>
-    <div class="field" style="align-self:end;"><button id="mar-add-btn" class="primary">+ Add Run</button></div>
-  </div>
-</section>
+<div class="tiles" id="mar-tiles"></div>
 
 <section class="card card-highlight metals">
-  <h2>Active Runs <span class="spec-hint">(what's running today)</span></h2>
-  <div class="field-row">
-    <div class="field"><label>Confirmed By</label><select id="mar-confirmedBy"><option value="">— select —</option></select></div>
-    <div class="field" style="align-self:end;">
-      <button id="mar-confirm-btn" class="ghost">✅ Confirm Today's Runs</button>
-      <div class="spec-hint">Stamps every Active run below as checked/accurate for today — for the record, not a data change.</div>
+  <div class="card-head-row">
+    <div>
+      <h2>Active Runs <span class="today-chip" id="mar-today-chip"></span></h2>
+      <p class="spec-hint">What's running today, across every Line</p>
     </div>
   </div>
   <div id="mar-active-runs-table"></div>
 </section>
 
+<div class="drawer-overlay" id="mar-drawer-overlay"></div>
+<div class="drawer" id="mar-drawer" role="dialog" aria-modal="true" aria-labelledby="mar-drawer-title">
+  <div class="drawer-head">
+    <div>
+      <h2 id="mar-drawer-title">New Run</h2>
+      <p>Add a Run to today's Active Runs list</p>
+    </div>
+    <button class="drawer-close" id="mar-drawer-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <div class="section-divider">Run Details</div>
+    <div class="field-row-2">
+      <div class="field"><label>Line #</label><select id="mar-line"><option value="">— select —</option></select></div>
+      <div class="field"><label>Shift</label><select id="mar-shift"><option value="">— select —</option></select></div>
+    </div>
+    <div class="field"><label>Created By</label><select id="mar-createdBy"><option value="">— select —</option></select></div>
+
+    <div class="section-divider">Can Size &amp; Item</div>
+    <div class="field"><label>Can Size</label><div class="combo"><input id="mar-cansize" placeholder="Start typing to search…"></div></div>
+    <div class="field-row-2">
+      <div class="field"><label>Can Description</label><input id="mar-canDescription" readonly></div>
+      <div class="field"><label>Product Type</label><input id="mar-productType" readonly></div>
+    </div>
+    <div class="field"><label>Item</label><div class="combo"><input id="mar-item" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="mar-itemDescription" readonly></div>
+
+    <div class="section-divider">Order Info</div>
+    <div class="field"><label>Material Lot</label><input id="mar-materialLot" placeholder="Control Tag #"></div>
+    <div class="field"><label>Customer Name (if available)</label><input id="mar-customerName"></div>
+    <div class="field"><label>Run Qty (if available)</label><input id="mar-runQty" type="number"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="ghost" id="mar-drawer-cancel">Cancel</button>
+    <button class="primary" id="mar-add-btn">+ Add Run</button>
+  </div>
+</div>
+
 <script>
   var marData = null;
   var MAR_SKELETON_ROWS = 15;
   var MAR_TABLE_COLGROUP =
-    '<col style="width:10%"><col style="width:4%"><col style="width:6%"><col style="width:10%">' +
-    '<col style="width:13%"><col style="width:6%"><col style="width:11%"><col style="width:9%">' +
-    '<col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:10%">';
+    '<col style="width:12%"><col style="width:5%"><col style="width:11%"><col style="width:15%">' +
+    '<col style="width:15%"><col style="width:11%"><col style="width:6%"><col style="width:8%">' +
+    '<col style="width:9%"><col style="width:8%">';
   var MAR_TABLE_HEADER =
-    '<th>Run ID</th><th>Line</th><th>Start Shift</th><th>Start Date</th><th>Can Description</th>' +
-    '<th>Item</th><th>Item Description</th><th>Customer</th><th>Qty</th><th>Qualified</th><th>Last Confirmed By</th><th></th>';
+    '<th>Run</th><th>Line</th><th>Shift / Start</th><th>Can Size</th><th>Item</th>' +
+    '<th>Customer</th><th style="text-align:right;">Qty</th><th>Qualified</th><th>Confirmed</th><th></th>';
   var MAR_TABLE_COLS = MAR_TABLE_HEADER.split('<th').length - 1;
+
+  function marFmtQty(q) {
+    if (q === '' || q === null || q === undefined) return '—';
+    var n = Number(q);
+    return isNaN(n) ? esc(q) : n.toLocaleString();
+  }
 
   function marSkeletonTableHtml() {
     var row = '<tr>' + new Array(MAR_TABLE_COLS).fill('<td><span class="skeleton-bar"></span></td>').join('') + '</tr>';
-    return '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + MAR_TABLE_COLGROUP +
+    return '<div class="scroll-table-wrap"><table class="run-grid"><colgroup>' + MAR_TABLE_COLGROUP +
       '</colgroup><thead><tr>' + MAR_TABLE_HEADER +
       '</tr></thead><tbody>' + new Array(MAR_SKELETON_ROWS).fill(row).join('') + '</tbody></table></div>';
   }
   document.getElementById('mar-active-runs-table').innerHTML = marSkeletonTableHtml();
+  document.getElementById('mar-today-chip').textContent =
+    new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
   function init_metalsaddrun() {
     google.script.run
@@ -108,6 +140,17 @@
     document.getElementById('mar-createdBy').value = '';
   }
 
+  // ---- Slide-in Add Run drawer ----
+  var marDrawer = document.getElementById('mar-drawer');
+  var marDrawerOverlay = document.getElementById('mar-drawer-overlay');
+  function marOpenDrawer() { marDrawerOverlay.classList.add('open'); marDrawer.classList.add('open'); }
+  function marCloseDrawer() { marDrawerOverlay.classList.remove('open'); marDrawer.classList.remove('open'); }
+  document.getElementById('mar-open-drawer-btn').addEventListener('click', marOpenDrawer);
+  document.getElementById('mar-drawer-close').addEventListener('click', marCloseDrawer);
+  document.getElementById('mar-drawer-cancel').addEventListener('click', marCloseDrawer);
+  marDrawerOverlay.addEventListener('click', marCloseDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && marDrawer.classList.contains('open')) marCloseDrawer(); });
+
   function submitMetalsAddRun() {
     var line = document.getElementById('mar-line').value;
     var sizeId = document.getElementById('mar-cansize').value;
@@ -144,6 +187,7 @@
           marData.activeRuns.unshift(run);
           renderMetalsActiveRunsTable();
           resetMetalsAddRunFields();
+          marCloseDrawer();
           showToast('Run ' + run.runId + ' created.');
         })
         .withFailureHandler(function (err) { showToast(err.message, true); })
@@ -159,29 +203,45 @@
     });
   }
 
+  function renderMetalsTiles() {
+    var runs = marData.activeRuns || [];
+    var lineSet = {};
+    runs.forEach(function (r) { lineSet[r.line] = true; });
+    var linesCount = Object.keys(lineSet).length;
+    var qualified = runs.filter(function (r) { return r.qualified === 'Yes'; }).length;
+    var notQualified = runs.length - qualified;
+    document.getElementById('mar-tiles').innerHTML =
+      '<div class="tile"><div class="label">Active Runs</div><div class="value">' + runs.length + '</div></div>' +
+      '<div class="tile"><div class="label">Lines Running</div><div class="value">' + linesCount + '</div></div>' +
+      '<div class="tile"><div class="label">Qualified</div><div class="value good">' + qualified + '</div></div>' +
+      '<div class="tile"><div class="label">Needs Qualification</div><div class="value' + (notQualified > 0 ? ' critical' : '') + '">' + notQualified + '</div></div>';
+  }
+
   function renderMetalsActiveRunsTable() {
     var runs = sortByLine_(marData.activeRuns || []);
     var el = document.getElementById('mar-active-runs-table');
-    if (runs.length === 0) { el.innerHTML = '<p class="spec-hint">No active runs yet — add one below.</p>'; return; }
+    renderMetalsTiles();
+    if (runs.length === 0) { el.innerHTML = '<p class="spec-hint">No active runs yet — click "+ Add Run" to start one.</p>'; return; }
     var rowsHtml = runs.map(function (r) {
-      var qualifiedBadge = r.qualified === 'Yes' ? '<span class="badge good">Qualified</span>' : '<span class="badge warning">Not Qualified</span>';
-      var confirmedText = r.lastConfirmed ? esc(r.lastConfirmedBy || '') : '<span class="spec-hint">not yet today</span>';
-      return '<tr>' +
-        '<td>' + esc(r.runId) + '</td>' +
-        '<td class="run-line">' + esc(r.line) + '</td>' +
-        '<td>' + esc(r.shift) + '</td>' +
-        '<td>' + esc(fmtStartDate(r.createdAt)) + '</td>' +
-        '<td>' + esc(r.canDescription) + '</td>' +
-        '<td>' + esc(r.item) + '</td>' +
-        '<td>' + esc(r.itemDescription) + '</td>' +
+      var statusColor = r.qualified === 'Yes' ? 'var(--good)' : 'var(--critical)';
+      var qualifiedBadge = r.qualified === 'Yes' ? '<span class="badge good">Qualified</span>' : '<span class="badge critical">Not Qualified</span>';
+      var confirmedHtml = r.lastConfirmed
+        ? '<span class="confirmed-yes"><span class="check">&#10003;</span>' + esc(r.lastConfirmedBy || '') + '</span>'
+        : '<span class="confirmed-no">not yet today</span>';
+      return '<tr style="--row-status-color:' + statusColor + '">' +
+        '<td class="cell-mono">' + esc(r.runId) + '</td>' +
+        '<td><span class="line-chip metals">' + esc(r.line) + '</span></td>' +
+        '<td><div class="cell-primary">' + esc(r.shift) + '</div><div class="cell-secondary">' + esc(fmtStartDate(r.createdAt)) + '</div></td>' +
+        '<td><div class="cell-primary">' + esc(r.sizeId) + '</div><div class="cell-secondary">' + esc(r.canDescription) + '</div></td>' +
+        '<td><div class="cell-primary">' + esc(r.item) + '</div><div class="cell-secondary">' + esc(r.itemDescription) + '</div></td>' +
         '<td>' + esc(r.customerName) + '</td>' +
-        '<td>' + esc(r.runQty) + '</td>' +
+        '<td class="qty-cell cell-mono">' + marFmtQty(r.runQty) + '</td>' +
         '<td>' + qualifiedBadge + '</td>' +
-        '<td>' + confirmedText + '</td>' +
+        '<td>' + confirmedHtml + '</td>' +
         '<td><button class="danger" data-stop-run="' + esc(r.runId) + '">Stop Run</button></td>' +
         '</tr>';
     }).join('');
-    el.innerHTML = '<div class="scroll-table-wrap"><table class="qc-table run-table"><colgroup>' + MAR_TABLE_COLGROUP +
+    el.innerHTML = '<div class="scroll-table-wrap"><table class="run-grid"><colgroup>' + MAR_TABLE_COLGROUP +
       '</colgroup><thead><tr>' + MAR_TABLE_HEADER +
       '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-stop-run]'), function (btn) {
