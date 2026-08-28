@@ -1,5 +1,5 @@
 <div class="page-title-row">
-  <h1 class="page-title">📋 In-Process Inspection</h1>
+  <h1 class="page-title">In-Process Inspection</h1>
   <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0 &nbsp;·&nbsp; Revision Date: 8/10/2026</div>
 </div>
 <p class="page-sub">Log in-process dimensional, color, and visual inspection results by Line and Cavity — one record covers every Line inspected this shift.</p>
@@ -13,28 +13,62 @@
     <div class="field"><label>Inspected By</label><select id="ip-inspector"></select></div>
     <div class="field"><label>Shift Foreman</label><select id="ip-foreman"></select></div>
   </div>
-  <div class="field-row">
-    <div class="field"><label>Resume Existing Record #</label><input id="ip-record-id" placeholder="(leave blank to start a new record)"></div>
-    <div class="field" style="align-self:end;"><button id="ip-new-btn" class="ghost">Start New Inspection</button></div>
+  <div class="record-utility-row">
+    <label for="ip-record-id">Record #</label>
+    <input id="ip-record-id" class="record-id-input" placeholder="new record">
+    <button type="button" class="link-btn" id="ip-new-btn">Start New Record</button>
+    <span class="spec-hint">Leave blank to start fresh — it fills in once you save. Type an existing Record # to resume adding Lines to it.</span>
   </div>
-  <p class="spec-hint">"Start New Inspection" clears this form to begin a brand-new QC Record. You don't need it to keep adding Lines to the inspection you're already working on — just switch Lines below.</p>
 </section>
 
-<section class="card">
-  <h2>2. Lines</h2>
-  <div class="line-tabs" id="ip-line-tabs"></div>
-</section>
-
-<section class="card">
-  <h2 id="ip-line-title">3. Line 1 — Line Batch</h2>
+<div class="ip-tabstrip-bar" id="ip-tabstrip-bar"><div class="ip-tabstrip" id="ip-line-tabs"></div></div>
+<div class="ip-context-banner" id="ip-context-banner"></div>
+<div class="ip-panel-wrap">
   <div id="ip-line-panel-body"></div>
-</section>
+</div>
 
 <section class="card">
-  <h2>4. Review &amp; Submit</h2>
+  <h2>2. Review &amp; Submit</h2>
   <button id="ip-review-btn">Review All Lines</button>
   <div id="ip-review-area" class="hidden" style="margin-top:14px;"></div>
 </section>
+
+<div class="drawer-overlay" id="ipar-drawer-overlay"></div>
+<div class="drawer" id="ipar-drawer" role="dialog" aria-modal="true" aria-labelledby="ipar-drawer-title">
+  <div class="drawer-head">
+    <div>
+      <h2 id="ipar-drawer-title">New Run</h2>
+      <p>Add a Run — it shows up as a Line tab right away</p>
+    </div>
+    <button class="drawer-close" id="ipar-drawer-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <div class="section-divider">Run Details</div>
+    <div class="field-row-2">
+      <div class="field"><label>Line #</label><select id="ipar-line"><option value="">— select —</option></select></div>
+      <div class="field"><label>Shift</label><select id="ipar-shift"><option value="">— select —</option></select></div>
+    </div>
+    <div class="field"><label>Created By</label><select id="ipar-createdBy"><option value="">— select —</option></select></div>
+
+    <div class="section-divider">Mold &amp; Item</div>
+    <div class="field"><label>Mold</label><div class="combo"><input id="ipar-mold" placeholder="Start typing to search…"></div></div>
+    <div class="field-row-2">
+      <div class="field"><label>Mold Description</label><input id="ipar-moldDescription" readonly></div>
+      <div class="field"><label>Product Type</label><input id="ipar-productType" readonly></div>
+    </div>
+    <div class="field"><label>Item</label><div class="combo"><input id="ipar-item" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="ipar-itemDescription" readonly></div>
+
+    <div class="section-divider">Order Info</div>
+    <div class="field"><label>Resin Lot</label><input id="ipar-resinLot"></div>
+    <div class="field"><label>Customer Name (if available)</label><input id="ipar-customerName"></div>
+    <div class="field"><label>Run Qty (if available)</label><input id="ipar-runQty" type="number"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="ghost" id="ipar-drawer-cancel">Cancel</button>
+    <button class="primary" id="ipar-add-btn">+ Add Run</button>
+  </div>
+</div>
 
 <script>
   var LINE_NUMBERS = [1,2,3,4,5,6,7,8,9,10];
@@ -59,7 +93,7 @@
 
   var ipData = null;
   var ipLines = {};
-  var ipActiveLine = 1;
+  var ipActiveLine = null;
   var PASS_FAIL_OPTIONS = ['', 'Pass', 'Fail', 'N/A'];
 
   function init_inprocess() {
@@ -70,6 +104,8 @@
         fillSelect('ip-shift', ipData.shifts);
         fillSelect('ip-inspector', ipData.inspectors);
         fillSelect('ip-foreman', ipData.foremen);
+        var vis = visibleLineNumbers();
+        ipActiveLine = vis.length ? vis[0] : null;
         renderLineTabs();
         renderLinePanel();
 
@@ -95,6 +131,11 @@
       .withSuccessHandler(function (runs) {
         if (!ipData) return;
         ipData.runs = runs;
+        if (ipActiveLine === null) {
+          var vis = visibleLineNumbers();
+          ipActiveLine = vis.length ? vis[0] : null;
+        }
+        renderLineTabs();
         renderLinePanel();
       })
       .withFailureHandler(function () {})
@@ -203,6 +244,7 @@
     line.mold = run.moldId || line.mold;
     line.product = m ? m.productType : (run.productType || line.product);
     line.moldDescription = run.moldDescription || line.moldDescription;
+    line.qualified = run.qualified || '';
     line.color = ''; line.colorOptions = []; line.colorSpec = null;
   }
 
@@ -211,7 +253,7 @@
     if (isNew) {
       ipLines[n] = {
         product:'', mold:'', moldDescription:'', color:'', colorOptions:[], resinLot:'', pallet:'', sampleDate:'', sampleTime:'',
-        itemNo:'', itemDescription:'',
+        itemNo:'', itemDescription:'', qualified:'',
         runId:'', bounds:null, dimFields:[], colorSpec:null, cavityRows:[],
       };
       // First time this Line tab is touched — if there's exactly one (or several; take the
@@ -224,17 +266,40 @@
   }
 
   // ================= LINE TABS =================
+  // Only Lines with an Active Run, or a Line already carrying entered data (its Run may have
+  // since been stopped), get a tab — not the full fixed LINE_NUMBERS range, which stays around
+  // only as the option list for the embedded "+ Add Run" drawer's Line # select.
+  function visibleLineNumbers() {
+    var set = {};
+    (ipData && ipData.runs || []).forEach(function (r) {
+      var n = parseInt(r.line, 10);
+      if (!isNaN(n)) set[n] = true;
+    });
+    Object.keys(ipLines).forEach(function (n) {
+      var l = ipLines[n];
+      if (l && (l.mold || l.cavityRows.length > 0)) set[n] = true;
+    });
+    return Object.keys(set).map(function (n) { return parseInt(n, 10); }).sort(function (a, b) { return a - b; });
+  }
+
   function renderLineTabs() {
     var wrap = document.getElementById('ip-line-tabs');
-    wrap.innerHTML = LINE_NUMBERS.map(function (n) {
+    var vis = visibleLineNumbers();
+    wrap.innerHTML = vis.map(function (n) {
       var line = ipLines[n];
       var hasData = line && line.cavityRows.length > 0;
       var statuses = hasData ? line.cavityRows.map(function (r) { return computeRowStatus(r, line.bounds, dimKeysFor(line)); }) : [];
       var failCount = statuses.filter(function (s) { return s === 'FAIL'; }).length;
       var reviewCount = statuses.filter(function (s) { return s === 'NEEDS REVIEW'; }).length;
       var dot = hasData ? ('<span class="dot ' + (failCount > 0 ? 'critical' : (reviewCount > 0 ? 'serious' : 'good')) + '"></span>') : '';
-      return '<button class="line-tab' + (n === ipActiveLine ? ' active' : '') + '" data-line="' + n + '">' + dot + 'Line ' + n + '</button>';
-    }).join('');
+      var metaBits = [];
+      if (line && line.itemNo) metaBits.push(line.itemNo);
+      if (line && line.moldDescription) metaBits.push(line.moldDescription);
+      var meta = metaBits.length ? '<div class="meta">' + esc(metaBits.join(' · ')) + '</div>' : '';
+      return '<button type="button" class="ip-tab' + (n === ipActiveLine ? ' active' : '') + '" data-line="' + n + '">' +
+        '<div class="num">' + dot + 'LINE ' + n + '</div>' + meta + '</button>';
+    }).join('') + '<button type="button" class="ip-tab-add" id="ip-add-run-tab">+ Add Run</button>';
+
     Array.prototype.forEach.call(wrap.querySelectorAll('[data-line]'), function (btn) {
       btn.addEventListener('click', function () {
         ipActiveLine = parseInt(btn.dataset.line, 10);
@@ -242,6 +307,24 @@
         renderLinePanel();
       });
     });
+    document.getElementById('ip-add-run-tab').addEventListener('click', ipArOpenDrawer);
+  }
+
+  function renderContextBanner() {
+    var banner = document.getElementById('ip-context-banner');
+    var n = ipActiveLine;
+    if (n === null || n === undefined) { banner.style.display = 'none'; banner.innerHTML = ''; return; }
+    banner.style.display = '';
+    var line = ensureLine(n);
+    var metaParts = [];
+    if (line.mold) metaParts.push(esc(line.mold) + (line.moldDescription ? ' — ' + esc(line.moldDescription) : ''));
+    if (line.itemNo) metaParts.push('Item ' + esc(line.itemNo));
+    var badge = line.qualified === 'Yes' ? '<span class="ipc-badge">Qualified</span>'
+      : (line.qualified ? '<span class="ipc-badge">Not Qualified</span>' : '');
+    banner.innerHTML =
+      '<div><span class="ipc-num">LINE ' + n + '</span>' +
+      (metaParts.length ? ' &nbsp; <span class="ipc-meta">' + metaParts.join(' &nbsp;·&nbsp; ') + '</span>' : '') +
+      '</div>' + badge;
   }
 
   // ================= LINE PANEL (Line Batch + cavity rows) =================
@@ -349,8 +432,14 @@
 
   function renderLinePanel() {
     var n = ipActiveLine;
+    if (n === null || n === undefined) {
+      renderContextBanner();
+      document.getElementById('ip-line-panel-body').innerHTML =
+        '<p class="spec-hint" style="padding:20px 0;">No Lines yet — click "+ Add Run" above to set one up.</p>';
+      return;
+    }
     var line = ensureLine(n);
-    document.getElementById('ip-line-title').textContent = '3. Line ' + n + ' — Line Batch';
+    renderContextBanner();
 
     var runOptions = (ipData.runs || []).map(function (r) {
       return '<option value="' + esc(r.runId) + '"' + (r.runId === line.runId ? ' selected' : '') + '>' + esc(r.runId) + ' — ' + esc(r.moldId || r.line || '') +
@@ -570,7 +659,10 @@
   }
 
   function activeLinesWithData() {
-    return LINE_NUMBERS.filter(function (n) { return ipLines[n] && ipLines[n].mold && ipLines[n].cavityRows.length > 0; });
+    return Object.keys(ipLines)
+      .map(function (n) { return parseInt(n, 10); })
+      .filter(function (n) { return ipLines[n] && ipLines[n].mold && ipLines[n].cavityRows.length > 0; })
+      .sort(function (a, b) { return a - b; });
   }
 
   /** What's actually wrong with this row, in plain terms — not just a badge. */
@@ -739,8 +831,7 @@
           (result.failCount ? ' ' + result.failCount + ' sample(s) had a deviation.' : '') +
           (result.reviewCount ? ' ' + result.reviewCount + ' sample(s) need review.' : ''),
           result.failCount > 0);
-        ipLines = {}; ipActiveLine = 1;
-        renderLineTabs(); renderLinePanel();
+        ipResetLines_();
         document.getElementById('ip-review-area').classList.add('hidden');
       })
       .withFailureHandler(function (err) {
@@ -751,11 +842,115 @@
       .saveInProcessInspection({ recordId: document.getElementById('ip-record-id').value || null, header: header, rows: rows });
   }
 
+  /** Clears in-memory Line data (used after a successful save, which already banked those rows,
+   *  and by "Start New Record") — the tab strip then falls back to whatever Active Runs still
+   *  exist, same as a fresh page load. */
+  function ipResetLines_() {
+    ipLines = {};
+    var vis = visibleLineNumbers();
+    ipActiveLine = vis.length ? vis[0] : null;
+    renderLineTabs();
+    renderLinePanel();
+  }
+
   document.getElementById('ip-new-btn').addEventListener('click', function () {
     document.getElementById('ip-record-id').value = '';
-    ipLines = {}; ipActiveLine = 1;
-    renderLineTabs(); renderLinePanel();
+    ipResetLines_();
     document.getElementById('ip-review-area').classList.add('hidden');
-    showToast('Started a new round.');
+    showToast('Started a new record.');
   });
+
+  // ================= EMBEDDED "+ ADD RUN" DRAWER =================
+  // Lets a tech set up a Run for a Line that doesn't have one yet without leaving In-Process —
+  // reuses the exact same server calls (getAddRunFormData/addRun) as the standalone Add Run
+  // page, just rendered inline here.
+  var iparData = null;
+  var iparDrawer = document.getElementById('ipar-drawer');
+  var iparDrawerOverlay = document.getElementById('ipar-drawer-overlay');
+
+  function ipArOpenDrawer() {
+    iparDrawerOverlay.classList.add('open');
+    iparDrawer.classList.add('open');
+    if (!iparData) {
+      google.script.run
+        .withSuccessHandler(function (data) { iparData = data; ipArWireDrawer(); })
+        .withFailureHandler(function (err) { showToast(err.message, true); })
+        .getAddRunFormData();
+    }
+  }
+  function ipArCloseDrawer() { iparDrawerOverlay.classList.remove('open'); iparDrawer.classList.remove('open'); }
+  document.getElementById('ipar-drawer-close').addEventListener('click', ipArCloseDrawer);
+  document.getElementById('ipar-drawer-cancel').addEventListener('click', ipArCloseDrawer);
+  iparDrawerOverlay.addEventListener('click', ipArCloseDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && iparDrawer.classList.contains('open')) ipArCloseDrawer(); });
+
+  function ipArWireDrawer() {
+    fillSelect('ipar-line', iparData.lines || LINE_NUMBERS);
+    fillSelect('ipar-shift', iparData.shifts);
+    fillSelect('ipar-createdBy', iparData.createdByOptions);
+
+    var moldItems = (iparData.molds || []).map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
+    initCombobox(document.getElementById('ipar-mold'), moldItems, {
+      onSelect: function (moldId) {
+        var m = iparData.molds.find(function (x) { return x.moldId === moldId; });
+        document.getElementById('ipar-productType').value = m ? m.productType : '';
+        document.getElementById('ipar-moldDescription').value = m ? m.description : '';
+      },
+      onInvalid: function () {
+        document.getElementById('ipar-productType').value = '';
+        document.getElementById('ipar-moldDescription').value = '';
+      },
+    });
+
+    var itemItems = (iparData.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+    initCombobox(document.getElementById('ipar-item'), itemItems, {
+      onSelect: function (itemNo, item) { document.getElementById('ipar-itemDescription').value = item.sublabel || ''; },
+      onInvalid: function () { document.getElementById('ipar-itemDescription').value = ''; },
+    });
+
+    document.getElementById('ipar-add-btn').addEventListener('click', ipArSubmit);
+  }
+
+  function ipArResetFields_() {
+    ['ipar-mold', 'ipar-moldDescription', 'ipar-productType', 'ipar-item', 'ipar-itemDescription', 'ipar-resinLot', 'ipar-customerName', 'ipar-runQty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('ipar-line').value = '';
+    document.getElementById('ipar-shift').value = '';
+    document.getElementById('ipar-createdBy').value = '';
+  }
+
+  function ipArSubmit() {
+    var line = document.getElementById('ipar-line').value;
+    var moldId = document.getElementById('ipar-mold').value;
+    var item = document.getElementById('ipar-item').value;
+    if (!line) { showToast('Pick a Line #.', true); return; }
+    if (!moldId) { showToast('Pick a Mold.', true); return; }
+    if (!item) { showToast('Pick an Item.', true); return; }
+    var fields = {
+      line: line,
+      shift: document.getElementById('ipar-shift').value,
+      productType: document.getElementById('ipar-productType').value,
+      moldId: moldId,
+      moldDescription: document.getElementById('ipar-moldDescription').value,
+      resinLot: document.getElementById('ipar-resinLot').value,
+      item: item,
+      itemDescription: document.getElementById('ipar-itemDescription').value,
+      customerName: document.getElementById('ipar-customerName').value,
+      runQty: document.getElementById('ipar-runQty').value,
+      createdBy: document.getElementById('ipar-createdBy').value,
+    };
+    google.script.run
+      .withSuccessHandler(function (run) {
+        ipData.runs.unshift(run);
+        ipActiveLine = parseInt(run.line, 10);
+        ipArCloseDrawer();
+        ipArResetFields_();
+        renderLineTabs();
+        renderLinePanel();
+        showToast('Run ' + run.runId + ' created — Line ' + run.line + ' added.');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .addRun(fields);
+  }
 </script>
