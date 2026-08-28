@@ -843,7 +843,7 @@ function qualifyRun_(runId, department) {
 
 // ================= PUBLIC CLIENT-FACING WRAPPERS (Runs) =================
 function createRun(fields) { return createRun_(fields); }
-function getActiveRuns() { return getActiveRuns_(); }
+function getActiveRuns(department) { return getActiveRuns_(department); }
 function stopRun(runId) { return stopRun_(runId); }
 function confirmTodaysRuns(confirmedBy) { return confirmTodaysRuns_(confirmedBy); }
 

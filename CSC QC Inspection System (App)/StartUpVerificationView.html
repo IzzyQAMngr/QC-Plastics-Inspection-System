@@ -113,6 +113,18 @@
     document.getElementById('suv-print-btn').addEventListener('click', function () { window.print(); });
   }
 
+  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  function onshow_startup() {
+    google.script.run
+      .withSuccessHandler(function (runs) {
+        if (!suvData) return;
+        suvData.runs = runs;
+        refreshRunOptions_(document.getElementById('suv-run'), runs);
+      })
+      .withFailureHandler(function () {})
+      .getActiveRuns();
+  }
+
   function suvNowDateTimeStr() {
     var d = new Date();
     var date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');

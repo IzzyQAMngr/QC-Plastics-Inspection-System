@@ -137,9 +137,34 @@
   function showView(name, dept) {
     document.querySelectorAll('.nav-item').forEach(function (i) { i.classList.toggle('active', i.dataset.view === name); });
     VIEWS.forEach(function (v) { document.getElementById('view-' + v).classList.toggle('active', v === name); });
-    if (!VIEWS_LOADED[name] && window['init_' + name]) { VIEWS_LOADED[name] = true; window['init_' + name](); }
+    if (!VIEWS_LOADED[name] && window['init_' + name]) {
+      VIEWS_LOADED[name] = true;
+      window['init_' + name]();
+    } else if (VIEWS_LOADED[name] && window['onshow_' + name]) {
+      // View was already loaded on a previous visit — re-init would wipe in-progress form
+      // fields, so views with data that can go stale while you're away (mainly the Active
+      // Runs pickers, since a Run can be added/stopped elsewhere) expose a lighter onshow_
+      // hook instead, called every time you navigate back in, to refresh just that.
+      window['onshow_' + name]();
+    }
     updateDeptBanner_(dept || VIEW_DEPT[name] || 'Plastics');
   }
+
+  /** Refills a Run-picker <select> from a fresh Active Runs list without touching any change
+   *  listener already attached to it, keeping the current selection if it's still present.
+   *  Used by onshow_ hooks (Drop Freeze, Start-Up Verification) to pick up Runs added/stopped
+   *  elsewhere since the view was first loaded. */
+  function refreshRunOptions_(sel, runs, formatFn) {
+    if (!sel) return;
+    var fmt = formatFn || function (r) {
+      return '<option value="' + escHtml_(r.runId) + '">' + escHtml_(r.runId) + ' — ' + escHtml_(r.moldId || '') +
+        (r.item ? ' / Item ' + escHtml_(r.item) : '') + '</option>';
+    };
+    var current = sel.value;
+    sel.innerHTML = '<option value="">— select —</option>' + (runs || []).map(fmt).join('');
+    if (current && (runs || []).some(function (r) { return r.runId === current; })) sel.value = current;
+  }
+  function escHtml_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
   function updateDeptBanner_(dept) {
     var banner = document.getElementById('dept-banner');

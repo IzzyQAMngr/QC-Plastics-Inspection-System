@@ -106,6 +106,18 @@
       .getDropFreezeFormData();
   }
 
+  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  function onshow_dropfreeze() {
+    google.script.run
+      .withSuccessHandler(function (runs) {
+        if (!dfData) return;
+        dfData.runs = runs;
+        refreshRunOptions_(document.getElementById('df-run'), runs);
+      })
+      .withFailureHandler(function () {})
+      .getActiveRuns();
+  }
+
   function opt(value, label) {
     var o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; return o;
   }

@@ -85,6 +85,22 @@
       .getInProcessFormData();
   }
 
+  // Called every time you navigate back into this view after the first load (see Index.html's
+  // showView) — refreshes just the Active Run list so a Run added/stopped elsewhere (Add Run,
+  // another tab) shows up in the "Active Run" picker without needing a full page refresh.
+  // Re-rendering the line panel from the refreshed list is safe: it reads back from ipLines'
+  // in-memory state, so nothing already typed in is lost.
+  function onshow_inprocess() {
+    google.script.run
+      .withSuccessHandler(function (runs) {
+        if (!ipData) return;
+        ipData.runs = runs;
+        renderLinePanel();
+      })
+      .withFailureHandler(function () {})
+      .getActiveRuns();
+  }
+
   function fillSelect(id, values, placeholder) {
     var el = document.getElementById(id); el.innerHTML = '';
     el.appendChild(opt('', placeholder || '— select —'));

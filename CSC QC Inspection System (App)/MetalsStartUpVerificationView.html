@@ -113,6 +113,21 @@
     document.getElementById('msu-print-btn').addEventListener('click', function () { window.print(); });
   }
 
+  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  function onshow_metalsstartup() {
+    google.script.run
+      .withSuccessHandler(function (runs) {
+        if (!msuData) return;
+        msuData.runs = runs;
+        refreshRunOptions_(document.getElementById('msu-run'), runs, function (r) {
+          return '<option value="' + escHtml_(r.runId) + '">' + escHtml_(r.runId) + ' — ' + escHtml_(r.sizeId || '') +
+            (r.item ? ' / Item ' + escHtml_(r.item) : '') + '</option>';
+        });
+      })
+      .withFailureHandler(function () {})
+      .getActiveRuns('Metals');
+  }
+
   function msuNowDateTimeStr() {
     var d = new Date();
     var date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
