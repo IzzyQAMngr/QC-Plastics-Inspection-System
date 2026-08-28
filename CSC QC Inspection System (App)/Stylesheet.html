@@ -282,6 +282,9 @@
   table.dim-table th, table.dim-table td { font-variant-numeric: tabular-nums; }
   table.dim-table td.dim-value input { width: 100%; min-width: 0; padding: 4px 6px; }
   table.dim-table td.dim-remark { white-space: nowrap; }
+  /* Only tints the cell padding, not input backgrounds, so an out-of-spec input's
+     red/amber oos styling still reads clearly while its row is hovered. */
+  table.dim-table tbody tr:hover td { background: color-mix(in srgb, var(--series-1) 22%, var(--surface-1)); }
 
   button {
     font-family: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 16px; border-radius: 0;

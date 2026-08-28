@@ -191,13 +191,34 @@
     return row;
   }
 
+  /** Copies a picked Active Run's Mold/Item/Resin Lot onto a line — shared by the "Active Run"
+   *  dropdown's own change handler and ensureLine's auto-load-on-first-visit below, so both
+   *  paths populate a line identically. */
+  function applyRunToLine_(line, run) {
+    line.runId = run.runId;
+    line.resinLot = run.resinLot || line.resinLot;
+    line.itemNo = run.item || line.itemNo;
+    line.itemDescription = run.itemDescription || line.itemDescription;
+    var m = ipData.molds.find(function (x) { return x.moldId === run.moldId; });
+    line.mold = run.moldId || line.mold;
+    line.product = m ? m.productType : (run.productType || line.product);
+    line.moldDescription = run.moldDescription || line.moldDescription;
+    line.color = ''; line.colorOptions = []; line.colorSpec = null;
+  }
+
   function ensureLine(n) {
-    if (!ipLines[n]) {
+    var isNew = !ipLines[n];
+    if (isNew) {
       ipLines[n] = {
         product:'', mold:'', moldDescription:'', color:'', colorOptions:[], resinLot:'', pallet:'', sampleDate:'', sampleTime:'',
         itemNo:'', itemDescription:'',
         runId:'', bounds:null, dimFields:[], colorSpec:null, cavityRows:[],
       };
+      // First time this Line tab is touched — if there's exactly one (or several; take the
+      // most recent) Active Run already set up for this Line #, pull its Mold/Item/Resin Lot
+      // in automatically instead of making the tech also pick it from "Active Run" below.
+      var match = ipData && (ipData.runs || []).find(function (r) { return String(r.line) === String(n); });
+      if (match) { applyRunToLine_(ipLines[n], match); ipLines[n]._justAutoLoaded = true; }
     }
     return ipLines[n];
   }
@@ -370,6 +391,11 @@
 
     document.getElementById('ip-line-panel-body').innerHTML = html;
     wireLinePanelEvents();
+
+    if (line._justAutoLoaded) {
+      delete line._justAutoLoaded;
+      if (line.mold) fetchMoldDependents(n, line.cavityRows.length === 0);
+    }
   }
 
   function fieldSimpleInput(id, type, value, readonly, options) {
@@ -391,15 +417,7 @@
       var run = (ipData.runs || []).find(function (r) { return r.runId === e.target.value; });
       if (!run) return;
       var line = ensureLine(n);
-      line.runId = run.runId;
-      line.resinLot = run.resinLot || line.resinLot;
-      line.itemNo = run.item || line.itemNo;
-      line.itemDescription = run.itemDescription || line.itemDescription;
-      var m = ipData.molds.find(function (x) { return x.moldId === run.moldId; });
-      line.mold = run.moldId || line.mold;
-      line.product = m ? m.productType : (run.productType || line.product);
-      line.moldDescription = run.moldDescription || line.moldDescription;
-      line.color = ''; line.colorOptions = []; line.colorSpec = null;
+      applyRunToLine_(line, run);
       renderLinePanel();
       if (line.mold) fetchMoldDependents(n, line.cavityRows.length === 0);
     });
