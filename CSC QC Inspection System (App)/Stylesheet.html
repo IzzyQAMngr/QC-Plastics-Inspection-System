@@ -113,6 +113,27 @@
   .page-title-row .page-title { margin: 0; }
   .form-rev-info { font-size: 11px; line-height: 1.5; color: var(--text-muted); text-align: right; white-space: nowrap; padding-top: 3px; }
 
+  /* ---- Controlled-document header — matches the CSC SOP/Form Template layout: logo,
+     centered title, and a Doc No/Revision No/Revision Date block, used on forms that are
+     released documents under the SQF program (e.g. Start-Up Verification). ---- */
+  table.form-doc-header {
+    width: 100%; border-collapse: collapse; table-layout: fixed;
+    border: 1px solid var(--border); background: var(--surface-1); margin-bottom: 16px;
+  }
+  table.form-doc-header > tbody > tr > td { border: 1px solid var(--border); padding: 10px 16px; vertical-align: middle; }
+  .form-doc-logo-cell { width: 190px; text-align: center; }
+  .form-doc-logo { width: 130px; height: auto; display: block; margin: 0 auto 6px; }
+  .form-doc-location { font-size: 11px; color: var(--text-secondary); }
+  .form-doc-title-cell { text-align: center; font-size: 19px; font-weight: 700; color: var(--series-1); letter-spacing: 0.01em; }
+  .form-doc-meta-cell { width: 230px; padding: 0 !important; }
+  table.form-doc-meta { width: 100%; height: 100%; border-collapse: collapse; font-size: 12px; }
+  table.form-doc-meta th, table.form-doc-meta td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; font-weight: 400; }
+  table.form-doc-meta th { background: var(--header-bg); color: var(--text-secondary); font-weight: 700; white-space: nowrap; width: 45%; }
+  .form-doc-footer {
+    margin: 28px 0 8px; padding-top: 10px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted); text-align: center;
+  }
+
   /* ---- Page banner — a colored full-width header bar for a page's title + its primary
      actions (e.g. Daily Run Setup's "+ Add Run"), used instead of a plain <h1> when the page
      is dashboard-like rather than a document to read top-to-bottom. ---- */
@@ -559,5 +580,8 @@
     section.card { border: 1px solid #000; box-shadow: none; break-inside: avoid; }
     input, select, textarea { border: 1px solid #000; color: #000; }
     .section-divider { border: 1px solid #000; border-left-width: 3px; }
+    table.form-doc-header, table.form-doc-header td, table.form-doc-meta th, table.form-doc-meta td { border-color: #000; }
+    .form-doc-title-cell { color: #000; }
+    .form-doc-footer { border-color: #000; }
   }
 </style>
