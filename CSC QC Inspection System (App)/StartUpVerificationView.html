@@ -28,31 +28,28 @@
     <div class="field"><label>Verification Date/Time</label><input type="datetime-local" id="suv-datetime"></div>
     <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
   </div>
-  <div class="section-divider">PERSONNEL</div>
-  <div class="field-row">
-    <div class="field"><label>QC Technician Name</label><select id="suv-qctech"></select></div>
-    <div class="field"><label>Start-Up Technician Name</label><select id="suv-suptech"></select></div>
-    <div class="field"><label>Shift Foreman</label><select id="suv-foreman"></select></div>
-  </div>
-  <div class="section-divider">MOLD INFO</div>
   <div class="field-row">
     <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
     <div class="field field-wide"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
     <div class="field"><label>Line #</label><input id="suv-line" readonly></div>
   </div>
-  <div class="section-divider">ITEM INFO</div>
   <div class="field-row">
     <div class="field"><label>Customer Name</label><input id="suv-customer" readonly></div>
     <div class="field"><label>Item No.</label><input id="suv-item" readonly></div>
     <div class="field field-wide"><label>Item Description</label><input id="suv-itemdesc" readonly></div>
     <div class="field"><label>Run Qty</label><input id="suv-runqty" readonly></div>
   </div>
+  <div class="section-divider">START-UP TEAM</div>
+  <div class="field-row">
+    <div class="field"><label>QC Technician Name</label><select id="suv-qctech"></select></div>
+    <div class="field"><label>Start-Up Technician Name</label><select id="suv-suptech"></select></div>
+    <div class="field"><label>Shift Foreman</label><select id="suv-foreman"></select></div>
+  </div>
 </section>
 
 <section class="card">
   <h2>2. Checklist &amp; Key Process Parameters</h2>
-  <div class="section-divider" id="suv-ctx-checklist">RUN CONTEXT</div>
-  <p class="spec-hint">Checklist items: check exactly one box — Pass, Fail, or N/A. Key Process Parameters: enter the reading under Actual Value. Both are grouped below by the Category set on each item in the Start-Up Verification Items List.</p>
+  <div class="run-context-banner" id="suv-ctx-checklist">RUN CONTEXT</div>
   <div id="suv-checklist-table"></div>
 </section>
 
