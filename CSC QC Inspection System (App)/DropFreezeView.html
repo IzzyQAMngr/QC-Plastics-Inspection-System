@@ -2,22 +2,17 @@
   <h1 class="page-title">🧊 Drop Freeze Test</h1>
   <div class="form-rev-info">Created by: QA Manager Isabel Zuniga<br>Revision 0 &nbsp;·&nbsp; Revision Date: 8/10/2026</div>
 </div>
-<p class="page-sub">Log drop freeze test results, one line item per drop.</p>
+<p class="page-sub">Load samples into the freezer, then come back later to record their test results.</p>
 
-<section class="card">
-  <h2>1. Resume an Open Test</h2>
-  <p class="spec-hint">Only needed to continue an Open Test — one you already saved but didn't finish. Starting fresh? Skip to Section 2 — a Record # is assigned automatically when you save.</p>
-  <div class="field-row">
-    <div class="field"><label>Open Test #</label><select id="df-load-select"><option value="">— select —</option></select></div>
-    <div class="field" style="align-self:end;"><button id="df-load-btn">Load</button></div>
-    <div class="field" style="align-self:end;"><button id="df-new-btn" class="ghost">Start New Test</button></div>
-  </div>
-  <div class="field"><label>Current Record #</label><input id="df-record-key" readonly placeholder="(assigned automatically on save)"></div>
-</section>
+<div style="display:flex;gap:10px;margin-bottom:16px;">
+  <button type="button" class="primary" id="df-tab-load">Load Samples</button>
+  <button type="button" class="ghost" id="df-tab-results">Test Results</button>
+</div>
 
-<section class="card">
-  <h2>2. Add Line Item</h2>
-  <p class="spec-hint">Fill in one drop test below, then click "+ Add Line" at the bottom — it's added to the Pending Lines list in Section 3, not saved yet. Repeat this whole section for every additional drop (e.g. each cavity) before saving all of them together as one test.</p>
+<section class="card" id="df-panel-load">
+  <h2>Load Samples</h2>
+  <p class="spec-hint">Log the Run, the samples going in the freezer, and which test they're for. Saving here creates one new record in Open Status — come back to the Test Results tab once the test's conditioning time has passed to record its results.</p>
+
   <div class="section-divider">RUN INFO</div>
   <p class="spec-hint">Pick the Run being tested — Line #, Mold, Product Type, Resin Lot, Item, and Customer all auto-fill from it.</p>
   <div class="field-row">
@@ -58,101 +53,90 @@
       <div class="field"><label>Sample Size</label><input id="df-test-sample" readonly></div>
       <div class="field"><label>Equipment</label><input id="df-test-equipment" readonly></div>
     </div>
+    <p class="spec-hint" id="df-sample-count-hint"></p>
   </div>
 
-  <div class="section-divider">SAMPLE &amp; TEST DETAILS</div>
+  <div class="section-divider">SAMPLE INFO</div>
   <p class="spec-hint">Cavity options come from the register's cavity list for the Mold selected above.</p>
   <div class="field-row">
     <div class="field"><label>Date / Time of Mfg</label><input type="datetime-local" id="df-dateOfMfg"></div>
     <div class="field"><label>Cavity</label><select id="df-cavity"><option value="">— select —</option></select></div>
-    <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="df-testDate"></div>
-    <div class="field"><label>Tested By</label><select id="df-testedBy"></select></div>
   </div>
 
-  <div class="section-divider" id="df-results-banner">RESULTS — pick a Run, Test, and Cavity above</div>
-  <div id="df-results-container"></div>
-  <button class="primary" id="df-add-line-btn">+ Add Line</button>
+  <button class="primary" id="df-log-samples-btn" style="margin-top:10px;">Log Samples</button>
 </section>
 
-<section class="card">
-  <h2>3. Pending Lines</h2>
-  <p class="spec-hint">Review every line item before saving — Save Test writes all of them together under one Record #.</p>
-  <table class="qc-table">
-    <thead><tr><th>#</th><th>Run</th><th>Mold</th><th>Test</th><th>Cavity</th><th>Sample</th><th>Result</th><th></th></tr></thead>
-    <tbody id="df-lines-body"><tr><td colspan="8" style="color:var(--text-muted)">No lines added yet.</td></tr></tbody>
-  </table>
-  <div style="margin-top:14px;"><button class="primary" id="df-save-btn">Save Test</button></div>
+<section class="card hidden" id="df-panel-results">
+  <h2>Test Results</h2>
+  <p class="spec-hint">Pick an Open Test below — every sample logged under it will appear so you can record its result.</p>
+  <div class="field-row">
+    <div class="field"><label>Open Test #</label><select id="df-open-select"><option value="">— select —</option></select></div>
+    <div class="field" style="align-self:end;"><button id="df-load-results-btn">Load</button></div>
+  </div>
+
+  <div class="hidden" id="df-results-loaded">
+    <div class="section-divider" id="df-results-banner">TEST — pick an Open Test above</div>
+    <div class="field"><label>Current Record #</label><input id="df-record-key" readonly></div>
+
+    <div class="field-row">
+      <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="df-testDate"></div>
+      <div class="field"><label>Tested By</label><select id="df-testedBy"></select></div>
+    </div>
+
+    <div class="section-divider">RESULTS</div>
+    <div id="df-results-container"></div>
+    <button class="primary" id="df-save-results-btn" style="margin-top:10px;">Save Results</button>
+  </div>
 </section>
 
 <script>
   var dfData = null;
-  var dfLines = [];
-  var dfLoadedRecordKey = '';
   var dfTests = [];
-  var dfSampleCount = 1;
+  var dfResultLines = [];
+  var dfLoadedRecordKey = '';
 
   function init_dropfreeze() {
     google.script.run
-      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); renderDfResultsBlocks(1); })
+      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getDropFreezeFormData();
   }
 
-  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  // Refreshes the Active Run picker + Open Test list on return visits — see Index.html's showView.
   function onshow_dropfreeze() {
     google.script.run
-      .withSuccessHandler(function (runs) {
+      .withSuccessHandler(function (data) {
         if (!dfData) return;
-        dfData.runs = runs;
-        refreshRunOptions_(document.getElementById('df-run'), runs);
+        dfData.runs = data.runs;
+        dfData.openRecords = data.openRecords;
+        refreshRunOptions_(document.getElementById('df-run'), data.runs);
+        renderDfOpenSelect_();
       })
       .withFailureHandler(function () {})
-      .getActiveRuns();
+      .getDropFreezeFormData();
   }
 
   function opt(value, label) {
     var o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; return o;
   }
 
+  document.getElementById('df-tab-load').addEventListener('click', function () { switchDfTab_('load'); });
+  document.getElementById('df-tab-results').addEventListener('click', function () { switchDfTab_('results'); });
+
+  function switchDfTab_(mode) {
+    document.getElementById('df-panel-load').classList.toggle('hidden', mode !== 'load');
+    document.getElementById('df-panel-results').classList.toggle('hidden', mode !== 'results');
+    document.getElementById('df-tab-load').className = mode === 'load' ? 'primary' : 'ghost';
+    document.getElementById('df-tab-results').className = mode === 'results' ? 'primary' : 'ghost';
+  }
+
   /** Pulls a sample count out of the register's free-text Sample Size field (e.g. "5",
-   *  "5 samples", "n=5") — defaults to 1 (today's single-result behavior) when it can't
-   *  find a number, capped at a sane maximum so a garbled register value can't blow up the form. */
+   *  "5 samples", "n=5") — defaults to 1 when it can't find a number, capped at a sane
+   *  maximum so a garbled register value can't blow up the form. */
   function parseSampleCount_(sizeStr) {
     var m = String(sizeStr || '').match(/\d+/);
     var n = m ? parseInt(m[0], 10) : 1;
     return (n >= 1 && n <= 20) ? n : 1;
-  }
-
-  /** A Drop Freeze test with Sample Size > 1 (e.g. the 72-hr test's 5-samples-per-cavity
-   *  protocol) needs one Results block per sample — same Sample & Test Details above them,
-   *  but each sample gets its own Freezer Temp/Drop Height/Drop Angle/Result/Failure
-   *  Description/Notes, since that's what actually differs sample to sample. Rebuilding this
-   *  container from scratch (rather than a fixed multi-row table) keeps a single-sample test
-   *  looking exactly like the old one-block form. */
-  function renderDfResultsBlocks(count) {
-    dfSampleCount = count;
-    var container = document.getElementById('df-results-container');
-    var html = '';
-    for (var i = 0; i < count; i++) {
-      html += '<div class="df-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
-        (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (i + 1) + ' OF ' + count + '</div>' : '') +
-        '<div class="field-row">' +
-          '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp-' + i + '"></div>' +
-          '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight-' + i + '" value="36" readonly></div>' +
-          '<div class="field"><label>Drop Angle</label><select id="df-dropAngle-' + i + '"></select></div>' +
-          '<div class="field"><label>Pass / Fail Result</label>' +
-            '<select id="df-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
-        '</div>' +
-        '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc-' + i + '"></div>' +
-        '<div class="field"><label>Other Notes / Observations</label><input id="df-notes-' + i + '"></div>' +
-      '</div>';
-    }
-    container.innerHTML = html;
-    for (var j = 0; j < count; j++) {
-      var angleSel = document.getElementById('df-dropAngle-' + j);
-      angleSel.appendChild(opt('', '— select —'));
-      (dfData.angleOptions || []).forEach(function (a) { angleSel.appendChild(opt(a)); });
-    }
   }
 
   function renderDfFormOptions() {
@@ -164,9 +148,13 @@
       return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.moldId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
     }).join('');
 
-    var loadSel = document.getElementById('df-load-select'); loadSel.innerHTML = '';
-    loadSel.appendChild(opt('', '— select —'));
-    dfData.openRecords.forEach(function (r) { loadSel.appendChild(opt(r)); });
+    renderDfOpenSelect_();
+  }
+
+  function renderDfOpenSelect_() {
+    var sel = document.getElementById('df-open-select'); sel.innerHTML = '';
+    sel.appendChild(opt('', '— select —'));
+    (dfData.openRecords || []).forEach(function (r) { sel.appendChild(opt(r)); });
   }
 
   document.getElementById('df-run').addEventListener('change', function (e) {
@@ -182,12 +170,11 @@
     if (run && run.shift) document.getElementById('df-shift').value = run.shift;
     loadDropFreezeTests(run ? run.moldId : '');
     loadDropFreezeCavities(run ? run.moldId : '');
-    updateDfResultsBanner();
   });
 
   /** Cavity options come straight from the register's cavity list for the mold — same lookup
    *  In-Process uses to auto-generate its per-cavity rows, just presented as a picker here since
-   *  Drop Freeze logs one line item at a time instead of a fixed grid of rows. */
+   *  Drop Freeze logs one sample batch at a time instead of a fixed grid of rows. */
   function loadDropFreezeCavities(moldId) {
     var sel = document.getElementById('df-cavity');
     sel.innerHTML = '<option value="">— select —</option>';
@@ -200,23 +187,11 @@
       .getCavityIdsForMold(moldId);
   }
 
-  /** Keeps the Results banner showing exactly what the pending line will be recorded against. */
-  function updateDfResultsBanner() {
-    var run = (dfData && dfData.runs || []).find(function (r) { return r.runId === document.getElementById('df-run').value; });
-    var el = document.getElementById('df-results-banner');
-    if (!run) { el.textContent = 'RESULTS — pick a Run, Test, and Cavity above'; return; }
-    var testName = document.getElementById('df-testName').value;
-    var cavity = document.getElementById('df-cavity').value;
-    el.textContent = 'RESULTS · RUN ' + run.runId + (run.moldId ? ' · ' + run.moldId : '') +
-      ' · TEST ' + (testName || '—') + ' · CAVITY ' + (cavity || '—');
-  }
-
   function loadDropFreezeTests(moldId) {
     dfTests = [];
     var sel = document.getElementById('df-testName');
     sel.innerHTML = '<option value="">— select —</option>';
     document.getElementById('df-test-reference').classList.add('hidden');
-    renderDfResultsBlocks(1); // no test picked yet for this mold — back to the single-sample default
     if (!moldId) {
       document.getElementById('df-test-hint').textContent = 'Pick a Run above to see the drop freeze tests defined for its mold.';
       return;
@@ -238,104 +213,136 @@
   document.getElementById('df-testName').addEventListener('change', function (e) {
     var t = dfTests.find(function (x) { return x.testName === e.target.value; });
     document.getElementById('df-test-reference').classList.toggle('hidden', !t);
-    updateDfResultsBanner();
-    renderDfResultsBlocks(t ? parseSampleCount_(t.sampleSize) : 1);
     if (!t) return;
     document.getElementById('df-test-method').value = t.methodDescription;
     document.getElementById('df-test-criteria').value = t.acceptanceCriteria;
     document.getElementById('df-test-sample').value = t.sampleSize;
     document.getElementById('df-test-equipment').value = t.equipment;
+    var n = parseSampleCount_(t.sampleSize);
+    document.getElementById('df-sample-count-hint').textContent = n > 1
+      ? 'This test needs ' + n + ' samples per cavity — ' + n + ' sample slots will be created when you log this.'
+      : 'This test logs a single sample per cavity.';
   });
 
-  document.getElementById('df-cavity').addEventListener('change', updateDfResultsBanner);
-
-  document.getElementById('df-add-line-btn').addEventListener('click', function () {
+  document.getElementById('df-log-samples-btn').addEventListener('click', function () {
     var runId = document.getElementById('df-run').value;
+    var testName = document.getElementById('df-testName').value;
+    var cavity = document.getElementById('df-cavity').value;
     if (!runId) { showToast('Pick a Run.', true); return; }
-    // Sample & Test Details are identical for every sample of this cavity/test — only the
-    // per-sample Results block below differs — so one shared object is spread across
-    // dfSampleCount pushed lines, each carrying its own sample number.
+    if (!testName) { showToast('Pick a Drop Freeze Test.', true); return; }
+    if (!cavity) { showToast('Pick a Cavity.', true); return; }
+    var t = dfTests.find(function (x) { return x.testName === testName; });
+    var count = t ? parseSampleCount_(t.sampleSize) : 1;
     var shared = {
       runId: runId,
       moldId: document.getElementById('df-moldId').value,
       shift: document.getElementById('df-shift').value,
-      testName: document.getElementById('df-testName').value,
+      testName: testName,
       dateOfMfg: document.getElementById('df-dateOfMfg').value,
-      cavity: document.getElementById('df-cavity').value,
-      testDate: document.getElementById('df-testDate').value,
-      testedBy: document.getElementById('df-testedBy').value,
+      cavity: cavity,
     };
-    for (var i = 0; i < dfSampleCount; i++) {
-      var line = {
-        sampleNo: dfSampleCount > 1 ? (i + 1) : '',
-        sampleCount: dfSampleCount > 1 ? dfSampleCount : '',
-        freezerTemp: document.getElementById('df-freezerTemp-' + i).value,
-        dropHeight: document.getElementById('df-dropHeight-' + i).value,
-        dropAngle: document.getElementById('df-dropAngle-' + i).value,
-        result: document.getElementById('df-result-' + i).value,
-        failureDescription: document.getElementById('df-failDesc-' + i).value,
-        notes: document.getElementById('df-notes-' + i).value,
-      };
+    var lineItems = [];
+    for (var i = 0; i < count; i++) {
+      var line = { sampleNo: count > 1 ? (i + 1) : '', sampleCount: count > 1 ? count : '' };
       for (var k in shared) line[k] = shared[k];
-      dfLines.push(line);
+      lineItems.push(line);
     }
-    renderDfLines();
-    document.getElementById('df-cavity').value = '';
-    renderDfResultsBlocks(dfSampleCount);
-    updateDfResultsBanner();
+    google.script.run
+      .withSuccessHandler(function (result) {
+        showToast('Logged ' + result.savedCount + ' sample(s) — Record ' + result.recordKey + ' is now Open.');
+        document.getElementById('df-cavity').value = '';
+        // Pull the new record into the Open Test list without a full page reload.
+        google.script.run
+          .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
+          .withFailureHandler(function () {})
+          .getDropFreezeFormData();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .saveDropFreezePacket({ recordKey: null, lineItems: lineItems });
   });
 
-  function renderDfLines() {
-    var body = document.getElementById('df-lines-body');
-    if (dfLines.length === 0) {
-      body.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">No lines added yet.</td></tr>';
-      return;
-    }
-    body.innerHTML = dfLines.map(function (li, i) {
-      var badge = li.result === 'Fail' ? '<span class="badge critical">Fail</span>'
-        : li.result === 'Pass' ? '<span class="badge good">Pass</span>'
-        : (li.result || '—');
-      var sample = li.sampleNo ? (li.sampleNo + (li.sampleCount ? ' / ' + li.sampleCount : '')) : '—';
-      return '<tr><td>' + (i + 1) + '</td><td>' + esc(li.runId) + '</td><td>' + esc(li.moldId) + '</td><td>' +
-        esc(li.testName || '—') + '</td><td>' + esc(li.cavity || '') + '</td><td>' + esc(sample) + '</td><td>' + badge + '</td>' +
-        '<td><button class="ghost" onclick="removeDfLine(' + i + ')">Remove</button></td></tr>';
-    }).join('');
-  }
-
-  function removeDfLine(i) { dfLines.splice(i, 1); renderDfLines(); }
-
-  document.getElementById('df-new-btn').addEventListener('click', function () {
-    dfLoadedRecordKey = '';
-    dfLines = [];
-    document.getElementById('df-record-key').value = '';
-    renderDfLines();
-    showToast('Started a new test.');
-  });
-
-  document.getElementById('df-load-btn').addEventListener('click', function () {
-    var recordKey = document.getElementById('df-load-select').value;
-    if (!recordKey) return;
+  document.getElementById('df-load-results-btn').addEventListener('click', function () {
+    var recordKey = document.getElementById('df-open-select').value;
+    if (!recordKey) { showToast('Pick an Open Test.', true); return; }
     google.script.run
       .withSuccessHandler(function (packet) {
         dfLoadedRecordKey = packet.recordKey;
+        dfResultLines = packet.lineItems;
         document.getElementById('df-record-key').value = packet.recordKey;
-        dfLines = packet.lineItems;
-        renderDfLines();
-        showToast('Loaded ' + packet.lineItems.length + ' line item(s).');
+        var first = dfResultLines[0] || {};
+        document.getElementById('df-testDate').value = first.testDate || '';
+        document.getElementById('df-testedBy').value = first.testedBy || '';
+        var el = document.getElementById('df-results-banner');
+        el.textContent = 'TEST · RUN ' + (first.runId || '—') + (first.moldId ? ' · ' + first.moldId : '') +
+          ' · TEST ' + (first.testName || '—') + ' · CAVITY ' + (first.cavity || '—') +
+          ' · ' + dfResultLines.length + ' sample(s)';
+        renderDfResultsBlocks_();
+        document.getElementById('df-results-loaded').classList.remove('hidden');
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .loadDropFreezeRecord(recordKey);
   });
 
-  document.getElementById('df-save-btn').addEventListener('click', function () {
-    if (dfLines.length === 0) { showToast('Add at least one line item first.', true); return; }
+  /** One editable block per sample already logged under the loaded record, pre-filled with
+   *  whatever was saved for it before (blank the first time results are entered) — so a
+   *  partially-completed record (some samples tested today, some still pending) can be
+   *  revisited without losing what's already there. */
+  function renderDfResultsBlocks_() {
+    var container = document.getElementById('df-results-container');
+    var count = dfResultLines.length;
+    var html = '';
+    dfResultLines.forEach(function (li, i) {
+      html += '<div class="df-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
+        (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (li.sampleNo || (i + 1)) + ' OF ' + (li.sampleCount || count) + '</div>' : '') +
+        '<div class="field-row">' +
+          '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp-' + i + '" value="' + esc(li.freezerTemp || '') + '"></div>' +
+          '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight-' + i + '" value="36" readonly></div>' +
+          '<div class="field"><label>Drop Angle</label><select id="df-dropAngle-' + i + '"></select></div>' +
+          '<div class="field"><label>Pass / Fail Result</label>' +
+            '<select id="df-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
+        '</div>' +
+        '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc-' + i + '" value="' + esc(li.failureDescription || '') + '"></div>' +
+        '<div class="field"><label>Other Notes / Observations</label><input id="df-notes-' + i + '" value="' + esc(li.notes || '') + '"></div>' +
+      '</div>';
+    });
+    container.innerHTML = html;
+    dfResultLines.forEach(function (li, i) {
+      var angleSel = document.getElementById('df-dropAngle-' + i);
+      angleSel.appendChild(opt('', '— select —'));
+      (dfData.angleOptions || []).forEach(function (a) { angleSel.appendChild(opt(a)); });
+      if (li.dropAngle) angleSel.value = li.dropAngle;
+      document.getElementById('df-result-' + i).value = li.result || '';
+    });
+  }
+
+  document.getElementById('df-save-results-btn').addEventListener('click', function () {
+    if (dfResultLines.length === 0) { showToast('Load an Open Test first.', true); return; }
+    var testDate = document.getElementById('df-testDate').value;
+    var testedBy = document.getElementById('df-testedBy').value;
+    var lineItems = dfResultLines.map(function (li, i) {
+      var updated = {};
+      for (var k in li) updated[k] = li[k];
+      updated.testDate = testDate;
+      updated.testedBy = testedBy;
+      updated.freezerTemp = document.getElementById('df-freezerTemp-' + i).value;
+      updated.dropHeight = document.getElementById('df-dropHeight-' + i).value;
+      updated.dropAngle = document.getElementById('df-dropAngle-' + i).value;
+      updated.result = document.getElementById('df-result-' + i).value;
+      updated.failureDescription = document.getElementById('df-failDesc-' + i).value;
+      updated.notes = document.getElementById('df-notes-' + i).value;
+      return updated;
+    });
     google.script.run
       .withSuccessHandler(function (result) {
-        dfLoadedRecordKey = result.recordKey;
-        document.getElementById('df-record-key').value = result.recordKey;
-        showToast('Saved ' + result.savedCount + ' line item(s) to ' + result.recordKey + '.');
+        showToast('Saved results for ' + result.savedCount + ' sample(s) on Record ' + result.recordKey + '.');
+        dfResultLines = lineItems;
+        // A fully-completed record drops off the Open Test list; refresh it either way.
+        google.script.run
+          .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
+          .withFailureHandler(function () {})
+          .getDropFreezeFormData();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .saveDropFreezePacket({ recordKey: dfLoadedRecordKey || null, lineItems: dfLines });
+      .saveDropFreezePacket({ recordKey: dfLoadedRecordKey, lineItems: lineItems });
   });
 </script>
