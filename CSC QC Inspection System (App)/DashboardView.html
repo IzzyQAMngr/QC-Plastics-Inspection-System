@@ -1,113 +1,242 @@
-<h1 class="page-title">📊 Dashboard</h1>
-<p class="page-sub">Live pass/fail performance and qualification status for every Line currently running a Plastics job.</p>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap">
+<style>
+  /* ---- Run Dashboard — a wall-mounted ops board, not a form page: deliberately dark and
+     single-theme (a fixed ambient display isn't something a viewer toggles light/dark on),
+     using the same navy gradient as the sidenav so the whole app reads as one continuous
+     surface. Panels are frosted glass over that shared gradient rather than a flat color, so
+     they stay coherent wherever they land on it. Classes are rd- prefixed to stay clear of
+     the light-theme .line-card/.badge/.gauge styles other views still use. ---- */
+  .rd-board {
+    background: linear-gradient(160deg, #001f4f 0%, var(--nav-bg) 65%);
+    background-image: linear-gradient(160deg, #001f4f 0%, var(--nav-bg) 65%),
+      radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: auto, 26px 26px;
+    padding: 26px 30px 40px; min-height: 100vh; color: #eef4fa;
+    font-family: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  }
+  .rd-board :where(.rd-good) { color: #34d399; }
+  .rd-board { --rd-panel: rgba(255,255,255,0.055); --rd-line: rgba(255,255,255,0.12); --rd-dim: #a9bcd3;
+    --rd-good: #34d399; --rd-good-bg: rgba(52,211,153,0.14); --rd-warning: #fbbf24; --rd-warning-bg: rgba(251,191,36,0.14);
+    --rd-critical: #f87171; --rd-critical-bg: rgba(248,113,113,0.16); --rd-accent: #6fa3f5; }
 
-<div class="dash-summary">
-  <div class="stat"><div class="num" id="dash-summary-count">—</div><div class="lbl">Lines Active</div></div>
-  <div class="stat"><div class="num" id="dash-summary-qualified">—</div><div class="lbl">Qualified</div></div>
-  <div class="spec-hint" id="dash-updated" style="align-self:center;"></div>
+  .rd-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 22px; flex-wrap: wrap; gap: 12px; }
+  .rd-title { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 30px; letter-spacing: 0.01em; margin: 0; }
+  .rd-sub { font-size: 12.5px; color: var(--rd-dim); margin: 2px 0 0; }
+  .rd-live { text-align: right; }
+  .rd-live-chip { display: inline-flex; align-items: center; gap: 6px; font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.14em; color: var(--rd-good); }
+  .rd-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rd-good); animation: rd-pulse 1.8s infinite; }
+  @keyframes rd-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.55); } 70% { box-shadow: 0 0 0 7px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  }
+  .rd-clock { font-family: "IBM Plex Mono", monospace; font-size: 15px; color: var(--rd-dim); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  .rd-hero { display: grid; grid-template-columns: 1.1fr 1.4fr 1.1fr; gap: 16px; margin-bottom: 26px; }
+  .rd-tile { background: var(--rd-panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--rd-line); padding: 18px 22px; display: flex; flex-direction: column; justify-content: center; }
+  .rd-tile-label { font-family: "Barlow Condensed", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--rd-dim); margin-bottom: 6px; }
+  .rd-tile-num { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .rd-tile-num.rd-accent { color: var(--rd-accent); }
+  .rd-tile-foot { font-size: 11.5px; color: var(--rd-dim); margin-top: 6px; }
+
+  .rd-ring-tile { display: flex; align-items: center; gap: 22px; }
+  .rd-ring-wrap { position: relative; width: 108px; height: 108px; flex: none; }
+  .rd-ring-wrap svg { width: 108px; height: 108px; transform: rotate(-90deg); }
+  .rd-ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+  .rd-ring-num b { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 26px; line-height: 1; }
+  .rd-ring-num span { font-size: 9.5px; color: var(--rd-dim); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+
+  .rd-grid-label { font-family: "Barlow Condensed", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rd-dim); margin: 4px 0 12px; }
+  .rd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+  .rd-lcard { background: var(--rd-panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--rd-line); border-left: 4px solid var(--rd-good); padding: 16px 18px 18px; position: relative; }
+  .rd-lcard.crit { border-left-color: var(--rd-critical); box-shadow: 0 0 0 1px rgba(248,113,113,0.35), 0 0 26px rgba(248,113,113,0.16); }
+  .rd-lcard.fresh { border-left-color: var(--rd-dim); }
+
+  .rd-lcard-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .rd-lcard-line { display: flex; align-items: baseline; gap: 8px; }
+  .rd-lcard-line b { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 34px; line-height: 1; }
+  .rd-lcard-line small { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rd-dim); }
+
+  .rd-pill { font-family: "Barlow Condensed", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; padding: 4px 9px; border: 1px solid; white-space: nowrap; }
+  .rd-pill.good { color: var(--rd-good); border-color: var(--rd-good); background: var(--rd-good-bg); }
+  .rd-pill.crit { color: var(--rd-critical); border-color: var(--rd-critical); background: var(--rd-critical-bg); }
+  .rd-pill.fresh { color: var(--rd-dim); border-color: var(--rd-line); background: rgba(255,255,255,0.03); }
+
+  .rd-lcard-meta { font-size: 12.5px; line-height: 1.55; color: var(--rd-dim); margin-bottom: 14px; }
+  .rd-lcard-meta b { color: #eef4fa; font-weight: 600; }
+  .rd-lcard-meta .rd-idline { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: #61748d; margin-top: 3px; }
+
+  .rd-gauge { margin-bottom: 10px; }
+  .rd-gauge:last-child { margin-bottom: 0; }
+  .rd-gauge-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .rd-gauge-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--rd-dim); }
+  .rd-gauge-pct { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .rd-gauge-pct.good { color: var(--rd-good); } .rd-gauge-pct.warning { color: var(--rd-warning); } .rd-gauge-pct.critical { color: var(--rd-critical); } .rd-gauge-pct.muted { color: var(--rd-dim); }
+  .rd-gtrack { height: 6px; background: rgba(0,0,0,0.28); border: 1px solid var(--rd-line); overflow: hidden; }
+  .rd-gfill { height: 100%; }
+  .rd-gfill.good { background: var(--rd-good); } .rd-gfill.warning { background: var(--rd-warning); } .rd-gfill.critical { background: var(--rd-critical); }
+  .rd-gauge-caption { font-size: 10.5px; color: #61748d; margin-top: 3px; font-family: "IBM Plex Mono", monospace; }
+
+  .rd-empty { background: var(--rd-panel); backdrop-filter: blur(10px); border: 1px dashed var(--rd-line); padding: 30px; text-align: center; color: var(--rd-dim); font-size: 13px; }
+</style>
+
+<div class="rd-board">
+  <div class="rd-head">
+    <div>
+      <h1 class="rd-title">Run Dashboard</h1>
+      <p class="rd-sub">Live pass/fail performance and qualification status for every Line currently running a Plastics job.</p>
+    </div>
+    <div class="rd-live">
+      <div class="rd-live-chip"><span class="rd-live-dot"></span>LIVE &middot; REFRESHES EVERY 60S</div>
+      <div class="rd-clock" id="rdClock">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="rd-hero">
+    <div class="rd-tile">
+      <div class="rd-tile-label">Lines Active</div>
+      <div class="rd-tile-num" id="rdLinesActive">&mdash;</div>
+      <div class="rd-tile-foot" id="rdShiftsFoot"></div>
+    </div>
+    <div class="rd-tile rd-ring-tile">
+      <div class="rd-ring-wrap">
+        <svg viewBox="0 0 108 108">
+          <circle cx="54" cy="54" r="46" fill="none" stroke="rgba(0,0,0,0.28)" stroke-width="10"/>
+          <circle id="rdRing" cx="54" cy="54" r="46" fill="none" stroke="#34d399" stroke-width="10" stroke-linecap="butt" stroke-dasharray="289 289" stroke-dashoffset="289"/>
+        </svg>
+        <div class="rd-ring-num"><b id="rdRingPct">&mdash;</b><span>Qualified</span></div>
+      </div>
+      <div>
+        <div class="rd-tile-label">Fleet Qualification</div>
+        <div class="rd-tile-num rd-accent" id="rdQualRatio">&mdash;</div>
+        <div class="rd-tile-foot" id="rdQualFoot"></div>
+      </div>
+    </div>
+    <div class="rd-tile">
+      <div class="rd-tile-label">Overall In-Process Rate</div>
+      <div class="rd-tile-num" id="rdBlended">&mdash;</div>
+      <div class="rd-tile-foot" id="rdBlendedFoot"></div>
+    </div>
+  </div>
+
+  <div class="rd-grid-label">Active Lines</div>
+  <div id="rdCardsWrap">
+    <p style="color:var(--rd-dim);font-size:13px;" id="rd-loading">Loading dashboard&hellip;</p>
+  </div>
 </div>
-
-<p id="dash-loading" style="color:var(--text-muted);font-size:13px;">Loading dashboard…</p>
-<div id="dash-empty" class="dash-empty hidden">No active Runs right now — start one from Daily Run Setup to see it here.</div>
-<div class="line-cards-grid hidden" id="dash-line-cards"></div>
 
 <script>
   var dashRefreshTimer_ = null;
   var DASH_REFRESH_MS_ = 60000;
 
   function init_dashboard() {
+    tickRdClock_();
+    setInterval(tickRdClock_, 1000);
     loadDashboard_(true);
     if (!dashRefreshTimer_) {
       dashRefreshTimer_ = setInterval(function () { loadDashboard_(false); }, DASH_REFRESH_MS_);
     }
   }
 
-  /** showLoadingState is true for the initial load (shows the loading text / toasts on
-   *  failure); background auto-refreshes skip the loading flash and fail silently — a
-   *  wall-mounted monitor shouldn't flicker or pop up an error toast every minute, it just
-   *  tries again on the next tick. Skips entirely if the user has navigated to another view
-   *  in this tab, so it's not silently polling the server for a page nobody's looking at. */
+  function tickRdClock_() {
+    var d = new Date();
+    var h = d.getHours(); var ampm = h >= 12 ? 'PM' : 'AM'; var h12 = h % 12 || 12;
+    var m = String(d.getMinutes()).padStart(2, '0'); var s = String(d.getSeconds()).padStart(2, '0');
+    var el = document.getElementById('rdClock');
+    if (el) el.textContent = h12 + ':' + m + ':' + s + ' ' + ampm;
+  }
+
+  /** showLoadingState is true only for the initial load; background auto-refreshes skip the
+   *  loading flash and fail silently — a wall-mounted monitor shouldn't flicker or pop up an
+   *  error toast every minute, it just tries again on the next tick. Skips entirely if the
+   *  user has navigated to another view in this tab. */
   function loadDashboard_(showLoadingState) {
     var view = document.getElementById('view-dashboard');
     if (!showLoadingState && view && !view.classList.contains('active')) return;
-    if (showLoadingState) {
-      document.getElementById('dash-loading').classList.remove('hidden');
-      document.getElementById('dash-line-cards').classList.add('hidden');
-      document.getElementById('dash-empty').classList.add('hidden');
-    }
     google.script.run
       .withSuccessHandler(renderDashboard)
       .withFailureHandler(function (err) { if (showLoadingState) showToast(err.message, true); })
       .getPlasticsLineDashboardData();
   }
 
-  function meterSeverity_(pct) {
+  function rdSeverity_(pct) {
     if (pct === null) return 'muted';
     if (pct >= 95) return 'good';
     if (pct >= 85) return 'warning';
     return 'critical';
   }
 
-  function meterHtml_(label, metric) {
-    var pct = metric.total ? Math.round((metric.pass / metric.total) * 1000) / 10 : null;
-    var sev = meterSeverity_(pct);
-    var pctText = pct === null ? 'No data' : pct + '%';
-    var caption = metric.total
-      ? (metric.pass + ' pass &middot; ' + metric.fail + ' fail (' + metric.total + ' total)')
-      : 'No tests recorded yet';
-    return '<div class="lc-meter">' +
-      '<div class="lc-meter-label">' + label + '</div>' +
-      '<div class="lc-meter-pct ' + sev + '">' + pctText + '</div>' +
-      '<div class="meter-track"><div class="meter-fill ' + sev + '" style="width:' + (pct || 0) + '%;"></div></div>' +
-      '<div class="lc-meter-caption">' + caption + '</div>' +
-      '</div>';
+  function rdGaugeHtml_(label, m) {
+    var total = m.total || 0;
+    var pct = total ? Math.round((m.pass / total) * 1000) / 10 : null;
+    var sev = rdSeverity_(pct);
+    var pctText = pct === null ? '&mdash;' : pct + '%';
+    var caption = total ? (m.pass + ' PASS &middot; ' + m.fail + ' FAIL &middot; ' + total + ' TOTAL') : 'AWAITING FIRST TEST';
+    return '<div class="rd-gauge">' +
+      '<div class="rd-gauge-top"><span class="rd-gauge-label">' + label + '</span><span class="rd-gauge-pct ' + sev + '">' + pctText + '</span></div>' +
+      '<div class="rd-gtrack"><div class="rd-gfill ' + sev + '" style="width:' + (pct || 0) + '%"></div></div>' +
+      '<div class="rd-gauge-caption">' + caption + '</div>' +
+    '</div>';
   }
 
-  function startedDateText_(createdAt) {
+  function rdStartedText_(createdAt) {
     var d = createdAt ? new Date(createdAt) : null;
     return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : '—';
   }
 
-  function lineCardHtml_(c) {
-    var qualBadge = c.qualified ? '<span class="badge good">&check; Qualified</span>' : '<span class="badge critical">Not Qualified</span>';
-    var meta =
-      'Mold <strong>' + esc(c.moldId || '—') + '</strong>' + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '') + '<br>' +
-      'Item ' + esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '') + '<br>' +
-      esc(c.customerName || 'No customer on file') + '<br>' +
-      '<span class="spec-hint">Run ID ' + esc(c.runId) + (c.shift ? ' &middot; Shift ' + esc(c.shift) : '') +
-      ' &middot; Started ' + startedDateText_(c.createdAt) + '</span>';
-    return '<div class="line-card' + (c.qualified ? '' : ' not-qualified') + '">' +
-      '<div class="line-card-head">' +
-      '<div class="line-card-linenum"><small>Line</small>' + esc(c.line || '—') + '</div>' +
-      qualBadge +
+  function rdCardHtml_(c) {
+    var ipTotal = c.inProcess.total || 0;
+    var ipPct = ipTotal ? (c.inProcess.pass / ipTotal) * 100 : null;
+    var cls = c.qualified ? '' : (ipTotal && ipPct < 85 ? 'crit' : 'fresh');
+    var pill = c.qualified ? '<span class="rd-pill good">&#10003; QUALIFIED</span>' :
+      (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">STARTING UP</span>');
+    return '<div class="rd-lcard ' + cls + '">' +
+      '<div class="rd-lcard-top">' +
+        '<div class="rd-lcard-line"><small>LINE</small><b>' + esc(c.line || '—') + '</b></div>' +
+        pill +
       '</div>' +
-      '<div class="line-card-meta">' + meta + '</div>' +
-      '<div class="line-card-meters">' +
-      meterHtml_('In-Process', c.inProcess) +
-      meterHtml_('Drop Freeze', c.dropFreeze) +
+      '<div class="rd-lcard-meta">' +
+        'Mold <b>' + esc(c.moldId || '—') + '</b>' + (c.moldDescription ? ' &mdash; ' + esc(c.moldDescription) : '') + '<br>' +
+        'Item ' + esc(c.item || '—') + (c.itemDescription ? ' &mdash; ' + esc(c.itemDescription) : '') + '<br>' +
+        esc(c.customerName || 'No customer on file') +
+        '<div class="rd-idline">' + esc(c.runId) + (c.shift ? ' &middot; SHIFT ' + esc(c.shift) : '') + ' &middot; STARTED ' + rdStartedText_(c.createdAt).toUpperCase() + '</div>' +
       '</div>' +
-      '</div>';
+      rdGaugeHtml_('In-Process', c.inProcess) +
+      rdGaugeHtml_('Drop Freeze', c.dropFreeze) +
+    '</div>';
   }
 
   function renderDashboard(data) {
-    document.getElementById('dash-loading').classList.add('hidden');
     var cards = data.cards || [];
-    var qualifiedCount = cards.filter(function (c) { return c.qualified; }).length;
-    document.getElementById('dash-summary-count').textContent = cards.length;
-    document.getElementById('dash-summary-qualified').textContent = cards.length ? (qualifiedCount + ' / ' + cards.length) : '—';
-    var updatedAt = data.generatedAt ? new Date(data.generatedAt) : null;
-    document.getElementById('dash-updated').textContent = updatedAt && !isNaN(updatedAt.getTime())
-      ? 'Updated ' + updatedAt.toLocaleTimeString() + ' · refreshes every 60s'
+    var wrap = document.getElementById('rdCardsWrap');
+
+    document.getElementById('rdLinesActive').textContent = cards.length;
+    var distinctShifts = Array.from(new Set(cards.map(function (c) { return c.shift; }).filter(function (s) { return s; }))).length;
+    document.getElementById('rdShiftsFoot').textContent = distinctShifts
+      ? 'across ' + distinctShifts + ' shift' + (distinctShifts === 1 ? '' : 's')
       : '';
 
-    var grid = document.getElementById('dash-line-cards');
+    var qualifiedCount = cards.filter(function (c) { return c.qualified; }).length;
+    var freshCount = cards.filter(function (c) { return !c.qualified && !c.inProcess.total; }).length;
+    document.getElementById('rdQualRatio').textContent = cards.length ? (qualifiedCount + ' / ' + cards.length) : '—';
+    var qualPct = cards.length ? Math.round((qualifiedCount / cards.length) * 100) : 0;
+    document.getElementById('rdRingPct').textContent = cards.length ? (qualPct + '%') : '—';
+    document.getElementById('rdQualFoot').textContent = !cards.length ? '' :
+      freshCount ? (freshCount + ' Line' + (freshCount > 1 ? 's' : '') + ' still starting up') : 'All remaining Lines in review';
+    var ring = document.getElementById('rdRing');
+    var circumference = 2 * Math.PI * 46;
+    ring.setAttribute('stroke-dasharray', circumference + ' ' + circumference);
+    ring.setAttribute('stroke-dashoffset', String(cards.length ? circumference * (1 - qualifiedCount / cards.length) : circumference));
+    ring.setAttribute('stroke', qualPct >= 80 ? '#34d399' : qualPct >= 60 ? '#fbbf24' : '#f87171');
+
+    var totalPass = 0, totalAll = 0;
+    cards.forEach(function (c) { totalPass += c.inProcess.pass; totalAll += c.inProcess.total; });
+    document.getElementById('rdBlended').textContent = totalAll ? (Math.round((totalPass / totalAll) * 1000) / 10) + '%' : '—';
+    document.getElementById('rdBlendedFoot').textContent = totalAll ? (totalPass + ' / ' + totalAll + ' dimensional checks across active Lines') : '';
+
     if (!cards.length) {
-      grid.classList.add('hidden');
-      document.getElementById('dash-empty').classList.remove('hidden');
+      wrap.innerHTML = '<div class="rd-empty">No active Runs right now — start one from Daily Run Setup to see it here.</div>';
       return;
     }
-    grid.classList.remove('hidden');
-    document.getElementById('dash-empty').classList.add('hidden');
-    grid.innerHTML = cards.map(lineCardHtml_).join('');
+    wrap.innerHTML = '<div class="rd-cards">' + cards.map(rdCardHtml_).join('') + '</div>';
   }
 </script>

@@ -70,7 +70,7 @@
 
     <div class="nav-group-label">Plastics</div>
     <div class="nav-group">
-      <div class="nav-item active" data-view="dashboard" data-dept="Plastics">Dashboard</div>
+      <div class="nav-item active" data-view="dashboard" data-dept="Plastics">Run Dashboard</div>
       <div class="nav-item" data-view="addrun" data-dept="Plastics">Daily Run Setup</div>
       <div class="nav-item" data-view="startup" data-dept="Plastics">Start-Up Verification</div>
       <div class="nav-item" data-view="devapproval" data-dept="Plastics">Deviation Approvals</div>
@@ -145,6 +145,9 @@
   function showView(name, dept) {
     document.querySelectorAll('.nav-item').forEach(function (i) { i.classList.toggle('active', i.dataset.view === name); });
     VIEWS.forEach(function (v) { document.getElementById('view-' + v).classList.toggle('active', v === name); });
+    // Run Dashboard is a wall-monitor ops board, not a form — it bleeds edge-to-edge instead
+    // of sitting inside #main's usual reading-width padding.
+    document.getElementById('main').classList.toggle('main-full', name === 'dashboard');
     if (!VIEWS_LOADED[name] && window['init_' + name]) {
       VIEWS_LOADED[name] = true;
       window['init_' + name]();

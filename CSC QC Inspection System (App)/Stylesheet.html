@@ -95,6 +95,11 @@
   .view { display: none; }
   .view.active { display: block; }
 
+  /* Run Dashboard is a wall-monitor ops board, not a document to read at a comfortable line
+     width — it bleeds edge to edge instead of sitting inside the usual reading-width padding. */
+  #main.main-full { padding: 0; max-width: none; }
+  #main.main-full .dept-banner { margin: 0; }
+
   /* Always-visible department context strip — sticks to the top of the viewport while a
      long form scrolls, so it's never ambiguous which department's data you're touching.
      Negative margins cancel #main's own padding so it spans flush edge-to-edge; its own
