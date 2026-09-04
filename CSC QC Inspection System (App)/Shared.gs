@@ -14,6 +14,9 @@ const SU_ITEMS_SHEET_NAME = 'Start-Up Verification Items List- Plastics';
 const SU_LOG_SHEET_NAME   = 'Start-Up Verification Log- Plastics';
 const SU_ITEMS_SHEET_NAME_METALS = 'Start-Up Verification Items List- Metals';
 const SU_LOG_SHEET_NAME_METALS   = 'Start-Up Verification Log- Metals';
+const SU_DRAFT_SHEET_NAME = 'Start-Up Verification Drafts- Plastics';
+const SU_DRAFT_SHEET_NAME_METALS = 'Start-Up Verification Drafts- Metals';
+const SU_DRAFT_HEADERS = ['Run ID', 'Saved By', 'Saved At', 'Draft JSON'];
 const METALS_SU_LOG_HEADERS = [
   'Verification Record #', 'Timestamp saved', 'Run ID', 'Verification Date', 'Verification Time',
   'QC Tech Name', 'Shift', 'Foreman', 'Start-Up Tech', 'Line #', 'Run Qty', 'Customer Name',

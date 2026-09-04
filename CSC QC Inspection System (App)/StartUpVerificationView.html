@@ -28,6 +28,7 @@
     <div class="field"><label>Verification Date/Time</label><input type="datetime-local" id="suv-datetime"></div>
     <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
   </div>
+  <div id="suv-status-row" style="margin:2px 0 10px;"></div>
   <div class="field-row">
     <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
     <div class="field field-wide"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
@@ -79,11 +80,13 @@
 
 <section class="card">
   <h2>5. Submit</h2>
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <button id="suv-submit-btn" class="primary">Save Verification</button>
+    <button id="suv-savedraft-btn" class="ghost">💾 Save Draft</button>
+    <button id="suv-loaddraft-btn" class="ghost">📂 Load Draft</button>
     <button id="suv-print-btn" class="ghost">🖨️ Print This Form</button>
   </div>
-  <p class="spec-hint">Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
+  <p class="spec-hint">Save Draft keeps whatever's filled in so far against this Run — pick the Run again later (same shift or a different one) and Load Draft to pick up where it was left off. Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
 </section>
 
 <div class="form-doc-footer">Created by: QA Manager Isabel Zuniga</div>
@@ -124,18 +127,22 @@
       .getStartUpVerificationFormData();
     document.getElementById('suv-submit-btn').addEventListener('click', submitStartUpVerification);
     document.getElementById('suv-print-btn').addEventListener('click', function () { window.print(); });
+    document.getElementById('suv-savedraft-btn').addEventListener('click', suvSaveDraft_);
+    document.getElementById('suv-loaddraft-btn').addEventListener('click', suvLoadDraft_);
   }
 
-  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  // Refreshes the Active Run picker and drafted-run status on return visits — see Index.html's showView.
   function onshow_startup() {
     google.script.run
-      .withSuccessHandler(function (runs) {
+      .withSuccessHandler(function (data) {
         if (!suvData) return;
-        suvData.runs = runs;
-        refreshRunOptions_(document.getElementById('suv-run'), runs);
+        suvData.runs = data.runs;
+        suvData.drafts = data.drafts;
+        refreshRunOptions_(document.getElementById('suv-run'), data.runs, suvRunOptionHtml_);
+        suvUpdateDraftStatus_();
       })
       .withFailureHandler(function () {})
-      .getActiveRuns();
+      .getActiveRunsAndDrafts();
   }
 
   function suvNowDateTimeStr() {
@@ -168,11 +175,14 @@
     return 'other';
   }
 
+  function suvRunOptionHtml_(r) {
+    var status = String(r.qualified).trim() === 'Yes' ? ' ✓ Qualified' : ((suvData.drafts || {})[r.runId] ? ' ◐ Draft' : '');
+    return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.moldId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + status + '</option>';
+  }
+
   function suvRenderRunPicker() {
     var sel = document.getElementById('suv-run');
-    sel.innerHTML = '<option value="">— select —</option>' + (suvData.runs || []).map(function (r) {
-      return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.moldId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
-    }).join('');
+    sel.innerHTML = '<option value="">— select —</option>' + (suvData.runs || []).map(suvRunOptionHtml_).join('');
     sel.addEventListener('change', function () {
       var run = (suvData.runs || []).find(function (r) { return r.runId === sel.value; });
       document.getElementById('suv-customer').value = run ? run.customerName : '';
@@ -183,7 +193,35 @@
       document.getElementById('suv-line').value = run ? run.line : '';
       document.getElementById('suv-runqty').value = run ? run.runQty : '';
       suvUpdateContextBanners(run);
+      suvUpdateDraftStatus_();
     });
+  }
+
+  function suvFormatDraftWhen_(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() + ' ' +
+      pfa12Hour_(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+  }
+
+  function suvUpdateDraftStatus_() {
+    var runId = document.getElementById('suv-run').value;
+    var box = document.getElementById('suv-status-row');
+    if (!runId) { box.innerHTML = ''; return; }
+    var run = (suvData.runs || []).find(function (r) { return r.runId === runId; });
+    if (run && String(run.qualified).trim() === 'Yes') {
+      box.innerHTML = '<span class="badge good">✓ QUALIFIED</span>';
+      return;
+    }
+    var draft = (suvData.drafts || {})[runId];
+    if (draft) {
+      var when = suvFormatDraftWhen_(draft.savedAt);
+      box.innerHTML = '<span class="badge warning">◐ DRAFT SAVED' + (when ? ' — ' + esc(when) : '') +
+        (draft.savedBy ? ' by ' + esc(draft.savedBy) : '') + '</span>';
+      return;
+    }
+    box.innerHTML = '<span class="spec-hint">Not started yet.</span>';
   }
 
   function suvUpdateContextBanners(run) {
@@ -347,20 +385,11 @@
     document.getElementById('suv-selfserve-block').classList.toggle('hidden', val !== 'No');
   }
 
-  function submitStartUpVerification() {
-    var runId = document.getElementById('suv-run').value;
-    var qcTechName = document.getElementById('suv-qctech').value;
-    var startUpTechName = document.getElementById('suv-suptech').value;
-    if (!runId) { showToast('Pick a Run.', true); return; }
-    if (!qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
-    if (!startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
-
+  /** Gathers every field on the form into one payload — shared by Save Verification and Save
+   *  Draft so a draft is always exactly "whatever's on the form right now", no separate rules. */
+  function suvCollectPayload_() {
     var devInfo = suvItemEls['Was there a deviation?'];
     var devVal = devInfo ? devInfo.input.value : '';
-    var descInfo = suvItemEls['Deviation Description / Notes'];
-    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
-      showToast('Describe the deviation before saving.', true); return;
-    }
 
     var checklist = [];
     document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
@@ -381,8 +410,10 @@
     });
 
     var suvDT = suvSplitDateTime();
-    var payload = {
-      runId: runId,
+    var qcTechName = document.getElementById('suv-qctech').value;
+    var startUpTechName = document.getElementById('suv-suptech').value;
+    return {
+      runId: document.getElementById('suv-run').value,
       verificationDate: suvDT.date,
       verificationTime: suvDT.time,
       qcTechName: qcTechName,
@@ -391,8 +422,24 @@
       foreman: document.getElementById('suv-foreman').value,
       checklist: checklist,
       pfaDirectSignOff: devVal === 'No' ? document.getElementById('suv-pfa-direct').value : '',
+      savedBy: qcTechName || startUpTechName || '',
     };
+  }
 
+  function submitStartUpVerification() {
+    var payload = suvCollectPayload_();
+    if (!payload.runId) { showToast('Pick a Run.', true); return; }
+    if (!payload.qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
+    if (!payload.startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
+
+    var devInfo = suvItemEls['Was there a deviation?'];
+    var devVal = devInfo ? devInfo.input.value : '';
+    var descInfo = suvItemEls['Deviation Description / Notes'];
+    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
+      showToast('Describe the deviation before saving.', true); return;
+    }
+
+    var runId = payload.runId;
     document.getElementById('suv-submit-btn').disabled = true;
     google.script.run
       .withSuccessHandler(function (result) {
@@ -400,10 +447,86 @@
         showToast(result.qualified ? 'Saved — Run ' + runId + ' is now Qualified.' :
           (result.hasDeviation ? 'Saved — deviation reported, approval requested.' : 'Verification saved.'));
         if (result.qualified) suvOfferPfaTag_(suvBuildPfaTagData_(runId, payload, result));
+        if (suvData.drafts) delete suvData.drafts[runId]; // server clears the draft on a real save too
         resetStartUpForm();
       })
       .withFailureHandler(function (err) { document.getElementById('suv-submit-btn').disabled = false; showToast(err.message, true); })
       .saveStartUpVerification(payload);
+  }
+
+  function suvSaveDraft_() {
+    var payload = suvCollectPayload_();
+    if (!payload.runId) { showToast('Pick a Run before saving a draft.', true); return; }
+    document.getElementById('suv-savedraft-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('suv-savedraft-btn').disabled = false;
+        suvData.drafts = suvData.drafts || {};
+        suvData.drafts[payload.runId] = { savedBy: result.savedBy, savedAt: result.savedAt };
+        refreshRunOptions_(document.getElementById('suv-run'), suvData.runs, suvRunOptionHtml_);
+        suvUpdateDraftStatus_();
+        showToast('Draft saved.');
+      })
+      .withFailureHandler(function (err) { document.getElementById('suv-savedraft-btn').disabled = false; showToast(err.message, true); })
+      .saveStartUpDraft(payload);
+  }
+
+  function suvApplyChecklistValues_(checklist) {
+    var byItem = {};
+    (checklist || []).forEach(function (c) { byItem[c.item] = c.value; });
+
+    document.querySelectorAll('#suv-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var it = suvChecklistItems[Number(tr.getAttribute('data-idx'))];
+      if (!(it.item in byItem)) return;
+      var val = byItem[it.item];
+      tr.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = false; });
+      var role = val === 'Pass' ? 'pass' : val === 'Fail' ? 'fail' : val === 'N/A' ? 'na' : null;
+      if (role) { var cb = tr.querySelector('[data-role="' + role + '"]'); if (cb) cb.checked = true; }
+    });
+    document.querySelectorAll('#suv-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
+      var it = suvKppItems[Number(tr.getAttribute('data-idx'))];
+      if (!(it.item in byItem)) return;
+      var input = tr.querySelector('input');
+      if (input) input.value = byItem[it.item];
+    });
+    suvPlainItems.forEach(function (it, idx) {
+      if (!(it.item in byItem)) return;
+      var el = document.getElementById('suv-plain-' + idx);
+      if (el) el.value = byItem[it.item];
+    });
+    suvDeviationItems.forEach(function (it, idx) {
+      if (!(it.item in byItem)) return;
+      var el = document.getElementById('suv-dev-' + idx);
+      if (el) el.value = byItem[it.item];
+    });
+    suvUpdateDeviationUI();
+  }
+
+  function suvApplyDraftPayload_(payload) {
+    if (payload.verificationDate && payload.verificationTime) {
+      document.getElementById('suv-datetime').value = payload.verificationDate + 'T' + payload.verificationTime;
+    }
+    if (payload.shift) document.getElementById('suv-shift').value = payload.shift;
+    if (payload.qcTechName) document.getElementById('suv-qctech').value = payload.qcTechName;
+    if (payload.startUpTechName) document.getElementById('suv-suptech').value = payload.startUpTechName;
+    if (payload.foreman) document.getElementById('suv-foreman').value = payload.foreman;
+    suvApplyChecklistValues_(payload.checklist);
+    if (payload.pfaDirectSignOff) document.getElementById('suv-pfa-direct').value = payload.pfaDirectSignOff;
+  }
+
+  function suvLoadDraft_() {
+    var runId = document.getElementById('suv-run').value;
+    if (!runId) { showToast('Pick a Run first.', true); return; }
+    document.getElementById('suv-loaddraft-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (draft) {
+        document.getElementById('suv-loaddraft-btn').disabled = false;
+        if (!draft) { showToast('No draft found for this Run.', true); return; }
+        suvApplyDraftPayload_(draft.payload || {});
+        showToast('Draft loaded — saved ' + suvFormatDraftWhen_(draft.savedAt) + (draft.savedBy ? ' by ' + draft.savedBy : '') + '.');
+      })
+      .withFailureHandler(function (err) { document.getElementById('suv-loaddraft-btn').disabled = false; showToast(err.message, true); })
+      .loadStartUpDraft(runId);
   }
 
   function resetStartUpForm() {
@@ -412,6 +535,8 @@
       document.getElementById(id).value = '';
     });
     document.getElementById('suv-datetime').value = suvNowDateTimeStr();
+    document.getElementById('suv-status-row').innerHTML = '';
+    refreshRunOptions_(document.getElementById('suv-run'), suvData.runs, suvRunOptionHtml_);
     suvRenderChecklist();
   }
 

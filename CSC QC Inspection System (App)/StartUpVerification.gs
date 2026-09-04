@@ -70,8 +70,72 @@ function getStartUpVerificationFormData(department) {
     shiftOptions: getShiftList_(department),
     foremanOptions: getForemanList_(department),
     itemList: department === 'Metals' ? getItemList_(department) : [], // [{itemNo, description}]
+    drafts: getDraftedRunIds_(department), // {runId: {savedBy, savedAt}} — which Runs have a saved-but-unsubmitted draft
   };
 }
+
+// ================= DRAFTS — save an in-progress checklist and resume it later =================
+// Lets one QC start the form before the line is running, save without finishing, and either the
+// same person or a different QC pick it back up once things reach steady state. One row per Run
+// ID (saving again just overwrites it) — this is intentionally NOT the flat per-item Log
+// structure, since a draft is just "whatever's filled in so far", stored as one JSON blob.
+function getSuDraftSheet_(department) {
+  const name = department === 'Metals' ? SU_DRAFT_SHEET_NAME_METALS : SU_DRAFT_SHEET_NAME;
+  return ensureSheetWithHeaders_(getDb_(), name, SU_DRAFT_HEADERS);
+}
+
+function saveStartUpDraft_(payload, department) {
+  if (!payload || !payload.runId) throw new Error('Pick a Run before saving a draft.');
+  const sheet = getSuDraftSheet_(department);
+  const savedAt = new Date();
+  const row = {
+    'Run ID': payload.runId,
+    'Saved By': payload.savedBy || '',
+    'Saved At': savedAt,
+    'Draft JSON': JSON.stringify(payload),
+  };
+  const updated = updateRowWhere_(sheet, 'Run ID', payload.runId, row);
+  if (!updated) appendObjectsAsRows_(sheet, [row]);
+  return { savedAt: savedAt.toISOString(), savedBy: row['Saved By'] };
+}
+function saveStartUpDraft(payload) { return saveStartUpDraft_(payload); }
+function saveStartUpDraftMetals(payload) { return saveStartUpDraft_(payload, 'Metals'); }
+
+function loadStartUpDraft_(runId, department) {
+  const rows = readSheetObjects_(getSuDraftSheet_(department));
+  const match = rows.find(r => String(r['Run ID'] || '').trim() === String(runId).trim());
+  if (!match) return null;
+  let parsed = {};
+  try { parsed = JSON.parse(match['Draft JSON'] || '{}'); } catch (e) { /* corrupt/empty draft JSON — treat as blank */ }
+  return { payload: parsed, savedBy: match['Saved By'] || '', savedAt: dateToStr_(match['Saved At']) };
+}
+function loadStartUpDraft(runId) { return loadStartUpDraft_(runId); }
+function loadStartUpDraftMetals(runId) { return loadStartUpDraft_(runId, 'Metals'); }
+
+function deleteStartUpDraft_(runId, department) {
+  deleteRowsWhere_(getSuDraftSheet_(department), 'Run ID', runId);
+}
+
+/** Run IDs with a saved draft, keyed for the client to annotate the Run picker / show a status
+ *  chip without a second round trip. */
+function getDraftedRunIds_(department) {
+  const rows = readSheetObjects_(getSuDraftSheet_(department));
+  const out = {};
+  rows.forEach(r => {
+    const id = String(r['Run ID'] || '').trim();
+    if (!id) return;
+    out[id] = { savedBy: r['Saved By'] || '', savedAt: dateToStr_(r['Saved At']) };
+  });
+  return out;
+}
+
+/** Lighter than getStartUpVerificationFormData — used by the onshow_ return-visit refresh, which
+ *  only needs the Active Runs list and drafted-run status, not the full items/dropdown payload. */
+function getActiveRunsAndDrafts_(department) {
+  return { runs: getActiveRuns_(department), drafts: getDraftedRunIds_(department) };
+}
+function getActiveRunsAndDrafts() { return getActiveRunsAndDrafts_(); }
+function getActiveRunsAndDraftsMetals() { return getActiveRunsAndDrafts_('Metals'); }
 
 /**
  * payload: {runId, verificationDate, verificationTime, qcTechName, startUpTechName, shift, foreman,
@@ -120,6 +184,7 @@ function saveStartUpVerification_(payload, department) {
 
   appendObjectsAsRows_(getSuLogSheet_(department), rows);
   if (hasDeviation) sendDeviationEmail_(recordId, run, department);
+  deleteStartUpDraft_(payload.runId, department); // real submission now exists in the Log — the draft's job is done
 
   return { recordId: recordId, qualified: qualified, hasDeviation: hasDeviation, pfaId: pfaId };
 }

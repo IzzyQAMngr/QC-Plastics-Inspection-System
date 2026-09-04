@@ -28,6 +28,7 @@
     <div class="field"><label>Verification Date/Time</label><input type="datetime-local" id="msu-datetime"></div>
     <div class="field"><label>Shift</label><select id="msu-shift"></select></div>
   </div>
+  <div id="msu-status-row" style="margin:2px 0 10px;"></div>
   <div class="section-divider">PERSONNEL</div>
   <div class="field-row">
     <div class="field"><label>QC Technician Name</label><select id="msu-qctech"></select></div>
@@ -82,11 +83,13 @@
 
 <section class="card">
   <h2>5. Submit</h2>
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <button id="msu-submit-btn" class="primary">Save Verification</button>
+    <button id="msu-savedraft-btn" class="ghost">💾 Save Draft</button>
+    <button id="msu-loaddraft-btn" class="ghost">📂 Load Draft</button>
     <button id="msu-print-btn" class="ghost">🖨️ Print This Form</button>
   </div>
-  <p class="spec-hint">Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
+  <p class="spec-hint">Save Draft keeps whatever's filled in so far against this Run — pick the Run again later (same shift or a different one) and Load Draft to pick up where it was left off. Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
 </section>
 
 <div class="form-doc-footer">Created by: QA Manager Isabel Zuniga</div>
@@ -127,21 +130,22 @@
       .getStartUpVerificationFormDataMetals();
     document.getElementById('msu-submit-btn').addEventListener('click', submitStartUpVerificationMetals);
     document.getElementById('msu-print-btn').addEventListener('click', function () { window.print(); });
+    document.getElementById('msu-savedraft-btn').addEventListener('click', msuSaveDraft_);
+    document.getElementById('msu-loaddraft-btn').addEventListener('click', msuLoadDraft_);
   }
 
-  // Refreshes just the Active Run picker on return visits — see Index.html's showView.
+  // Refreshes the Active Run picker and drafted-run status on return visits — see Index.html's showView.
   function onshow_metalsstartup() {
     google.script.run
-      .withSuccessHandler(function (runs) {
+      .withSuccessHandler(function (data) {
         if (!msuData) return;
-        msuData.runs = runs;
-        refreshRunOptions_(document.getElementById('msu-run'), runs, function (r) {
-          return '<option value="' + escHtml_(r.runId) + '">' + escHtml_(r.runId) + ' — ' + escHtml_(r.sizeId || '') +
-            (r.item ? ' / Item ' + escHtml_(r.item) : '') + '</option>';
-        });
+        msuData.runs = data.runs;
+        msuData.drafts = data.drafts;
+        refreshRunOptions_(document.getElementById('msu-run'), data.runs, msuRunOptionHtml_);
+        msuUpdateDraftStatus_();
       })
       .withFailureHandler(function () {})
-      .getActiveRuns('Metals');
+      .getActiveRunsAndDraftsMetals();
   }
 
   function msuNowDateTimeStr() {
@@ -170,11 +174,14 @@
     return 'other';
   }
 
+  function msuRunOptionHtml_(r) {
+    var status = String(r.qualified).trim() === 'Yes' ? ' ✓ Qualified' : ((msuData.drafts || {})[r.runId] ? ' ◐ Draft' : '');
+    return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.sizeId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + status + '</option>';
+  }
+
   function msuRenderRunPicker() {
     var sel = document.getElementById('msu-run');
-    sel.innerHTML = '<option value="">— select —</option>' + (msuData.runs || []).map(function (r) {
-      return '<option value="' + esc(r.runId) + '">' + esc(r.runId) + ' — ' + esc(r.sizeId || '') + (r.item ? ' / Item ' + esc(r.item) : '') + '</option>';
-    }).join('');
+    sel.innerHTML = '<option value="">— select —</option>' + (msuData.runs || []).map(msuRunOptionHtml_).join('');
     sel.addEventListener('change', function () {
       var run = (msuData.runs || []).find(function (r) { return r.runId === sel.value; });
       document.getElementById('msu-customer').value = run ? run.customerName : '';
@@ -185,7 +192,35 @@
       document.getElementById('msu-line').value = run ? run.line : '';
       document.getElementById('msu-runqty').value = run ? run.runQty : '';
       msuUpdateContextBanners(run);
+      msuUpdateDraftStatus_();
     });
+  }
+
+  function msuFormatDraftWhen_(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() + ' ' +
+      pfa12Hour_(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+  }
+
+  function msuUpdateDraftStatus_() {
+    var runId = document.getElementById('msu-run').value;
+    var box = document.getElementById('msu-status-row');
+    if (!runId) { box.innerHTML = ''; return; }
+    var run = (msuData.runs || []).find(function (r) { return r.runId === runId; });
+    if (run && String(run.qualified).trim() === 'Yes') {
+      box.innerHTML = '<span class="badge good">✓ QUALIFIED</span>';
+      return;
+    }
+    var draft = (msuData.drafts || {})[runId];
+    if (draft) {
+      var when = msuFormatDraftWhen_(draft.savedAt);
+      box.innerHTML = '<span class="badge warning">◐ DRAFT SAVED' + (when ? ' — ' + esc(when) : '') +
+        (draft.savedBy ? ' by ' + esc(draft.savedBy) : '') + '</span>';
+      return;
+    }
+    box.innerHTML = '<span class="spec-hint">Not started yet.</span>';
   }
 
   function msuUpdateContextBanners(run) {
@@ -346,20 +381,11 @@
     document.getElementById('msu-selfserve-block').classList.toggle('hidden', val !== 'No');
   }
 
-  function submitStartUpVerificationMetals() {
-    var runId = document.getElementById('msu-run').value;
-    var qcTechName = document.getElementById('msu-qctech').value;
-    var startUpTechName = document.getElementById('msu-suptech').value;
-    if (!runId) { showToast('Pick a Run.', true); return; }
-    if (!qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
-    if (!startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
-
+  /** Gathers every field on the form into one payload — shared by Save Verification and Save
+   *  Draft so a draft is always exactly "whatever's on the form right now", no separate rules. */
+  function msuCollectPayload_() {
     var devInfo = msuItemEls['Was there a deviation?'];
     var devVal = devInfo ? devInfo.input.value : '';
-    var descInfo = msuItemEls['Deviation Description / Notes'];
-    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
-      showToast('Describe the deviation before saving.', true); return;
-    }
 
     var checklist = [];
     document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
@@ -380,8 +406,10 @@
     });
 
     var msuDT = msuSplitDateTime();
-    var payload = {
-      runId: runId,
+    var qcTechName = document.getElementById('msu-qctech').value;
+    var startUpTechName = document.getElementById('msu-suptech').value;
+    return {
+      runId: document.getElementById('msu-run').value,
       verificationDate: msuDT.date,
       verificationTime: msuDT.time,
       qcTechName: qcTechName,
@@ -390,18 +418,110 @@
       foreman: document.getElementById('msu-foreman').value,
       checklist: checklist,
       pfaDirectSignOff: devVal === 'No' ? document.getElementById('msu-pfa-direct').value : '',
+      savedBy: qcTechName || startUpTechName || '',
     };
+  }
 
+  function submitStartUpVerificationMetals() {
+    var payload = msuCollectPayload_();
+    if (!payload.runId) { showToast('Pick a Run.', true); return; }
+    if (!payload.qcTechName) { showToast('Pick a QC Technician Name.', true); return; }
+    if (!payload.startUpTechName) { showToast('Pick a Start-Up Technician Name.', true); return; }
+
+    var devInfo = msuItemEls['Was there a deviation?'];
+    var devVal = devInfo ? devInfo.input.value : '';
+    var descInfo = msuItemEls['Deviation Description / Notes'];
+    if (devVal === 'Yes' && descInfo && !descInfo.input.value.trim()) {
+      showToast('Describe the deviation before saving.', true); return;
+    }
+
+    var runId = payload.runId;
     document.getElementById('msu-submit-btn').disabled = true;
     google.script.run
       .withSuccessHandler(function (result) {
         document.getElementById('msu-submit-btn').disabled = false;
         showToast(result.qualified ? 'Saved — Run ' + runId + ' is now Qualified.' :
           (result.hasDeviation ? 'Saved — deviation reported, approval requested.' : 'Verification saved.'));
+        if (msuData.drafts) delete msuData.drafts[runId]; // server clears the draft on a real save too
         resetStartUpFormMetals();
       })
       .withFailureHandler(function (err) { document.getElementById('msu-submit-btn').disabled = false; showToast(err.message, true); })
       .saveStartUpVerificationMetals(payload);
+  }
+
+  function msuSaveDraft_() {
+    var payload = msuCollectPayload_();
+    if (!payload.runId) { showToast('Pick a Run before saving a draft.', true); return; }
+    document.getElementById('msu-savedraft-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (result) {
+        document.getElementById('msu-savedraft-btn').disabled = false;
+        msuData.drafts = msuData.drafts || {};
+        msuData.drafts[payload.runId] = { savedBy: result.savedBy, savedAt: result.savedAt };
+        refreshRunOptions_(document.getElementById('msu-run'), msuData.runs, msuRunOptionHtml_);
+        msuUpdateDraftStatus_();
+        showToast('Draft saved.');
+      })
+      .withFailureHandler(function (err) { document.getElementById('msu-savedraft-btn').disabled = false; showToast(err.message, true); })
+      .saveStartUpDraftMetals(payload);
+  }
+
+  function msuApplyChecklistValues_(checklist) {
+    var byItem = {};
+    (checklist || []).forEach(function (c) { byItem[c.item] = c.value; });
+
+    document.querySelectorAll('#msu-checklist-table table.suv-checklist-table tr[data-idx]').forEach(function (tr) {
+      var it = msuChecklistItems[Number(tr.getAttribute('data-idx'))];
+      if (!(it.item in byItem)) return;
+      var val = byItem[it.item];
+      tr.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = false; });
+      var role = val === 'Pass' ? 'pass' : val === 'Fail' ? 'fail' : val === 'N/A' ? 'na' : null;
+      if (role) { var cb = tr.querySelector('[data-role="' + role + '"]'); if (cb) cb.checked = true; }
+    });
+    document.querySelectorAll('#msu-checklist-table table.suv-kpp-table tr[data-idx]').forEach(function (tr) {
+      var it = msuKppItems[Number(tr.getAttribute('data-idx'))];
+      if (!(it.item in byItem)) return;
+      var input = tr.querySelector('input');
+      if (input) input.value = byItem[it.item];
+    });
+    msuPlainItems.forEach(function (it, idx) {
+      if (!(it.item in byItem)) return;
+      var el = document.getElementById('msu-plain-' + idx);
+      if (el) el.value = byItem[it.item];
+    });
+    msuDeviationItems.forEach(function (it, idx) {
+      if (!(it.item in byItem)) return;
+      var el = document.getElementById('msu-dev-' + idx);
+      if (el) el.value = byItem[it.item];
+    });
+    msuUpdateDeviationUI();
+  }
+
+  function msuApplyDraftPayload_(payload) {
+    if (payload.verificationDate && payload.verificationTime) {
+      document.getElementById('msu-datetime').value = payload.verificationDate + 'T' + payload.verificationTime;
+    }
+    if (payload.shift) document.getElementById('msu-shift').value = payload.shift;
+    if (payload.qcTechName) document.getElementById('msu-qctech').value = payload.qcTechName;
+    if (payload.startUpTechName) document.getElementById('msu-suptech').value = payload.startUpTechName;
+    if (payload.foreman) document.getElementById('msu-foreman').value = payload.foreman;
+    msuApplyChecklistValues_(payload.checklist);
+    if (payload.pfaDirectSignOff) document.getElementById('msu-pfa-direct').value = payload.pfaDirectSignOff;
+  }
+
+  function msuLoadDraft_() {
+    var runId = document.getElementById('msu-run').value;
+    if (!runId) { showToast('Pick a Run first.', true); return; }
+    document.getElementById('msu-loaddraft-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (draft) {
+        document.getElementById('msu-loaddraft-btn').disabled = false;
+        if (!draft) { showToast('No draft found for this Run.', true); return; }
+        msuApplyDraftPayload_(draft.payload || {});
+        showToast('Draft loaded — saved ' + msuFormatDraftWhen_(draft.savedAt) + (draft.savedBy ? ' by ' + draft.savedBy : '') + '.');
+      })
+      .withFailureHandler(function (err) { document.getElementById('msu-loaddraft-btn').disabled = false; showToast(err.message, true); })
+      .loadStartUpDraftMetals(runId);
   }
 
   function resetStartUpFormMetals() {
@@ -410,6 +530,8 @@
       document.getElementById(id).value = '';
     });
     document.getElementById('msu-datetime').value = msuNowDateTimeStr();
+    document.getElementById('msu-status-row').innerHTML = '';
+    refreshRunOptions_(document.getElementById('msu-run'), msuData.runs, msuRunOptionHtml_);
     msuRenderChecklist();
   }
 </script>
