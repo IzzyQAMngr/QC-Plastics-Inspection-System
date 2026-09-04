@@ -28,7 +28,10 @@
     <div class="field"><label>Verification Date/Time</label><input type="datetime-local" id="suv-datetime"></div>
     <div class="field"><label>Shift</label><select id="suv-shift"></select></div>
   </div>
-  <div id="suv-status-row" style="margin:2px 0 10px;"></div>
+  <div style="display:flex;align-items:center;gap:10px;margin:2px 0 10px;">
+    <button id="suv-loaddraft-btn" class="ghost">📂 Load Draft</button>
+    <span id="suv-status-row"></span>
+  </div>
   <div class="field-row">
     <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
     <div class="field field-wide"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
@@ -83,10 +86,9 @@
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <button id="suv-submit-btn" class="primary">Save Verification</button>
     <button id="suv-savedraft-btn" class="ghost">💾 Save Draft</button>
-    <button id="suv-loaddraft-btn" class="ghost">📂 Load Draft</button>
     <button id="suv-print-btn" class="ghost">🖨️ Print This Form</button>
   </div>
-  <p class="spec-hint">Save Draft keeps whatever's filled in so far against this Run — pick the Run again later (same shift or a different one) and Load Draft to pick up where it was left off. Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
+  <p class="spec-hint">Save Draft keeps whatever's filled in so far against this Run — Load Draft, next to Run ID near the top, picks it back up later (same shift or a different one). Printing gives you a blank hard copy of this form — fill it in by hand on the floor, then come back and key the values into the fields above to save the record digitally.</p>
 </section>
 
 <div class="form-doc-footer">Created by: QA Manager Isabel Zuniga</div>
