@@ -64,6 +64,7 @@ function loadDropFreezeRecord(recordKey) {
       resinLot: r['Resin Lot'] || '', itemNo: r['Item No'] || '', itemDescription: r['Item Description'] || '',
       cavity: r.Cavity || '', testName: r['Test Name'] || '',
       dateOfMfg: dateToStr_(r.DateOfMfg), testDate: dateToStr_(r.TestDate), testedBy: r.TestedBy || '',
+      sampleNo: r.SampleNo || '', sampleCount: r.SampleCount || '',
       freezerTemp: r.FreezerTemp, dropHeight: r.DropHeight, dropAngle: r.DropAngle || '', result: r.Result || '',
       failureDescription: r.FailureDescription || '', notes: r.Notes || '',
     })),
@@ -88,6 +89,8 @@ function saveDropFreezePacket(payload) {
   lock.waitLock(30000);
   try {
     const sheet = getDropFreezeLogSheet_();
+    ensureColumnExists_(sheet, 'SampleNo');
+    ensureColumnExists_(sheet, 'SampleCount');
     const items = payload.lineItems || [];
     const active = items.filter(li => String(li.runId || '').trim());
     if (active.length === 0) throw new Error('No active line items — a Run is required on at least one line.');
@@ -118,6 +121,7 @@ function saveDropFreezePacket(payload) {
         'Resin Lot': run.resinLot, 'Item No': run.item, 'Item Description': run.itemDescription,
         Cavity: li.cavity || '', 'Test Name': li.testName || '',
         DateOfMfg: li.dateOfMfg || '', TestDate: li.testDate || '', TestedBy: li.testedBy || '',
+        SampleNo: li.sampleNo || '', SampleCount: li.sampleCount || '',
         FreezerTemp: li.freezerTemp, DropHeight: li.dropHeight, DropAngle: li.dropAngle || '', Result: li.result || '',
         FailureDescription: li.failureDescription || '', Notes: li.notes || '',
         Month: Utilities.formatDate(d, tz, 'MMMM'), Year: Utilities.formatDate(d, tz, 'yyyy'),

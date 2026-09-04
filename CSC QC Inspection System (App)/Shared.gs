@@ -51,6 +51,7 @@ const DROPFREEZE_LOG_HEADERS = [
   'Run ID', 'Line #', 'Shift', 'Customer Name',
   'Mold ID', 'Mold Description', 'Product Type', 'Resin Lot', 'Item No', 'Item Description',
   'Cavity', 'Test Name', 'DateOfMfg', 'TestDate', 'TestedBy',
+  'SampleNo', 'SampleCount',
   'FreezerTemp', 'DropHeight', 'DropAngle', 'Result', 'FailureDescription', 'Notes', 'Month', 'Year',
 ];
 

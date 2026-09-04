@@ -70,16 +70,7 @@
   </div>
 
   <div class="section-divider" id="df-results-banner">RESULTS — pick a Run, Test, and Cavity above</div>
-  <div class="field-row">
-    <div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp"></div>
-    <div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight" value="36" readonly></div>
-    <div class="field"><label>Drop Angle</label><select id="df-dropAngle"></select></div>
-    <div class="field"><label>Pass / Fail Result</label>
-      <select id="df-result"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select>
-    </div>
-  </div>
-  <div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc"></div>
-  <div class="field"><label>Other Notes / Observations</label><input id="df-notes"></div>
+  <div id="df-results-container"></div>
   <button class="primary" id="df-add-line-btn">+ Add Line</button>
 </section>
 
@@ -87,8 +78,8 @@
   <h2>3. Pending Lines</h2>
   <p class="spec-hint">Review every line item before saving — Save Test writes all of them together under one Record #.</p>
   <table class="qc-table">
-    <thead><tr><th>#</th><th>Run</th><th>Mold</th><th>Test</th><th>Cavity</th><th>Result</th><th></th></tr></thead>
-    <tbody id="df-lines-body"><tr><td colspan="7" style="color:var(--text-muted)">No lines added yet.</td></tr></tbody>
+    <thead><tr><th>#</th><th>Run</th><th>Mold</th><th>Test</th><th>Cavity</th><th>Sample</th><th>Result</th><th></th></tr></thead>
+    <tbody id="df-lines-body"><tr><td colspan="8" style="color:var(--text-muted)">No lines added yet.</td></tr></tbody>
   </table>
   <div style="margin-top:14px;"><button class="primary" id="df-save-btn">Save Test</button></div>
 </section>
@@ -98,10 +89,11 @@
   var dfLines = [];
   var dfLoadedRecordKey = '';
   var dfTests = [];
+  var dfSampleCount = 1;
 
   function init_dropfreeze() {
     google.script.run
-      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); })
+      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); renderDfResultsBlocks(1); })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getDropFreezeFormData();
   }
@@ -122,11 +114,48 @@
     var o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; return o;
   }
 
-  function renderDfFormOptions() {
-    var angle = document.getElementById('df-dropAngle'); angle.innerHTML = '';
-    angle.appendChild(opt('', '— select —'));
-    dfData.angleOptions.forEach(function (a) { angle.appendChild(opt(a)); });
+  /** Pulls a sample count out of the register's free-text Sample Size field (e.g. "5",
+   *  "5 samples", "n=5") — defaults to 1 (today's single-result behavior) when it can't
+   *  find a number, capped at a sane maximum so a garbled register value can't blow up the form. */
+  function parseSampleCount_(sizeStr) {
+    var m = String(sizeStr || '').match(/\d+/);
+    var n = m ? parseInt(m[0], 10) : 1;
+    return (n >= 1 && n <= 20) ? n : 1;
+  }
 
+  /** A Drop Freeze test with Sample Size > 1 (e.g. the 72-hr test's 5-samples-per-cavity
+   *  protocol) needs one Results block per sample — same Sample & Test Details above them,
+   *  but each sample gets its own Freezer Temp/Drop Height/Drop Angle/Result/Failure
+   *  Description/Notes, since that's what actually differs sample to sample. Rebuilding this
+   *  container from scratch (rather than a fixed multi-row table) keeps a single-sample test
+   *  looking exactly like the old one-block form. */
+  function renderDfResultsBlocks(count) {
+    dfSampleCount = count;
+    var container = document.getElementById('df-results-container');
+    var html = '';
+    for (var i = 0; i < count; i++) {
+      html += '<div class="df-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
+        (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (i + 1) + ' OF ' + count + '</div>' : '') +
+        '<div class="field-row">' +
+          '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp-' + i + '"></div>' +
+          '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight-' + i + '" value="36" readonly></div>' +
+          '<div class="field"><label>Drop Angle</label><select id="df-dropAngle-' + i + '"></select></div>' +
+          '<div class="field"><label>Pass / Fail Result</label>' +
+            '<select id="df-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
+        '</div>' +
+        '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc-' + i + '"></div>' +
+        '<div class="field"><label>Other Notes / Observations</label><input id="df-notes-' + i + '"></div>' +
+      '</div>';
+    }
+    container.innerHTML = html;
+    for (var j = 0; j < count; j++) {
+      var angleSel = document.getElementById('df-dropAngle-' + j);
+      angleSel.appendChild(opt('', '— select —'));
+      (dfData.angleOptions || []).forEach(function (a) { angleSel.appendChild(opt(a)); });
+    }
+  }
+
+  function renderDfFormOptions() {
     fillSelect('df-testedBy', dfData.inspectors);
     fillSelect('df-shift', dfData.shifts);
 
@@ -187,7 +216,11 @@
     var sel = document.getElementById('df-testName');
     sel.innerHTML = '<option value="">— select —</option>';
     document.getElementById('df-test-reference').classList.add('hidden');
-    if (!moldId) { document.getElementById('df-test-hint').textContent = 'Pick a Run above to see the drop freeze tests defined for its mold.'; return; }
+    renderDfResultsBlocks(1); // no test picked yet for this mold — back to the single-sample default
+    if (!moldId) {
+      document.getElementById('df-test-hint').textContent = 'Pick a Run above to see the drop freeze tests defined for its mold.';
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (tests) {
         dfTests = tests || [];
@@ -206,6 +239,7 @@
     var t = dfTests.find(function (x) { return x.testName === e.target.value; });
     document.getElementById('df-test-reference').classList.toggle('hidden', !t);
     updateDfResultsBanner();
+    renderDfResultsBlocks(t ? parseSampleCount_(t.sampleSize) : 1);
     if (!t) return;
     document.getElementById('df-test-method').value = t.methodDescription;
     document.getElementById('df-test-criteria').value = t.acceptanceCriteria;
@@ -218,7 +252,10 @@
   document.getElementById('df-add-line-btn').addEventListener('click', function () {
     var runId = document.getElementById('df-run').value;
     if (!runId) { showToast('Pick a Run.', true); return; }
-    dfLines.push({
+    // Sample & Test Details are identical for every sample of this cavity/test — only the
+    // per-sample Results block below differs — so one shared object is spread across
+    // dfSampleCount pushed lines, each carrying its own sample number.
+    var shared = {
       runId: runId,
       moldId: document.getElementById('df-moldId').value,
       shift: document.getElementById('df-shift').value,
@@ -227,31 +264,40 @@
       cavity: document.getElementById('df-cavity').value,
       testDate: document.getElementById('df-testDate').value,
       testedBy: document.getElementById('df-testedBy').value,
-      freezerTemp: document.getElementById('df-freezerTemp').value,
-      dropHeight: document.getElementById('df-dropHeight').value,
-      dropAngle: document.getElementById('df-dropAngle').value,
-      result: document.getElementById('df-result').value,
-      failureDescription: document.getElementById('df-failDesc').value,
-      notes: document.getElementById('df-notes').value,
-    });
+    };
+    for (var i = 0; i < dfSampleCount; i++) {
+      var line = {
+        sampleNo: dfSampleCount > 1 ? (i + 1) : '',
+        sampleCount: dfSampleCount > 1 ? dfSampleCount : '',
+        freezerTemp: document.getElementById('df-freezerTemp-' + i).value,
+        dropHeight: document.getElementById('df-dropHeight-' + i).value,
+        dropAngle: document.getElementById('df-dropAngle-' + i).value,
+        result: document.getElementById('df-result-' + i).value,
+        failureDescription: document.getElementById('df-failDesc-' + i).value,
+        notes: document.getElementById('df-notes-' + i).value,
+      };
+      for (var k in shared) line[k] = shared[k];
+      dfLines.push(line);
+    }
     renderDfLines();
-    ['df-cavity', 'df-failDesc', 'df-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
-    document.getElementById('df-result').value = '';
+    document.getElementById('df-cavity').value = '';
+    renderDfResultsBlocks(dfSampleCount);
     updateDfResultsBanner();
   });
 
   function renderDfLines() {
     var body = document.getElementById('df-lines-body');
     if (dfLines.length === 0) {
-      body.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">No lines added yet.</td></tr>';
+      body.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted)">No lines added yet.</td></tr>';
       return;
     }
     body.innerHTML = dfLines.map(function (li, i) {
       var badge = li.result === 'Fail' ? '<span class="badge critical">Fail</span>'
         : li.result === 'Pass' ? '<span class="badge good">Pass</span>'
         : (li.result || '—');
+      var sample = li.sampleNo ? (li.sampleNo + (li.sampleCount ? ' / ' + li.sampleCount : '')) : '—';
       return '<tr><td>' + (i + 1) + '</td><td>' + esc(li.runId) + '</td><td>' + esc(li.moldId) + '</td><td>' +
-        esc(li.testName || '—') + '</td><td>' + esc(li.cavity || '') + '</td><td>' + badge + '</td>' +
+        esc(li.testName || '—') + '</td><td>' + esc(li.cavity || '') + '</td><td>' + esc(sample) + '</td><td>' + badge + '</td>' +
         '<td><button class="ghost" onclick="removeDfLine(' + i + ')">Remove</button></td></tr>';
     }).join('');
   }
