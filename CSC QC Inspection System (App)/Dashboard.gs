@@ -39,10 +39,14 @@ function getPlasticsLineDashboardData() {
 function buildLineCard_(run, inProcessRows, dropFreezeRows) {
   const createdAt = run.createdAt ? new Date(run.createdAt) : null;
 
+  // Line #/Mold/Run ID cells can come back from Sheets as either a number or a string
+  // depending on how that row was written, so both sides must be normalized to strings
+  // before comparing — comparing a bare (possibly numeric) run.line/run.moldId against an
+  // already-stringified sheet value silently matched nothing.
   let ipPass = 0, ipFail = 0;
   inProcessRows.forEach(r => {
-    if (String(r['Line #'] || '').trim() !== run.line) return;
-    if (String(r['Mold'] || '').trim() !== run.moldId) return;
+    if (String(r['Line #'] || '').trim() !== String(run.line || '').trim()) return;
+    if (String(r['Mold'] || '').trim() !== String(run.moldId || '').trim()) return;
     if (createdAt && !isNaN(createdAt.getTime())) {
       const t = r['Timestamp Saved'] instanceof Date ? r['Timestamp Saved'] : new Date(r['Timestamp Saved']);
       if (!isNaN(t.getTime()) && t < createdAt) return;
@@ -55,7 +59,7 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
 
   let dfPass = 0, dfFail = 0;
   dropFreezeRows.forEach(r => {
-    if (String(r['Run ID'] || '').trim() !== run.runId) return;
+    if (String(r['Run ID'] || '').trim() !== String(run.runId || '').trim()) return;
     if (String(r.Status || '').trim().toUpperCase() !== 'COMPLETE') return;
     if (isFailValue_(r.Result)) dfFail++;
     else if (String(r.Result || '').toUpperCase().indexOf('PASS') >= 0) dfPass++;
