@@ -5,7 +5,7 @@
 // Shown under the logo in the sidebar so it's obvious at a glance which build is live —
 // bump this alongside every `clasp deploy` to the production deployment ID (see
 // reference_deployment_details memory), matching the @N version number clasp reports.
-const APP_VERSION = 'v123';
+const APP_VERSION = 'v125';
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
@@ -18,8 +18,14 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+/** renamePrefix lets the SAME partial be included more than once on one page (every view's
+ *  HTML+script is concatenated into one document, all at once, regardless of which .view is
+ *  currently visible) without its element ids or global JS names colliding — e.g.
+ *  DropFreezeResultsForm.html uses a "dfrf" prefix throughout; a second inclusion elsewhere on
+ *  the page passes a different prefix here to get its own independent copy. */
+function include(filename, renamePrefix) {
+  const html = HtmlService.createHtmlOutputFromFile(filename).getContent();
+  return renamePrefix ? html.split('dfrf').join(renamePrefix) : html;
 }
 
 // ================= SPREADSHEET MENU (preview the app without deploying) =================

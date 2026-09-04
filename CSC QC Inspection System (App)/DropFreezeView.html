@@ -72,31 +72,17 @@
     <div class="field" style="align-self:end;"><button id="df-load-results-btn">Load</button></div>
   </div>
 
-  <div class="hidden" id="df-results-loaded">
-    <div class="section-divider" id="df-results-banner">TEST — pick an Open Test above</div>
-    <div class="field"><label>Current Record #</label><input id="df-record-key" readonly></div>
-
-    <div class="field-row">
-      <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="df-testDate"></div>
-      <div class="field"><label>Tested By</label><select id="df-testedBy"></select></div>
-    </div>
-
-    <div class="section-divider">RESULTS</div>
-    <div id="df-results-container"></div>
-    <button class="primary" id="df-save-results-btn" style="margin-top:10px;">Save Results</button>
-  </div>
+  <?!= include('DropFreezeResultsForm'); ?>
 </section>
 
 <script>
   var dfData = null;
   var dfTests = [];
   var dfCavities = [];
-  var dfResultLines = [];
-  var dfLoadedRecordKey = '';
 
   function init_dropfreeze() {
     google.script.run
-      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); })
+      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); dfrfInit(data); })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getDropFreezeFormData();
   }
@@ -139,7 +125,6 @@
   }
 
   function renderDfFormOptions() {
-    fillSelect('df-testedBy', dfData.inspectors);
     fillSelect('df-shift', dfData.shifts);
 
     var runSel = document.getElementById('df-run');
@@ -153,7 +138,15 @@
   function renderDfOpenSelect_() {
     var sel = document.getElementById('df-open-select'); sel.innerHTML = '';
     sel.appendChild(opt('', '— select —'));
-    (dfData.openRecords || []).forEach(function (r) { sel.appendChild(opt(r)); });
+    (dfData.openRecords || []).forEach(function (r) { sel.appendChild(opt(r.recordKey, dfOpenRecordLabel_(r))); });
+  }
+
+  /** More identifying context than the bare Record # — Run, Mold, Cavity, Test, and how many
+   *  samples are still open — so a record can be picked out without opening the sheet. */
+  function dfOpenRecordLabel_(r) {
+    return r.recordKey + ' — ' + (r.runId || '—') + (r.moldId ? ' · ' + r.moldId : '') +
+      (r.cavity ? ' · Cavity ' + r.cavity : '') + (r.testName ? ' · ' + r.testName : '') +
+      (r.dateOfMfg ? ' · Mfg ' + r.dateOfMfg : '') + ' · ' + r.openSamples + '/' + r.totalSamples + ' open';
   }
 
   document.getElementById('df-run').addEventListener('change', function (e) {
@@ -274,85 +267,14 @@
   document.getElementById('df-load-results-btn').addEventListener('click', function () {
     var recordKey = document.getElementById('df-open-select').value;
     if (!recordKey) { showToast('Pick an Open Test.', true); return; }
-    google.script.run
-      .withSuccessHandler(function (packet) {
-        dfLoadedRecordKey = packet.recordKey;
-        dfResultLines = packet.lineItems;
-        document.getElementById('df-record-key').value = packet.recordKey;
-        var first = dfResultLines[0] || {};
-        document.getElementById('df-testDate').value = first.testDate || '';
-        document.getElementById('df-testedBy').value = first.testedBy || '';
-        var el = document.getElementById('df-results-banner');
-        el.textContent = 'TEST · RUN ' + (first.runId || '—') + (first.moldId ? ' · ' + first.moldId : '') +
-          ' · TEST ' + (first.testName || '—') + ' · CAVITY ' + (first.cavity || '—') +
-          ' · ' + dfResultLines.length + ' sample(s)';
-        renderDfResultsBlocks_();
-        document.getElementById('df-results-loaded').classList.remove('hidden');
-      })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
-      .loadDropFreezeRecord(recordKey);
+    dfrfLoadRecord(recordKey);
   });
 
-  /** One editable block per sample already logged under the loaded record, pre-filled with
-   *  whatever was saved for it before (blank the first time results are entered) — so a
-   *  partially-completed record (some samples tested today, some still pending) can be
-   *  revisited without losing what's already there. */
-  function renderDfResultsBlocks_() {
-    var container = document.getElementById('df-results-container');
-    var count = dfResultLines.length;
-    var html = '';
-    dfResultLines.forEach(function (li, i) {
-      html += '<div class="df-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
-        (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (li.sampleNo || (i + 1)) + ' OF ' + (li.sampleCount || count) + '</div>' : '') +
-        '<div class="field-row">' +
-          '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="df-freezerTemp-' + i + '" value="' + esc(li.freezerTemp || '') + '"></div>' +
-          '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="df-dropHeight-' + i + '" value="36" readonly></div>' +
-          '<div class="field"><label>Drop Angle</label><select id="df-dropAngle-' + i + '"></select></div>' +
-          '<div class="field"><label>Pass / Fail Result</label>' +
-            '<select id="df-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
-        '</div>' +
-        '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="df-failDesc-' + i + '" value="' + esc(li.failureDescription || '') + '"></div>' +
-        '<div class="field"><label>Other Notes / Observations</label><input id="df-notes-' + i + '" value="' + esc(li.notes || '') + '"></div>' +
-      '</div>';
-    });
-    container.innerHTML = html;
-    dfResultLines.forEach(function (li, i) {
-      var angleSel = document.getElementById('df-dropAngle-' + i);
-      angleSel.appendChild(opt('', '— select —'));
-      (dfData.angleOptions || []).forEach(function (a) { angleSel.appendChild(opt(a)); });
-      if (li.dropAngle) angleSel.value = li.dropAngle;
-      document.getElementById('df-result-' + i).value = li.result || '';
-    });
-  }
-
-  document.getElementById('df-save-results-btn').addEventListener('click', function () {
-    if (dfResultLines.length === 0) { showToast('Load an Open Test first.', true); return; }
-    var testDate = document.getElementById('df-testDate').value;
-    var testedBy = document.getElementById('df-testedBy').value;
-    var lineItems = dfResultLines.map(function (li, i) {
-      var updated = {};
-      for (var k in li) updated[k] = li[k];
-      updated.testDate = testDate;
-      updated.testedBy = testedBy;
-      updated.freezerTemp = document.getElementById('df-freezerTemp-' + i).value;
-      updated.dropHeight = document.getElementById('df-dropHeight-' + i).value;
-      updated.dropAngle = document.getElementById('df-dropAngle-' + i).value;
-      updated.result = document.getElementById('df-result-' + i).value;
-      updated.failureDescription = document.getElementById('df-failDesc-' + i).value;
-      updated.notes = document.getElementById('df-notes-' + i).value;
-      return updated;
-    });
+  // A fully-completed record drops off the Open Test list; refresh it either way.
+  dfrfOnSaved = function () {
     google.script.run
-      .withSuccessHandler(function (result) {
-        showToast('Saved results for ' + result.savedCount + ' sample(s) on Record ' + result.recordKey + '.');
-        dfResultLines = lineItems;
-        // A fully-completed record drops off the Open Test list; refresh it either way.
-        google.script.run
-          .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
-          .withFailureHandler(function () {})
-          .getDropFreezeFormData();
-      })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
-      .saveDropFreezePacket({ recordKey: dfLoadedRecordKey, lineItems: lineItems });
-  });
+      .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
+      .withFailureHandler(function () {})
+      .getDropFreezeFormData();
+  };
 </script>

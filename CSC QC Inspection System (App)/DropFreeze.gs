@@ -35,17 +35,35 @@ function getCavityIdsForMold(moldId) {
   return getCavityIds_(moldId);
 }
 
+/** Every Drop Freeze record still holding at least one OPEN sample, with enough context
+ *  (Run/Mold/Cavity/Test/date/how many samples) to identify it without opening the sheet —
+ *  drives both the Test Results tab's dropdown and the Open Samples table. */
 function listOpenDropFreezeRecords_() {
   const sheet = getDropFreezeLogSheet_();
   const rows = readSheetObjects_(sheet);
-  const seen = new Set();
-  const records = [];
+  const groups = new Map();
   rows.forEach(r => {
     const key = String(r.RecordKey || '').trim();
-    const status = String(r.Status || '').trim().toUpperCase();
-    if (key && status === 'OPEN' && !seen.has(key)) { seen.add(key); records.push(key); }
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
   });
-  records.sort((a, b) => b.localeCompare(a));
+  const records = [];
+  groups.forEach((groupRows, key) => {
+    const openCount = groupRows.filter(r => String(r.Status || '').trim().toUpperCase() === 'OPEN').length;
+    if (openCount === 0) return;
+    const first = groupRows[0];
+    records.push({
+      recordKey: key,
+      runId: first['Run ID'] || '', line: first['Line #'] || '',
+      moldId: first['Mold ID'] || '', moldDescription: first['Mold Description'] || '',
+      itemNo: first['Item No'] || '', customerName: first['Customer Name'] || '',
+      cavity: first.Cavity || '', testName: first['Test Name'] || '',
+      dateOfMfg: dateToStr_(first.DateOfMfg),
+      totalSamples: groupRows.length, openSamples: openCount,
+    });
+  });
+  records.sort((a, b) => b.recordKey.localeCompare(a.recordKey));
   return records;
 }
 

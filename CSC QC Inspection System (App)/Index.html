@@ -78,6 +78,7 @@
       <div class="nav-item" data-view="pfatag" data-dept="Plastics">Print PFA Tag</div>
       <div class="nav-item" data-view="inprocess" data-dept="Plastics">In-Process Inspection</div>
       <div class="nav-item" data-view="dropfreeze" data-dept="Plastics">Drop Freeze Test</div>
+      <div class="nav-item" data-view="opensamples" data-dept="Plastics">Open Samples</div>
       <div class="nav-item" data-view="testdatareview" data-dept="Plastics">Data Analysis</div>
     </div>
 
@@ -100,6 +101,7 @@
     <div class="view" id="view-startup"><?!= include('StartUpVerificationView'); ?></div>
     <div class="view" id="view-devapproval"><?!= include('DeviationApprovalView'); ?></div>
     <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
+    <div class="view" id="view-opensamples"><?!= include('OpenSamplesView'); ?></div>
     <div class="view" id="view-inprocess"><?!= include('InProcessView'); ?></div>
     <div class="view" id="view-testdatareview"><?!= include('TestDataReviewView'); ?></div>
     <div class="view" id="view-metalsdashboard"><?!= include('MetalsDashboardView'); ?></div>
@@ -125,7 +127,7 @@
 <?!= include('PfaTag'); ?>
 
 <script>
-  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
+  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'opensamples', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 
@@ -134,7 +136,7 @@
   // menus, so its default here is overridden by ?dept= on a deep link when present.
   var VIEW_DEPT = {
     dashboard: 'Plastics', addrun: 'Plastics', startup: 'Plastics', devapproval: 'Plastics',
-    inprocess: 'Plastics', dropfreeze: 'Plastics', testdatareview: 'Plastics',
+    inprocess: 'Plastics', dropfreeze: 'Plastics', opensamples: 'Plastics', testdatareview: 'Plastics',
     metalsdashboard: 'Metals', metalsaddrun: 'Metals', metalsstartup: 'Metals', metals: 'Metals',
     pfatag: 'Plastics',
   };

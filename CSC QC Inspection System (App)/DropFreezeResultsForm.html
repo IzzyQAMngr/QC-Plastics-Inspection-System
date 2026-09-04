@@ -1,0 +1,113 @@
+<!-- Shared Drop Freeze "record a result" form — included from both DropFreezeView.html's Test
+     Results tab and OpenSamplesView.html's table, so there's exactly one place that knows how
+     to load a record's samples and save results back. Element ids are dfrf-prefixed so this can
+     safely appear on a page that also has its own ids. -->
+<div class="hidden" id="dfrf-loaded">
+  <div class="section-divider" id="dfrf-banner">TEST — pick a record above</div>
+  <div class="field"><label>Current Record #</label><input id="dfrf-record-key" readonly></div>
+
+  <div class="field-row">
+    <div class="field"><label>Test Date / Time</label><input type="datetime-local" id="dfrf-testDate"></div>
+    <div class="field"><label>Tested By</label><select id="dfrf-testedBy"></select></div>
+  </div>
+
+  <div class="section-divider">RESULTS</div>
+  <div id="dfrf-results-container"></div>
+  <button class="primary" id="dfrf-save-results-btn" style="margin-top:10px;">Save Results</button>
+</div>
+
+<script>
+  var dfrfFormData = null;
+  var dfrfResultLines = [];
+  var dfrfLoadedRecordKey = '';
+  var dfrfOnSaved = null; // optional function(result) the host page can set to react to a save
+
+  /** Call once, after fetching { angleOptions, inspectors } (getDropFreezeFormData() has both). */
+  function dfrfInit(formData) {
+    dfrfFormData = formData;
+    fillSelect('dfrf-testedBy', formData.inspectors);
+  }
+
+  function dfrfLoadRecord(recordKey) {
+    if (!recordKey) return;
+    google.script.run
+      .withSuccessHandler(function (packet) {
+        dfrfLoadedRecordKey = packet.recordKey;
+        dfrfResultLines = packet.lineItems;
+        document.getElementById('dfrf-record-key').value = packet.recordKey;
+        var first = dfrfResultLines[0] || {};
+        document.getElementById('dfrf-testDate').value = first.testDate || '';
+        document.getElementById('dfrf-testedBy').value = first.testedBy || '';
+        document.getElementById('dfrf-banner').textContent = 'TEST · RUN ' + (first.runId || '—') +
+          (first.moldId ? ' · ' + first.moldId : '') + ' · TEST ' + (first.testName || '—') +
+          ' · CAVITY ' + (first.cavity || '—') + ' · ' + dfrfResultLines.length + ' sample(s)';
+        dfrfRenderBlocks_();
+        document.getElementById('dfrf-loaded').classList.remove('hidden');
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .loadDropFreezeRecord(recordKey);
+  }
+
+  /** One editable block per sample already logged under the loaded record, pre-filled with
+   *  whatever was saved for it before (blank the first time results are entered) — so a
+   *  partially-completed record (some samples tested today, some still pending) can be
+   *  revisited without losing what's already there. */
+  function dfrfRenderBlocks_() {
+    var container = document.getElementById('dfrf-results-container');
+    var count = dfrfResultLines.length;
+    var html = '';
+    dfrfResultLines.forEach(function (li, i) {
+      html += '<div class="dfrf-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
+        (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (li.sampleNo || (i + 1)) + ' OF ' + (li.sampleCount || count) + '</div>' : '') +
+        '<div class="field-row">' +
+          '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="dfrf-freezerTemp-' + i + '" value="' + esc(li.freezerTemp || '') + '"></div>' +
+          '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="dfrf-dropHeight-' + i + '" value="36" readonly></div>' +
+          '<div class="field"><label>Drop Angle</label><select id="dfrf-dropAngle-' + i + '"></select></div>' +
+          '<div class="field"><label>Pass / Fail Result</label>' +
+            '<select id="dfrf-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
+        '</div>' +
+        '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="dfrf-failDesc-' + i + '" value="' + esc(li.failureDescription || '') + '"></div>' +
+        '<div class="field"><label>Other Notes / Observations</label><input id="dfrf-notes-' + i + '" value="' + esc(li.notes || '') + '"></div>' +
+      '</div>';
+    });
+    container.innerHTML = html;
+    dfrfResultLines.forEach(function (li, i) {
+      var angleSel = document.getElementById('dfrf-dropAngle-' + i);
+      angleSel.appendChild(dfrfOpt_('', '— select —'));
+      (dfrfFormData.angleOptions || []).forEach(function (a) { angleSel.appendChild(dfrfOpt_(a)); });
+      if (li.dropAngle) angleSel.value = li.dropAngle;
+      document.getElementById('dfrf-result-' + i).value = li.result || '';
+    });
+  }
+
+  function dfrfOpt_(value, label) {
+    var o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; return o;
+  }
+
+  document.getElementById('dfrf-save-results-btn').addEventListener('click', function () {
+    if (dfrfResultLines.length === 0) { showToast('Load an Open record first.', true); return; }
+    var testDate = document.getElementById('dfrf-testDate').value;
+    var testedBy = document.getElementById('dfrf-testedBy').value;
+    var lineItems = dfrfResultLines.map(function (li, i) {
+      var updated = {};
+      for (var k in li) updated[k] = li[k];
+      updated.testDate = testDate;
+      updated.testedBy = testedBy;
+      updated.freezerTemp = document.getElementById('dfrf-freezerTemp-' + i).value;
+      updated.dropHeight = document.getElementById('dfrf-dropHeight-' + i).value;
+      updated.dropAngle = document.getElementById('dfrf-dropAngle-' + i).value;
+      updated.result = document.getElementById('dfrf-result-' + i).value;
+      updated.failureDescription = document.getElementById('dfrf-failDesc-' + i).value;
+      updated.notes = document.getElementById('dfrf-notes-' + i).value;
+      return updated;
+    });
+    google.script.run
+      .withSuccessHandler(function (result) {
+        showToast('Saved results for ' + result.savedCount + ' sample(s) on Record ' + result.recordKey + '.');
+        dfrfResultLines = lineItems;
+        if (dfrfOnSaved) dfrfOnSaved(result);
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .saveDropFreezePacket({ recordKey: dfrfLoadedRecordKey, lineItems: lineItems });
+  });
+</script>

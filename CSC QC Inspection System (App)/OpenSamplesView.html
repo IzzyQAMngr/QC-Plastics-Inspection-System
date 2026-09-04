@@ -1,0 +1,80 @@
+<style>
+  .os-row { cursor: pointer; }
+  .os-row:hover td { background: var(--row-alt); }
+  .os-row.active td { background: var(--gridline); }
+</style>
+
+<div class="page-title-row">
+  <h1 class="page-title">🧊 Open Samples</h1>
+</div>
+<p class="page-sub">Every Drop Freeze sample currently in the freezer and waiting on a result — click one to record it.</p>
+
+<section class="card">
+  <table class="qc-table">
+    <thead>
+      <tr><th>Record #</th><th>Run</th><th>Mold</th><th>Cavity</th><th>Test</th><th>Date of Mfg</th><th>Samples</th></tr>
+    </thead>
+    <tbody id="os-table-body"><tr><td colspan="7" style="color:var(--text-muted)">Loading…</td></tr></tbody>
+  </table>
+</section>
+
+<section class="card hidden" id="os-form-card">
+  <h2>Record Results</h2>
+  <?!= include('DropFreezeResultsForm', 'osfrf'); ?>
+</section>
+
+<script>
+  var osRecords = [];
+  var osSelectedKey = '';
+
+  function init_opensamples() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        osfrfInit(data);
+        osRecords = data.openRecords || [];
+        renderOsTable_();
+      })
+      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .getDropFreezeFormData();
+  }
+
+  // Refreshes the table on return visits — see Index.html's showView.
+  function onshow_opensamples() { init_opensamples(); }
+
+  function renderOsTable_() {
+    var body = document.getElementById('os-table-body');
+    if (!osRecords.length) {
+      body.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">No open samples right now.</td></tr>';
+      return;
+    }
+    body.innerHTML = osRecords.map(function (r) {
+      return '<tr class="os-row' + (r.recordKey === osSelectedKey ? ' active' : '') + '" data-key="' + esc(r.recordKey) + '">' +
+        '<td>' + esc(r.recordKey) + '</td>' +
+        '<td>' + esc(r.runId || '—') + '</td>' +
+        '<td>' + esc(r.moldId || '—') + (r.moldDescription ? ' — ' + esc(r.moldDescription) : '') + '</td>' +
+        '<td>' + esc(r.cavity || '—') + '</td>' +
+        '<td>' + esc(r.testName || '—') + '</td>' +
+        '<td>' + esc(r.dateOfMfg || '—') + '</td>' +
+        '<td>' + r.openSamples + ' / ' + r.totalSamples + ' open</td>' +
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('.os-row').forEach(function (tr) {
+      tr.addEventListener('click', function () { osSelectRecord_(tr.dataset.key); });
+    });
+  }
+
+  function osSelectRecord_(recordKey) {
+    osSelectedKey = recordKey;
+    renderOsTable_();
+    document.getElementById('os-form-card').classList.remove('hidden');
+    osfrfLoadRecord(recordKey);
+  }
+
+  // Drop a fully-completed record from the table without a full reload.
+  osfrfOnSaved = function () {
+    google.script.run
+      .withSuccessHandler(function (data) { osRecords = data.openRecords || []; renderOsTable_(); })
+      .withFailureHandler(function () {})
+      .getDropFreezeFormData();
+  };
+</script>
