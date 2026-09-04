@@ -53,15 +53,13 @@
       <div class="field"><label>Sample Size</label><input id="df-test-sample" readonly></div>
       <div class="field"><label>Equipment</label><input id="df-test-equipment" readonly></div>
     </div>
-    <p class="spec-hint" id="df-sample-count-hint"></p>
   </div>
 
   <div class="section-divider">SAMPLE INFO</div>
-  <p class="spec-hint">Cavity options come from the register's cavity list for the Mold selected above.</p>
   <div class="field-row">
     <div class="field"><label>Date / Time of Mfg</label><input type="datetime-local" id="df-dateOfMfg"></div>
-    <div class="field"><label>Cavity</label><select id="df-cavity"><option value="">— select —</option></select></div>
   </div>
+  <p class="spec-hint" id="df-cavity-hint">Pick a Run above to see this mold's cavities.</p>
 
   <button class="primary" id="df-log-samples-btn" style="margin-top:10px;">Log Samples</button>
 </section>
@@ -92,6 +90,7 @@
 <script>
   var dfData = null;
   var dfTests = [];
+  var dfCavities = [];
   var dfResultLines = [];
   var dfLoadedRecordKey = '';
 
@@ -172,19 +171,40 @@
     loadDropFreezeCavities(run ? run.moldId : '');
   });
 
-  /** Cavity options come straight from the register's cavity list for the mold — same lookup
-   *  In-Process uses to auto-generate its per-cavity rows, just presented as a picker here since
-   *  Drop Freeze logs one sample batch at a time instead of a fixed grid of rows. */
+  /** Cavities come straight from the register's cavity list for the mold — same lookup
+   *  In-Process uses to auto-generate its per-cavity rows. Drop Freeze has no per-cavity data
+   *  to enter at load time (unlike In-Process's dimensional values), so there's nothing to show
+   *  per cavity beyond this summary — "Log Samples" logs all of them at once. */
   function loadDropFreezeCavities(moldId) {
-    var sel = document.getElementById('df-cavity');
-    sel.innerHTML = '<option value="">— select —</option>';
-    if (!moldId) return;
+    dfCavities = [];
+    updateDfLogSummary_();
+    if (!moldId) {
+      document.getElementById('df-cavity-hint').textContent = "Pick a Run above to see this mold's cavities.";
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (cavities) {
-        (cavities || []).forEach(function (c) { sel.appendChild(opt(c)); });
+        dfCavities = cavities || [];
+        updateDfLogSummary_();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
       .getCavityIdsForMold(moldId);
+  }
+
+  /** Combined cavity × sample-count summary, kept current whenever either the mold's cavity
+   *  list or the picked test's Sample Size changes. */
+  function updateDfLogSummary_() {
+    var hint = document.getElementById('df-cavity-hint');
+    if (!dfCavities.length) {
+      hint.textContent = "Pick a Run above to see this mold's cavities.";
+      return;
+    }
+    var t = dfTests.find(function (x) { return x.testName === document.getElementById('df-testName').value; });
+    var count = t ? parseSampleCount_(t.sampleSize) : 1;
+    var total = dfCavities.length * count;
+    hint.textContent = 'Cavities ' + dfCavities.join(', ') + ' — "Log Samples" will create ' + dfCavities.length +
+      ' Open record' + (dfCavities.length === 1 ? '' : 's') + ' (' + count + ' sample' + (count === 1 ? '' : 's') +
+      ' each, ' + total + ' total).';
   }
 
   function loadDropFreezeTests(moldId) {
@@ -213,52 +233,42 @@
   document.getElementById('df-testName').addEventListener('change', function (e) {
     var t = dfTests.find(function (x) { return x.testName === e.target.value; });
     document.getElementById('df-test-reference').classList.toggle('hidden', !t);
+    updateDfLogSummary_();
     if (!t) return;
     document.getElementById('df-test-method').value = t.methodDescription;
     document.getElementById('df-test-criteria').value = t.acceptanceCriteria;
     document.getElementById('df-test-sample').value = t.sampleSize;
     document.getElementById('df-test-equipment').value = t.equipment;
-    var n = parseSampleCount_(t.sampleSize);
-    document.getElementById('df-sample-count-hint').textContent = n > 1
-      ? 'This test needs ' + n + ' samples per cavity — ' + n + ' sample slots will be created when you log this.'
-      : 'This test logs a single sample per cavity.';
   });
 
   document.getElementById('df-log-samples-btn').addEventListener('click', function () {
     var runId = document.getElementById('df-run').value;
     var testName = document.getElementById('df-testName').value;
-    var cavity = document.getElementById('df-cavity').value;
     if (!runId) { showToast('Pick a Run.', true); return; }
     if (!testName) { showToast('Pick a Drop Freeze Test.', true); return; }
-    if (!cavity) { showToast('Pick a Cavity.', true); return; }
+    if (!dfCavities.length) { showToast('This mold has no cavities defined in the register.', true); return; }
     var t = dfTests.find(function (x) { return x.testName === testName; });
     var count = t ? parseSampleCount_(t.sampleSize) : 1;
-    var shared = {
+    var payload = {
       runId: runId,
-      moldId: document.getElementById('df-moldId').value,
       shift: document.getElementById('df-shift').value,
       testName: testName,
       dateOfMfg: document.getElementById('df-dateOfMfg').value,
-      cavity: cavity,
+      cavities: dfCavities,
+      sampleCount: count,
     };
-    var lineItems = [];
-    for (var i = 0; i < count; i++) {
-      var line = { sampleNo: count > 1 ? (i + 1) : '', sampleCount: count > 1 ? count : '' };
-      for (var k in shared) line[k] = shared[k];
-      lineItems.push(line);
-    }
     google.script.run
       .withSuccessHandler(function (result) {
-        showToast('Logged ' + result.savedCount + ' sample(s) — Record ' + result.recordKey + ' is now Open.');
-        document.getElementById('df-cavity').value = '';
-        // Pull the new record into the Open Test list without a full page reload.
+        showToast('Logged ' + result.totalSamples + ' sample(s) across ' + result.totalRecords +
+          ' cavity record(s) — now Open.');
+        // Pull the new records into the Open Test list without a full page reload.
         google.script.run
           .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
           .withFailureHandler(function () {})
           .getDropFreezeFormData();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .saveDropFreezePacket({ recordKey: null, lineItems: lineItems });
+      .logDropFreezeSamples(payload);
   });
 
   document.getElementById('df-load-results-btn').addEventListener('click', function () {
