@@ -109,8 +109,9 @@ function saveStartUpVerification_(payload, department) {
   }));
 
   let qualified = false;
+  let pfaId = '';
   if (!hasDeviation && payload.pfaDirectSignOff) {
-    const pfaId = makePfaId_(department);
+    pfaId = makePfaId_(department);
     rows.push(Object.assign({}, context, { 'Verification Item': 'PFA Signed off by', 'Value Type': 'Drop Down', 'Unit': '', 'Actual Value': payload.pfaDirectSignOff, 'Status': '', 'Notes': '' }));
     rows.push(Object.assign({}, context, { 'Verification Item': 'PFA completed (PFA ID)', 'Value Type': 'Autofill', 'Unit': '', 'Actual Value': pfaId, 'Status': '', 'Notes': '' }));
     qualifyRun_(run.runId, department);
@@ -120,7 +121,7 @@ function saveStartUpVerification_(payload, department) {
   appendObjectsAsRows_(getSuLogSheet_(department), rows);
   if (hasDeviation) sendDeviationEmail_(recordId, run, department);
 
-  return { recordId: recordId, qualified: qualified, hasDeviation: hasDeviation };
+  return { recordId: recordId, qualified: qualified, hasDeviation: hasDeviation, pfaId: pfaId };
 }
 function saveStartUpVerification(payload) { return saveStartUpVerification_(payload); }
 
