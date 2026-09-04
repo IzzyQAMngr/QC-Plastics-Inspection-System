@@ -74,6 +74,7 @@
       <div class="nav-item" data-view="addrun" data-dept="Plastics">Daily Run Setup</div>
       <div class="nav-item" data-view="startup" data-dept="Plastics">Start-Up Verification</div>
       <div class="nav-item" data-view="devapproval" data-dept="Plastics">Deviation Approvals</div>
+      <div class="nav-item" data-view="pfatag" data-dept="Plastics">Print PFA Tag</div>
       <div class="nav-item" data-view="inprocess" data-dept="Plastics">In-Process Inspection</div>
       <div class="nav-item" data-view="dropfreeze" data-dept="Plastics">Drop Freeze Test</div>
       <div class="nav-item" data-view="testdatareview" data-dept="Plastics">Data Analysis</div>
@@ -87,6 +88,7 @@
       <div class="nav-item" data-view="metalsaddrun" data-dept="Metals">Daily Run Setup</div>
       <div class="nav-item" data-view="metalsstartup" data-dept="Metals">Start-Up Verification</div>
       <div class="nav-item" data-view="devapproval" data-dept="Metals">Deviation Approvals</div>
+      <div class="nav-item" data-view="pfatag" data-dept="Metals">Print PFA Tag</div>
       <div class="nav-item" data-view="metals" data-dept="Metals">Ends In-Process Inspection</div>
     </div>
   </nav>
@@ -103,6 +105,7 @@
     <div class="view" id="view-metalsaddrun"><?!= include('MetalsAddRunView'); ?></div>
     <div class="view" id="view-metalsstartup"><?!= include('MetalsStartUpVerificationView'); ?></div>
     <div class="view" id="view-metals"><?!= include('MetalsView'); ?></div>
+    <div class="view" id="view-pfatag"><?!= include('PfaTagPrintView'); ?></div>
   </main>
 </div>
 <div class="toast" id="toast"></div>
@@ -118,8 +121,10 @@
   </div>
 </div>
 
+<?!= include('PfaTag'); ?>
+
 <script>
-  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals'];
+  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
 
@@ -130,6 +135,7 @@
     dashboard: 'Plastics', addrun: 'Plastics', startup: 'Plastics', devapproval: 'Plastics',
     inprocess: 'Plastics', dropfreeze: 'Plastics', testdatareview: 'Plastics',
     metalsdashboard: 'Metals', metalsaddrun: 'Metals', metalsstartup: 'Metals', metals: 'Metals',
+    pfatag: 'Plastics',
   };
 
   document.querySelectorAll('.nav-item').forEach(function (item) {

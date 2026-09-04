@@ -1,0 +1,124 @@
+<!-- Shared Production First Article tag: modal + rendering/print JS, used by both
+     StartUpVerificationView.html (offered right after a Save Verification qualifies a Run)
+     and PfaTagPrintView.html (look up an already-qualified record and reprint its tag later).
+     Included once, globally, like Combobox.html — see .pfa-tag in Stylesheet.html for the CSS. -->
+<div class="modal-overlay" id="pfa-tag-modal-overlay">
+  <div class="modal-box wide">
+    <div class="modal-header">Production First Article Tag</div>
+    <div class="modal-body">
+      <div id="pfa-tag-preview"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="pfa-tag-close-btn">Close</button>
+      <button class="primary" id="pfa-tag-print-btn">🖨️ Print Tag</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function pfa12Hour_(hhmm) {
+    var parts = String(hhmm || '').split(':');
+    if (parts.length < 2) return '';
+    var h = parseInt(parts[0], 10);
+    if (isNaN(h)) return '';
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ':' + parts[1] + ' ' + ampm;
+  }
+
+  function pfaTagHtml_(d) {
+    return '' +
+      '<div class="pfa-tag">' +
+        '<div class="band">' +
+          '<div class="band-row"><div class="brand">CONTAINER SUPPLY CO.</div><div class="pfa-id">' + esc(d.pfaId || '—') + '</div></div>' +
+          '<div class="tag-title">Production<br>First Article</div>' +
+        '</div>' +
+        '<div class="seal-row">' +
+          '<span class="seal"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" fill="#1e6b3f"/><path d="M5.5 10.2l3 3 6-6.4" stroke="#e7f1ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="seal-text">QUALIFIED</span></span>' +
+          '<span class="seal-date">' + esc((d.qualifiedDate + ' ' + d.qualifiedTime).trim()) + '</span>' +
+        '</div>' +
+        '<div class="grid">' +
+          '<div class="field"><label>Item No.</label><div class="v">' + esc(d.itemNo) + '</div></div>' +
+          '<div class="field"><label>' + esc(d.moldFieldLabel || 'Mold ID') + '</label><div class="v mono">' + esc(d.moldId) + '</div></div>' +
+          '<div class="field wide"><label>Item Description</label><div class="v">' + esc(d.itemDescription) + '</div></div>' +
+          '<div class="field"><label>Customer</label><div class="v">' + esc(d.customerName) + '</div></div>' +
+          '<div class="field"><label>Line #</label><div class="v">' + esc(d.line) + '</div></div>' +
+          '<div class="field"><label>Shift</label><div class="v">' + esc(d.shift) + '</div></div>' +
+          '<div class="field"><label>Run ID</label><div class="v mono">' + esc(d.runId) + '</div></div>' +
+          '<div class="field"><label>Run Qty</label><div class="v">' + esc(d.runQty) + '</div></div>' +
+        '</div>' +
+        '<div class="signoff">' +
+          '<div class="field"><label>Qualified By</label><div class="v">' + esc(d.qualifiedBy) + '</div></div>' +
+          '<div class="field vr"><label>Verification Record #</label><div class="v">' + esc(d.recordId) + '</div></div>' +
+        '</div>' +
+        '<div class="lower">' +
+          '<div class="cert">This part has passed First Article qualification. Maintain the PFA at the line until the Run ends — QC retains PFAs for 2–3 cycles.</div>' +
+          '<div class="applied-wrap"><div class="applied">' +
+            '<div class="sig-field"><div class="rule"></div><label>QC Signature</label><div class="rule rule-sm"></div><label>Date / Time</label></div>' +
+            '<div class="sig-field"><div class="rule"></div><label>Foreman Signature</label><div class="rule rule-sm"></div><label>Date / Time</label></div>' +
+          '</div></div>' +
+        '</div>' +
+        '<div class="footnote">CSC QUALITY · FRM-XXX-XXX</div>' +
+      '</div>';
+  }
+
+  function pfaShowPreview_(tagData) {
+    document.getElementById('pfa-tag-preview').innerHTML = pfaTagHtml_(tagData);
+    document.getElementById('pfa-tag-print-btn').onclick = function () { pfaPrintTag_(tagData); };
+    document.getElementById('pfa-tag-modal-overlay').classList.add('show');
+  }
+
+  document.getElementById('pfa-tag-close-btn').addEventListener('click', function () {
+    document.getElementById('pfa-tag-modal-overlay').classList.remove('show');
+  });
+  document.getElementById('pfa-tag-modal-overlay').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+
+  // Print CSS is a standalone copy (not the Stylesheet.html rules) so the tag prints at true
+  // 4x6 size regardless of the main app's page/print layout — see .pfa-tag in Stylesheet.html
+  // for the on-screen preview version these mirror.
+  var PFA_TAG_PRINT_CSS = '.pfa-tag{width:4in;height:6in;background:#faf6ee;color:#16202b;display:flex;flex-direction:column;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;}' +
+    '.pfa-tag .band{background:#0a2a4d;color:#fff;padding:0.14in 0.22in 0.16in;}' +
+    '.pfa-tag .band-row{display:flex;justify-content:space-between;align-items:baseline;}' +
+    '.pfa-tag .brand{font-size:11px;font-weight:700;letter-spacing:0.16em;color:#9fc1e0;}' +
+    '.pfa-tag .pfa-id{font-family:Consolas,"Courier New",monospace;font-size:12px;font-weight:600;color:#cfe0f0;}' +
+    '.pfa-tag .tag-title{font-weight:800;font-size:26px;letter-spacing:0.01em;margin-top:6px;line-height:1.08;text-transform:uppercase;}' +
+    '.pfa-tag .seal-row{display:flex;justify-content:space-between;align-items:center;padding:0.12in 0.22in 0.1in;}' +
+    '.pfa-tag .seal{display:inline-flex;align-items:center;gap:6px;background:#e7f1ea;color:#1e6b3f;border:1px solid #1e6b3f;border-radius:3px;padding:5px 10px 5px 8px;}' +
+    '.pfa-tag .seal svg{width:13px;height:13px;flex:none;}' +
+    '.pfa-tag .seal-text{font-weight:800;font-size:12px;letter-spacing:0.05em;}' +
+    '.pfa-tag .seal-date{font-family:Consolas,"Courier New",monospace;font-size:10.5px;color:#3d5c46;}' +
+    '.pfa-tag .grid{display:grid;grid-template-columns:1fr 1fr;column-gap:16px;row-gap:8px;padding:2px 0.22in 0.1in;}' +
+    '.pfa-tag .grid .wide{grid-column:1/-1;}' +
+    '.pfa-tag .field label{display:block;font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7a8896;margin-bottom:1px;}' +
+    '.pfa-tag .field .v{font-size:13px;font-weight:500;color:#16202b;line-height:1.25;}' +
+    '.pfa-tag .field .v.mono{font-family:Consolas,"Courier New",monospace;font-size:12.5px;}' +
+    '.pfa-tag .signoff{margin:4px 0.22in 0;padding-top:10px;border-top:1px solid #d8d2c2;display:flex;justify-content:space-between;align-items:flex-end;}' +
+    '.pfa-tag .signoff .field .v{font-size:13px;font-weight:600;}' +
+    '.pfa-tag .signoff .vr{text-align:right;}' +
+    '.pfa-tag .signoff .vr label{text-align:right;}' +
+    '.pfa-tag .signoff .vr .v{font-family:Consolas,"Courier New",monospace;font-size:11px;font-weight:500;color:#5c6875;}' +
+    '.pfa-tag .lower{padding:16px 0.22in 0;border-top:1px solid #d8d2c2;display:flex;flex-direction:column;flex:1;}' +
+    '.pfa-tag .cert{font-size:11px;line-height:1.55;color:#3d4650;}' +
+    '.pfa-tag .applied-wrap{margin-top:auto;padding:12px 0 0.14in;}' +
+    '.pfa-tag .applied{display:flex;gap:22px;}' +
+    '.pfa-tag .sig-field{flex:1;display:flex;flex-direction:column;}' +
+    '.pfa-tag .sig-field .rule{border-bottom:1px solid #8f99a2;height:20px;}' +
+    '.pfa-tag .sig-field .rule.rule-sm{height:16px;margin-top:12px;}' +
+    '.pfa-tag .sig-field label{display:block;font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7a8896;margin-top:4px;}' +
+    '.pfa-tag .footnote{padding:0 0.22in 0.1in;margin-top:-6px;font-size:8.5px;letter-spacing:0.06em;color:#9aa5ad;text-align:center;}';
+
+  function pfaPrintTag_(tagData) {
+    var w = window.open('', '_blank', 'width=500,height=760');
+    if (!w) { showToast('Please allow pop-ups to print the tag.', true); return; }
+    var html = '<!doctype html><html><head><title>PFA ' + esc(tagData.pfaId || tagData.runId) + '</title><style>' +
+      '@page { size: 4in 6in; margin: 0; } body { margin: 0; padding: 0; background: #fff; } ' + PFA_TAG_PRINT_CSS +
+      '</style></head><body>' + pfaTagHtml_(tagData) + '</body></html>';
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(function () { w.print(); }, 350);
+  }
+</script>

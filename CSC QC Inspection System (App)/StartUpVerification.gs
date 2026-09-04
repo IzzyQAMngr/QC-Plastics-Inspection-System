@@ -123,6 +123,64 @@ function saveStartUpVerification_(payload, department) {
 
   return { recordId: recordId, qualified: qualified, hasDeviation: hasDeviation, pfaId: pfaId };
 }
+
+function tagDateStr_(v, tz) {
+  const d = v instanceof Date ? v : (v ? new Date(v) : null);
+  if (!d || isNaN(d.getTime())) return String(v || '');
+  return Utilities.formatDate(d, tz, 'M/d/yyyy');
+}
+
+function tagTimeStr_(v, tz) {
+  if (v instanceof Date) return Utilities.formatDate(v, tz, 'h:mm a');
+  const parts = String(v || '').split(':');
+  if (parts.length < 2) return '';
+  const h = parseInt(parts[0], 10);
+  if (isNaN(h)) return '';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = (h % 12) || 12;
+  return h12 + ':' + parts[1] + ' ' + ampm;
+}
+
+/** Looks up an already-qualified record's Production First Article tag data by Run ID,
+ *  Verification Record #, or PFA ID — searches both departments since none of those IDs are
+ *  guaranteed unique across them. Only returns records that actually have a PFA ID (i.e.
+ *  already qualified) — used by PfaTagPrintView.html to reprint a tag after the fact. */
+function findPfaTagMatches_(searchTerm) {
+  const term = String(searchTerm || '').trim();
+  if (!term) return [];
+  const tz = getDb_().getSpreadsheetTimeZone();
+  const results = [];
+  ['Plastics', 'Metals'].forEach(department => {
+    const rows = readSheetObjects_(getSuLogSheet_(department));
+    const byRecord = {};
+    rows.forEach(r => {
+      const id = r['Verification Record #'];
+      if (!id) return;
+      (byRecord[id] = byRecord[id] || []).push(r);
+    });
+    Object.keys(byRecord).forEach(recordId => {
+      const group = byRecord[recordId];
+      const ctx = group[0];
+      const pfaRow = group.find(r => r['Verification Item'] === 'PFA completed (PFA ID)');
+      const pfaId = pfaRow ? String(pfaRow['Actual Value'] || '').trim() : '';
+      if (!pfaId) return;
+      const runId = String(ctx['Run ID'] || '').trim();
+      if (recordId !== term && runId !== term && pfaId !== term) return;
+      const signOffRow = group.find(r => r['Verification Item'] === 'PFA Signed off by');
+      results.push({
+        department: department, recordId: recordId, pfaId: pfaId, runId: runId,
+        itemNo: ctx['Item'] || '', itemDescription: ctx['Item Description'] || '',
+        moldId: department === 'Metals' ? (ctx['Size ID'] || '') : (ctx['Mold ID'] || ''),
+        moldFieldLabel: department === 'Metals' ? 'Size ID' : 'Mold ID',
+        customerName: ctx['Customer Name'] || '', line: ctx['Line #'] || '', shift: ctx['Shift'] || '',
+        runQty: ctx['Run Qty'] || '', qualifiedBy: signOffRow ? String(signOffRow['Actual Value'] || '') : '',
+        qualifiedDate: tagDateStr_(ctx['Verification Date'], tz), qualifiedTime: tagTimeStr_(ctx['Verification Time'], tz),
+      });
+    });
+  });
+  return results;
+}
+function findPfaTagMatches(searchTerm) { return findPfaTagMatches_(searchTerm); }
 function saveStartUpVerification(payload) { return saveStartUpVerification_(payload); }
 
 function sendDeviationEmail_(recordId, run, department) {

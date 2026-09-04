@@ -1,0 +1,68 @@
+<h1 class="page-title">🏷️ Print PFA Tag</h1>
+<p class="page-sub">Pull up an already-qualified Run's Production First Article tag to reprint it — search by Run ID, Verification Record #, or PFA ID, across both Plastics and Metals.</p>
+
+<section class="card">
+  <h2>Find a Record</h2>
+  <div class="field-row">
+    <div class="field field-wide">
+      <label>Run ID, Verification Record #, or PFA ID</label>
+      <input type="text" id="pfat-search" placeholder="e.g. RUN-260904-5, SUV-260904-2, or PFA-260904-3">
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button id="pfat-find-btn" class="primary">Find</button>
+  </div>
+  <div id="pfat-results"></div>
+</section>
+
+<script>
+  function init_pfatag() {
+    document.getElementById('pfat-find-btn').addEventListener('click', pfatSearch_);
+    document.getElementById('pfat-search').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') pfatSearch_();
+    });
+  }
+
+  function pfatSearch_() {
+    var term = document.getElementById('pfat-search').value.trim();
+    if (!term) { showToast('Enter a Run ID, Verification Record #, or PFA ID.', true); return; }
+    var box = document.getElementById('pfat-results');
+    box.innerHTML = '<p class="spec-hint">Searching…</p>';
+    document.getElementById('pfat-find-btn').disabled = true;
+    google.script.run
+      .withSuccessHandler(function (matches) {
+        document.getElementById('pfat-find-btn').disabled = false;
+        pfatRenderResults_(matches);
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('pfat-find-btn').disabled = false;
+        box.innerHTML = '';
+        showToast(err.message, true);
+      })
+      .findPfaTagMatches(term);
+  }
+
+  function pfatRenderResults_(matches) {
+    var box = document.getElementById('pfat-results');
+    if (!matches || !matches.length) {
+      box.innerHTML = '<p class="spec-hint">No qualified record found for that search.</p>';
+      return;
+    }
+    var rows = matches.map(function (m, i) {
+      return '<tr>' +
+        '<td>' + esc(m.department) + '</td>' +
+        '<td>' + esc(m.runId) + '</td>' +
+        '<td>' + esc(m.itemNo) + (m.itemDescription ? ' — ' + esc(m.itemDescription) : '') + '</td>' +
+        '<td>' + esc(m.qualifiedBy) + '</td>' +
+        '<td>' + esc((m.qualifiedDate + ' ' + m.qualifiedTime).trim()) + '</td>' +
+        '<td><button class="ghost" data-idx="' + i + '">View &amp; Print</button></td>' +
+      '</tr>';
+    }).join('');
+    box.innerHTML = '<div style="overflow-x:auto;margin-top:12px;"><table class="qc-table"><thead><tr>' +
+      '<th>Dept</th><th>Run ID</th><th>Item</th><th>Qualified By</th><th>Qualified</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    box.querySelectorAll('button[data-idx]').forEach(function (btn) {
+      btn.addEventListener('click', function () { pfaShowPreview_(matches[Number(btn.getAttribute('data-idx'))]); });
+    });
+  }
+</script>
