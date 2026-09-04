@@ -1,10 +1,17 @@
 /*************************************************************
  * WEB APP ENTRY POINT
  *************************************************************/
+
+// Shown under the logo in the sidebar so it's obvious at a glance which build is live —
+// bump this alongside every `clasp deploy` to the production deployment ID (see
+// reference_deployment_details memory), matching the @N version number clasp reports.
+const APP_VERSION = 'v121';
+
 function doGet(e) {
   const params = (e && e.parameter) || {};
   const tmpl = HtmlService.createTemplateFromFile('Index');
   tmpl.initialParamsJson = JSON.stringify({ view: params.view || '', record: params.record || '', dept: params.dept || '' });
+  tmpl.appVersion = APP_VERSION;
   return tmpl.evaluate()
     .setTitle('CSC QC Inspection System')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -28,6 +35,7 @@ function onOpen() {
 function showAppDialog() {
   const tmpl = HtmlService.createTemplateFromFile('Index');
   tmpl.initialParamsJson = '{}';
+  tmpl.appVersion = APP_VERSION;
   const html = tmpl.evaluate()
     .setWidth(1200)
     .setHeight(760);
