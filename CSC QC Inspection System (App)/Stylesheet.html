@@ -138,7 +138,7 @@
      specifically for the "which Run am I filling out" banner on the Checklist card, so it
      stands out from the plain category dividers around it. ---- */
   .run-context-banner {
-    background: linear-gradient(135deg, var(--series-1), var(--series-1-dark));
+    background: linear-gradient(135deg, #001f4f, var(--nav-bg));
     color: #fff; padding: 7px 12px; font-size: 11px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.05em; margin: 10px 0 8px;
   }
@@ -332,7 +332,8 @@
   .field.field-wide { grid-column: span 2; }
 
   .section-divider {
-    background: var(--page-plane); border: 1px solid var(--border); border-left: 3px solid var(--series-1);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--series-1) 14%, var(--page-plane)), var(--page-plane) 85%);
+    border: 1px solid var(--border); border-left: 3px solid var(--series-1);
     padding: 3px 10px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-secondary); margin: 10px 0 8px;
   }
@@ -435,7 +436,8 @@
   }
   .modal-header {
     font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
-    padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-primary);
+    padding: 12px 16px; color: #fff;
+    background: linear-gradient(135deg, #001f4f, var(--nav-bg));
   }
   .modal-body { padding: 16px; font-size: 13.5px; color: var(--text-primary); }
   .modal-body p { margin: 0 0 12px; }
