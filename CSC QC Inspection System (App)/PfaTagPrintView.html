@@ -1,45 +1,52 @@
 <h1 class="page-title">🏷️ Print PFA Tag</h1>
-<p class="page-sub">Pull up an already-qualified Run's Production First Article tag to reprint it — search by Run ID, Verification Record #, or PFA ID, across both Plastics and Metals.</p>
+<p class="page-sub">Pull up an already-qualified Run's Production First Article tag to reprint it — start typing a Run ID, Verification Record #, or PFA ID and pick it from the list, across both Plastics and Metals.</p>
 
 <section class="card">
   <h2>Find a Record</h2>
   <div class="field-row">
     <div class="field field-wide">
       <label>Run ID, Verification Record #, or PFA ID</label>
-      <input type="text" id="pfat-search" placeholder="e.g. RUN-260904-5, SUV-260904-2, or PFA-260904-3">
+      <input type="text" id="pfat-search" placeholder="Start typing to search…">
     </div>
-  </div>
-  <div style="display:flex;gap:8px;">
-    <button id="pfat-find-btn" class="primary">Find</button>
   </div>
   <div id="pfat-results"></div>
 </section>
 
 <script>
-  function init_pfatag() {
-    document.getElementById('pfat-find-btn').addEventListener('click', pfatSearch_);
-    document.getElementById('pfat-search').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') pfatSearch_();
-    });
-  }
+  var pfatIndex_ = [];
 
-  function pfatSearch_() {
-    var term = document.getElementById('pfat-search').value.trim();
-    if (!term) { showToast('Enter a Run ID, Verification Record #, or PFA ID.', true); return; }
+  function init_pfatag() { loadPfatIndex_(); }
+
+  // Re-loaded every time you navigate back in (not just on first load) — a Start-Up
+  // Verification finished moments ago in the same session needs to show up here right away.
+  function onshow_pfatag() { loadPfatIndex_(); }
+
+  function loadPfatIndex_() {
     var box = document.getElementById('pfat-results');
-    box.innerHTML = '<p class="spec-hint">Searching…</p>';
-    document.getElementById('pfat-find-btn').disabled = true;
+    box.innerHTML = '<p class="spec-hint">Loading qualified records…</p>';
     google.script.run
       .withSuccessHandler(function (matches) {
-        document.getElementById('pfat-find-btn').disabled = false;
-        pfatRenderResults_(matches);
+        pfatIndex_ = matches || [];
+        box.innerHTML = pfatIndex_.length ? '' : '<p class="spec-hint">No qualified records found yet.</p>';
+        var items = pfatIndex_.map(function (m, i) {
+          return {
+            value: i,
+            label: [m.runId, m.recordId, m.pfaId].filter(Boolean).join(' · '),
+            sublabel: [m.department, m.itemNo, m.itemDescription].filter(Boolean).join(' — ') +
+              (m.qualifiedBy ? ' · Qualified by ' + m.qualifiedBy : ''),
+          };
+        });
+        var input = document.getElementById('pfat-search');
+        input.value = '';
+        initCombobox(input, items, {
+          onSelect: function (idx) { pfatRenderResults_([pfatIndex_[idx]]); },
+        });
       })
       .withFailureHandler(function (err) {
-        document.getElementById('pfat-find-btn').disabled = false;
         box.innerHTML = '';
         showToast(err.message, true);
       })
-      .findPfaTagMatches(term);
+      .getPfaTagIndex();
   }
 
   function pfatRenderResults_(matches) {

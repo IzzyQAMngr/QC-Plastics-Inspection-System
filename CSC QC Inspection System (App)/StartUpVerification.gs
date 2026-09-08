@@ -206,13 +206,12 @@ function tagTimeStr_(v, tz) {
   return h12 + ':' + parts[1] + ' ' + ampm;
 }
 
-/** Looks up an already-qualified record's Production First Article tag data by Run ID,
- *  Verification Record #, or PFA ID — searches both departments since none of those IDs are
- *  guaranteed unique across them. Only returns records that actually have a PFA ID (i.e.
- *  already qualified) — used by PfaTagPrintView.html to reprint a tag after the fact. */
-function findPfaTagMatches_(searchTerm) {
-  const term = String(searchTerm || '').trim();
-  if (!term) return [];
+/** Every already-qualified record's Production First Article tag data, across both departments
+ *  (none of Run ID / Verification Record # / PFA ID are guaranteed unique across them). Only
+ *  includes records that actually have a PFA ID (i.e. already qualified). Used by
+ *  PfaTagPrintView.html to populate its search combobox in one shot instead of re-scanning
+ *  the log sheets on every keystroke. */
+function getPfaTagIndex_() {
   const tz = getDb_().getSpreadsheetTimeZone();
   const results = [];
   ['Plastics', 'Metals'].forEach(department => {
@@ -230,7 +229,6 @@ function findPfaTagMatches_(searchTerm) {
       const pfaId = pfaRow ? String(pfaRow['Actual Value'] || '').trim() : '';
       if (!pfaId) return;
       const runId = String(ctx['Run ID'] || '').trim();
-      if (recordId !== term && runId !== term && pfaId !== term) return;
       const signOffRow = group.find(r => r['Verification Item'] === 'PFA Signed off by');
       results.push({
         department: department, recordId: recordId, pfaId: pfaId, runId: runId,
@@ -245,7 +243,7 @@ function findPfaTagMatches_(searchTerm) {
   });
   return results;
 }
-function findPfaTagMatches(searchTerm) { return findPfaTagMatches_(searchTerm); }
+function getPfaTagIndex() { return getPfaTagIndex_(); }
 function saveStartUpVerification(payload) { return saveStartUpVerification_(payload); }
 
 function sendDeviationEmail_(recordId, run, department) {

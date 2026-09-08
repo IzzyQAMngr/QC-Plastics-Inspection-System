@@ -20,6 +20,10 @@
    */
   function initCombobox(inputEl, items, opts) {
     opts = opts || {};
+    // Calling this again on an already-initialized input (e.g. an onshow_ refresh with fresh
+    // server data) just swaps the item list/opts in place — re-running the setup below would
+    // stack duplicate focus/input/blur/keydown listeners on the same element.
+    if (inputEl._comboUpdate) { inputEl._comboUpdate(items, opts); return; }
     var wrap = inputEl.closest('.combo');
     if (!wrap) { wrap = document.createElement('div'); wrap.className = 'combo'; inputEl.parentNode.insertBefore(wrap, inputEl); wrap.appendChild(inputEl); }
     var list = wrap.querySelector('.combo-list');
@@ -85,6 +89,8 @@
 
     // Pre-fill if the input already has a value (e.g. re-rendering a line panel).
     if (inputEl.value) checkValidOnBlur();
+
+    inputEl._comboUpdate = function (newItems, newOpts) { items = newItems; opts = newOpts || {}; };
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
