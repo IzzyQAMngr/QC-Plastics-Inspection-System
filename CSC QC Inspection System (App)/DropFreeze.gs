@@ -13,16 +13,24 @@ function getDropFreezeLogSheet_() {
   return sheet;
 }
 
-/** Called by DropFreezeView.html on load to populate dropdowns. */
-function getDropFreezeFormData() {
+/**
+ * Called by DropFreezeView.html/OpenSamplesView.html on load to populate dropdowns — split into
+ * two smaller calls (see fetchDropFreezeFormData_ in Combobox.html) rather than one combined
+ * {runs, angleOptions, inspectors, shifts, openRecords} response. The combined shape reliably
+ * lost its google.script.run callback over the sandboxed iframe bridge — confirmed 2026-09-09 by
+ * direct testing: each half below completes normally every time on its own, but returning both
+ * together from one call never did, regardless of timing, caching, or the function's name.
+ */
+function getDropFreezeBaseFormData() {
   return {
     runs: getActiveRuns_(),
     angleOptions: DROP_ANGLE_OPTIONS,
     inspectors: getInspectorList_(),
     shifts: getShiftList_(),
-    openRecords: listOpenDropFreezeRecords_(),
   };
 }
+
+function getOpenDropFreezeRecords() { return listOpenDropFreezeRecords_(); }
 
 /** Drop Freeze test protocols defined for a mold — drives the read-only reference box
  *  (method/acceptance criteria/sample size/equipment) once a test is picked. */

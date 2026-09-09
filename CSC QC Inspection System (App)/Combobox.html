@@ -94,4 +94,47 @@
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+  /** Drop Freeze's old combined getDropFreezeFormData() call (runs+angleOptions+inspectors+
+   *  shifts+openRecords all in one response) reliably lost its google.script.run callback over
+   *  the sandboxed iframe bridge — no success, no failure, ever. Splitting it into two smaller
+   *  calls (getDropFreezeBaseFormData/getOpenDropFreezeRecords) was NOT enough on its own —
+   *  confirmed 2026-09-09 that EITHER of the two smaller calls can independently lose its own
+   *  callback the same way, which without a timeout just hangs the merge forever (needs BOTH to
+   *  report in). The underlying loss looks like a real, non-deterministic quirk in this app's
+   *  sandboxed-iframe message channel — not tied to a specific function name or payload shape —
+   *  so the only reliable mitigation is a watchdog timeout per attempt with a bounded number of
+   *  full retries. Confirmed via direct server-side testing that the real data loads in ~1-6s
+   *  every time when the request actually lands, so 10s per attempt is a comfortable margin. */
+  function fetchDropFreezeFormData_(onSuccess, onFailure) {
+    var MAX_ATTEMPTS = 4, TIMEOUT_MS = 10000;
+    function attempt(n) {
+      var merged = {};
+      var pending = 2, failed = false, settled = false;
+      var watchdog = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        if (n < MAX_ATTEMPTS) attempt(n + 1);
+        else onFailure({ message: 'Could not reach the server after ' + MAX_ATTEMPTS + ' tries — check your connection and try again.' });
+      }, TIMEOUT_MS);
+      function partDone() {
+        pending--;
+        if (pending === 0 && !failed && !settled) { settled = true; clearTimeout(watchdog); onSuccess(merged); }
+      }
+      function partFailed(err) {
+        if (failed || settled) return;
+        failed = true; settled = true; clearTimeout(watchdog);
+        onFailure(err);
+      }
+      google.script.run
+        .withSuccessHandler(function (base) { Object.assign(merged, base); partDone(); })
+        .withFailureHandler(partFailed)
+        .getDropFreezeBaseFormData();
+      google.script.run
+        .withSuccessHandler(function (openRecords) { merged.openRecords = openRecords; partDone(); })
+        .withFailureHandler(partFailed)
+        .getOpenDropFreezeRecords();
+    }
+    attempt(1);
+  }
 </script>

@@ -62,23 +62,24 @@
   /** showLoadingState is true for the initial/return-visit load; the background 60s refresh
    *  (keeps On Time/Past Due current without a manual reload) skips the loading flash and fails
    *  silently, and is skipped outright if the user has navigated to another view in this tab —
-   *  same convention as the Run Dashboard's auto-refresh. */
+   *  same convention as the Run Dashboard's auto-refresh. Uses fetchDropFreezeFormData_
+   *  (Combobox.html) instead of a single combined call — see its comment for why. */
   function loadOpenSamples_(showLoadingState) {
     var view = document.getElementById('view-opensamples');
     if (!showLoadingState && view && !view.classList.contains('active')) return;
     if (showLoadingState) {
       document.getElementById('os-table-body').innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Loading…</td></tr>';
     }
-    google.script.run
-      .withSuccessHandler(function (data) {
+    fetchDropFreezeFormData_(
+      function (data) {
         osfrfInit(data);
         osRecords = data.openRecords || [];
         renderOsTiles_();
         renderOsTable_();
         document.getElementById('os-updated-hint').textContent = 'Updated ' + new Date().toLocaleTimeString();
-      })
-      .withFailureHandler(function (err) { if (showLoadingState) showToast(err.message, true); })
-      .getDropFreezeFormData();
+      },
+      function (err) { if (showLoadingState) showToast(err.message, true); }
+    );
   }
 
   /** 'pastdue'/'ontime' when the record's Test Name carried a parseable "<N> hr" hold time
@@ -183,8 +184,8 @@
   // left; otherwise keep it open so the rest can be entered without re-clicking the row.
   osfrfOnSaved = function () {
     google.script.run
-      .withSuccessHandler(function (data) {
-        osRecords = data.openRecords || [];
+      .withSuccessHandler(function (openRecords) {
+        osRecords = openRecords || [];
         renderOsTiles_();
         var stillOpen = osRecords.some(function (r) { return r.recordKey === osSelectedKey; });
         if (!stillOpen) {
@@ -196,6 +197,6 @@
         document.getElementById('os-updated-hint').textContent = 'Updated ' + new Date().toLocaleTimeString();
       })
       .withFailureHandler(function () {})
-      .getDropFreezeFormData();
+      .getOpenDropFreezeRecords();
   };
 </script>

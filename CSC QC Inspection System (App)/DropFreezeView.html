@@ -81,24 +81,24 @@
   var dfCavities = [];
 
   function init_dropfreeze() {
-    google.script.run
-      .withSuccessHandler(function (data) { dfData = data; renderDfFormOptions(); dfrfInit(data); })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
-      .getDropFreezeFormData();
+    fetchDropFreezeFormData_(
+      function (data) { dfData = data; renderDfFormOptions(); dfrfInit(data); },
+      function (err) { showToast(err.message, true); }
+    );
   }
 
   // Refreshes the Active Run picker + Open Test list on return visits — see Index.html's showView.
   function onshow_dropfreeze() {
-    google.script.run
-      .withSuccessHandler(function (data) {
+    fetchDropFreezeFormData_(
+      function (data) {
         if (!dfData) return;
         dfData.runs = data.runs;
         dfData.openRecords = data.openRecords;
         refreshRunOptions_(document.getElementById('df-run'), data.runs);
         renderDfOpenSelect_();
-      })
-      .withFailureHandler(function () {})
-      .getDropFreezeFormData();
+      },
+      function () {}
+    );
   }
 
   function opt(value, label) {
@@ -271,9 +271,9 @@
           ' cavity record(s) — now Open.');
         // Pull the new records into the Open Test list without a full page reload.
         google.script.run
-          .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
+          .withSuccessHandler(function (openRecords) { dfData.openRecords = openRecords; renderDfOpenSelect_(); })
           .withFailureHandler(function () {})
-          .getDropFreezeFormData();
+          .getOpenDropFreezeRecords();
         resetDfLoadForm_();
         btn.disabled = false;
         btn.innerHTML = originalHtml;
@@ -295,8 +295,8 @@
   // A fully-completed record drops off the Open Test list; refresh it either way.
   dfrfOnSaved = function () {
     google.script.run
-      .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
+      .withSuccessHandler(function (openRecords) { dfData.openRecords = openRecords; renderDfOpenSelect_(); })
       .withFailureHandler(function () {})
-      .getDropFreezeFormData();
+      .getOpenDropFreezeRecords();
   };
 </script>
