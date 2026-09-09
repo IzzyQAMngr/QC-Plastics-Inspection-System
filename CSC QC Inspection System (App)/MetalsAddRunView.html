@@ -276,14 +276,24 @@
   document.getElementById('mar-confirm-btn').addEventListener('click', function () {
     var confirmedBy = document.getElementById('mar-confirmedBy').value;
     if (!confirmedBy) { showToast('Pick who is confirming.', true); return; }
+    var btn = this;
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span>Confirming…';
     google.script.run
       .withSuccessHandler(function (count) {
         var now = new Date().toISOString();
         (marData.activeRuns || []).forEach(function (r) { r.lastConfirmed = now; r.lastConfirmedBy = confirmedBy; });
         renderMetalsActiveRunsTable();
         showToast('Confirmed ' + count + ' active run(s) for today.');
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        showToast(err.message, true);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      })
       .confirmMetalsRunsToday(confirmedBy);
   });
 </script>
