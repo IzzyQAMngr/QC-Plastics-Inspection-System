@@ -43,6 +43,7 @@ const ALL_CANS_SIZE_LIST_SHEET = 'All Cans Size List'; // Metals register — Si
 const SPEC_MATRIX_SHEET    = 'Spec Matrix';
 const COLOR_SPECS_SHEET    = 'Color Specs';
 const FUNCTIONAL_TESTS_SHEET = 'Functional Tests';
+const CHANGE_LOG_SHEET     = 'Change Log'; // SQF Ed. 9 document control log — one row per spec edit
 
 // Header row for the Drop Freeze Test Data log. Run-driven (2026-08-07): shares its
 // context columns with the QC Inspection Data / Start-Up Log pattern.
@@ -492,6 +493,62 @@ function getSpecsFromMaster_(mold) {
       rejectLimitPct: (rejPct === null || isNaN(rejPct)) ? null : rejPct,
     });
   }
+  return results;
+}
+
+/**
+ * Change Log entries for one Mold ID within an optional [dateFrom, dateTo] range (either may be
+ * null for an open end) — used to warn Data Analysis that a mold's spec changed mid-range, so a
+ * chart blending data from before and after could look inconsistent. Matched by Mold ID only,
+ * not Characteristic — the log's Characteristic column isn't reliably filled in for every row,
+ * and a mold-wide heads-up is what's wanted here rather than a per-characteristic filter that
+ * could silently hide a relevant change. Rows with no actual Field Changed/Previous/New Value
+ * (e.g. "New Add"/"Initial Release", which create a mold's spec rather than change it — there's
+ * no "before" data for those to warn about) are skipped. dateFrom/dateTo are Date objects or
+ * null, same convention as the rest of this file's date-range filters.
+ */
+function getSpecChangeLogForMold_(mold, dateFrom, dateTo) {
+  const target = String(mold || '').trim();
+  if (!target) return [];
+  const mr = getMasterRegister_();
+  const tab = mr.getSheetByName(CHANGE_LOG_SHEET);
+  if (!tab) return [];
+  const pos = findHeaderRowAndCol_(tab, 'Mold ID', 6);
+  if (!pos) return [];
+  const headerRow = pos.row;
+  const lastRow = tab.getLastRow();
+  if (lastRow <= headerRow) return [];
+  const lastCol = tab.getLastColumn();
+  const headers = tab.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  const idx = function (name) { return headers.indexOf(name); };
+  const moldCol = idx('Mold ID'), dateCol = idx('Date'), effCol = idx('Effective Date'),
+    typeCol = idx('Change Type'), charCol = idx('Characteristic'), fieldCol = idx('Field Changed'),
+    prevCol = idx('Previous Value'), newCol = idx('New Value'), reasonCol = idx('Reason for Change');
+  const data = tab.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getValues();
+  const tz = Session.getScriptTimeZone();
+  const results = [];
+  data.forEach(function (row) {
+    if (String(row[moldCol] || '').trim() !== target) return;
+    const fieldChanged = fieldCol >= 0 ? String(row[fieldCol] || '').trim() : '';
+    const prevVal = prevCol >= 0 ? String(row[prevCol] || '').trim() : '';
+    const newVal = newCol >= 0 ? String(row[newCol] || '').trim() : '';
+    if (!fieldChanged && !prevVal && !newVal) return;
+    const rawDate = (effCol >= 0 && row[effCol]) ? row[effCol] : (dateCol >= 0 ? row[dateCol] : null);
+    const d = toDateSafe_(rawDate);
+    if (!d) return;
+    if (dateFrom && d < dateFrom) return;
+    if (dateTo && d > dateTo) return;
+    results.push({
+      date: Utilities.formatDate(d, tz, 'yyyy-MM-dd'),
+      changeType: typeCol >= 0 ? String(row[typeCol] || '').trim() : '',
+      characteristic: charCol >= 0 ? String(row[charCol] || '').trim() : '',
+      fieldChanged: fieldChanged,
+      previousValue: prevVal,
+      newValue: newVal,
+      reason: reasonCol >= 0 ? String(row[reasonCol] || '').trim() : '',
+    });
+  });
+  results.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
   return results;
 }
 

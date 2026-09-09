@@ -7,6 +7,7 @@
 </div>
 <p class="spec-hint" id="tdr-range-hint" style="margin:-4px 0 16px;"></p>
 <p class="print-only" id="tdr-print-stamp"></p>
+<div class="tdr-spec-change-flag hidden" id="tdr-spec-change-flag"></div>
 
 <div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px;" id="tdr-module-card">
   <section class="card" style="flex:0 0 300px;margin:0;">
@@ -269,12 +270,36 @@
         renderTdrStats(data.stats);
         renderTdrTrend(data.trend);
         renderTdrSpecChart(data.specSeries);
+        renderTdrSpecChangeFlag(data.specChanges);
       })
       .withFailureHandler(function (err) {
         document.getElementById('tdr-loading').classList.add('hidden');
         showToast(err.message, true);
       })
       .getTestDataReviewRows(tdrModule, filters);
+  }
+
+  /** Small yellow flag when the selected Mold has a spec change logged (Spec Register's Change
+   *  Log tab) within the active date range — a heads-up that a chart spanning both sides of that
+   *  date is blending two different specs, so limits/Pass-Fail can look inconsistent. Matched by
+   *  Mold ID only (see getSpecChangeLogForMold_) — deliberately not narrowed to the selected
+   *  Characteristic, so a data-entry mismatch there can't silently hide a relevant change. */
+  function renderTdrSpecChangeFlag(changes) {
+    var el = document.getElementById('tdr-spec-change-flag');
+    if (!changes || !changes.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    var items = changes.map(function (c) {
+      var what = c.fieldChanged ? esc(c.fieldChanged) : 'Spec';
+      var change = (c.previousValue || c.newValue)
+        ? ' changed from <b>' + esc(c.previousValue || '—') + '</b> to <b>' + esc(c.newValue || '—') + '</b>'
+        : ' changed';
+      var char = c.characteristic ? ' (' + esc(c.characteristic) + ')' : '';
+      var reason = c.reason ? ' — ' + esc(c.reason) : '';
+      return '<li><b>' + esc(c.date) + '</b>: ' + what + char + change + reason + '</li>';
+    }).join('');
+    el.innerHTML = '⚠️ <b>Spec changed for this Mold in the selected date range</b> — a chart spanning both sides of ' +
+      (changes.length === 1 ? 'this date' : 'these dates') + ' may blend old and new limits. Narrow your date range for a clean read.' +
+      '<ul style="margin:6px 0 0;padding-left:20px;">' + items + '</ul>';
+    el.classList.remove('hidden');
   }
 
   /** Two independent panels computed off the same server-side stats (every matched row, not just

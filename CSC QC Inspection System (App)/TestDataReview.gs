@@ -313,7 +313,8 @@ function getTestDataReviewRows(module, filters) {
   if (!sheet) return { columns: cfg.columns, rows: [], totalMatched: 0, capped: false, stats: { total: 0, byStatus: {}, numeric: null, passRate: null, moldsTested: 0, itemsTested: 0 } };
 
   filters = filters || {};
-  const moldFilter = String(filters.moldId || '').trim().toLowerCase();
+  const moldIdRaw = String(filters.moldId || '').trim();
+  const moldFilter = moldIdRaw.toLowerCase();
   const itemFilter = String(filters.itemNo || '').trim().toLowerCase();
   const colorFilter = String(filters.color || '').trim().toLowerCase();
   const charFilter = String(filters.characteristic || '').trim().toLowerCase();
@@ -354,11 +355,15 @@ function getTestDataReviewRows(module, filters) {
   const stats = computeReviewStats_(rows, cfg, !!charFilter);
   const trend = computeReviewTrend_(rows, cfg, tz);
   const specSeries = charFilter ? computeReviewSpecSeries_(rows, cfg, tz) : null;
+  // Mold-wide spec-change warning (2026-09-09) — only looked up once a Mold is picked, since the
+  // Change Log is keyed by Mold ID; see getSpecChangeLogForMold_ for why it isn't also narrowed
+  // to the Characteristic filter.
+  const specChanges = moldIdRaw ? getSpecChangeLogForMold_(moldIdRaw, dateFrom, dateTo) : [];
   const capped = totalMatched > REVIEW_ROW_CAP_;
   rows = rows.slice(0, REVIEW_ROW_CAP_);
 
   const outRows = rows.map(r => cfg.columns.map(c => sanitizeForClient_(r[c], tz)));
-  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats, trend: trend, specSeries: specSeries };
+  return { columns: cfg.columns, rows: outRows, totalMatched: totalMatched, capped: capped, stats: stats, trend: trend, specSeries: specSeries, specChanges: specChanges };
 }
 
 /**

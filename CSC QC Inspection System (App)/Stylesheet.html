@@ -552,6 +552,14 @@
   .tdr-tooltip-total { border-top: 1px solid rgba(255,255,255,0.25); margin-top: 2px; padding-top: 2px; }
   .tdr-spec-line-lsl, .tdr-spec-line-usl { stroke: var(--warning); stroke-width: 1.5; stroke-dasharray: 5 4; }
   .tdr-spec-line-label { font-size: 10px; fill: var(--warning); font-family: inherit; }
+
+  /* Mold spec-change flag (getSpecChangeLogForMold_) — a heads-up banner, not a hard error. */
+  .tdr-spec-change-flag {
+    background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning);
+    border-radius: 4px; padding: 8px 12px; font-size: 12.5px; margin: -4px 0 16px; line-height: 1.5;
+  }
+  .tdr-spec-change-flag b { color: inherit; }
+  .tdr-spec-change-flag li { margin-top: 2px; }
   .tdr-spec-path { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .tdr-dot-pass { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
   .tdr-dot-fail { fill: var(--critical); stroke: var(--surface-1); stroke-width: 2; }
