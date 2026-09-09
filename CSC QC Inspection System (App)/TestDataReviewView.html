@@ -301,7 +301,8 @@
     var heading = document.getElementById('tdr-trend-heading');
     var caption = document.getElementById('tdr-trend-caption');
     var body = document.getElementById('tdr-trend-body');
-    heading.textContent = (TDR_MODULE_LABELS[tdrModule] || '') + ' Trend';
+    var moldFilter = document.getElementById('tdr-mold').value;
+    heading.textContent = (TDR_MODULE_LABELS[tdrModule] || '') + ' Trend' + (moldFilter ? ' — Mold ' + moldFilter : '');
     var buckets = (trend && trend.buckets) || [];
     if (!buckets.length) {
       caption.textContent = '';
@@ -481,7 +482,8 @@
       el.innerHTML = '<p class="spec-hint" style="margin:0;">No spec-limit chart available — ' + why + '</p>';
       return;
     }
-    heading.textContent = charName + ' — Readings Over Time';
+    var moldFilter = document.getElementById('tdr-mold').value;
+    heading.textContent = charName + ' — Readings Over Time' + (moldFilter ? ' — Mold ' + moldFilter : '');
     heading.classList.remove('hidden');
     var pts = spec.points;
     var unit = spec.unit ? (' ' + esc(spec.unit)) : '';
