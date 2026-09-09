@@ -635,6 +635,9 @@
   .range-bar-labels { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary); }
   .range-bar-labels b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
+  /* Only shown when printing (e.g. the Data Analysis print stamp) — hidden on screen. */
+  .print-only { display: none; }
+
   /* ---- Print: strip nav/chrome so a form can be printed blank and filled by hand ---- */
   @media print {
     #sidenav, .toast, .combo-list, button, .dept-banner, .modal-overlay, .page-banner, .drawer, .drawer-overlay { display: none !important; }
@@ -647,5 +650,11 @@
     .form-doc-title-cell { color: #000; }
     .run-context-banner { background: #fff !important; color: #000 !important; border: 1px solid #000; }
     .form-doc-footer { border-color: #000; }
+    .print-only { display: block; }
+
+    /* Data Analysis report: keep the Summary/Trend/Characteristic/Table cards, drop the
+       module-switcher and Filters cards — the filter scope is already spelled out in
+       tdr-summary-scope and the print stamp, so re-printing the input controls adds nothing. */
+    #tdr-module-card, #tdr-filters-card, #tdr-loading { display: none !important; }
   }
 </style>

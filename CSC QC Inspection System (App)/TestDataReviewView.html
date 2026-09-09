@@ -1,8 +1,14 @@
-<h1 class="page-title">📈 Data Analysis</h1>
-<p class="page-sub">Filter and analyze inspection data across In-Process, Drop Freeze, and Start-Up Verification — spot trends and pass rates to help decide whether a flag is a minor deviation you can accept, or something that needs action.</p>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+  <div>
+    <h1 class="page-title">📈 Data Analysis</h1>
+    <p class="page-sub">Filter and analyze inspection data across In-Process, Drop Freeze, and Start-Up Verification — spot trends and pass rates to help decide whether a flag is a minor deviation you can accept, or something that needs action.</p>
+  </div>
+  <button class="ghost" id="tdr-print-btn" type="button" style="white-space:nowrap;">🖨️ Print Report</button>
+</div>
 <p class="spec-hint" id="tdr-range-hint" style="margin:-4px 0 16px;"></p>
+<p class="print-only" id="tdr-print-stamp"></p>
 
-<div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px;">
+<div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px;" id="tdr-module-card">
   <section class="card" style="flex:0 0 300px;margin:0;">
     <div class="line-tabs" id="tdr-module-tabs">
       <div class="line-tab active" data-module="inprocess">📋 In-Process</div>
@@ -17,7 +23,7 @@
   </section>
 </div>
 
-<section class="card" style="padding-bottom:10px;">
+<section class="card" style="padding-bottom:10px;" id="tdr-filters-card">
   <div id="tdr-filters-toggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
     <h2 style="margin:0;">Filters</h2>
     <span class="spec-hint" id="tdr-filters-caret" style="margin:0;">▸ Show</span>
@@ -113,12 +119,27 @@
       document.getElementById(id).addEventListener('change', function () { loadTdr(); reloadLogFilterOptionsForNewRange(); });
     });
 
+    document.getElementById('tdr-print-btn').addEventListener('click', function () {
+      updateTdrPrintStamp();
+      window.print();
+    });
+
     toggleTdrColorField();
     loadGlobalFilterOptions();
     // Default to a recent window rather than the full 80k+-row history — this module is for
     // quick on-the-fly lookups, and an unfiltered first load meant scanning everything before
     // you'd even had a chance to narrow it down. "All Time" is one click away in Filters.
     applyDatePreset('30d');
+  }
+
+  /** Only rendered in print (see .print-only in Stylesheet.html) — a timestamp so a printed
+   *  copy kept as CAPA/audit evidence shows exactly when it was pulled, alongside the
+   *  already-visible module name and filter scope (tdr-summary-scope). */
+  function updateTdrPrintStamp() {
+    var now = new Date();
+    document.getElementById('tdr-print-stamp').textContent =
+      'Printed ' + now.toLocaleString() + ' — ' + (TDR_MODULE_LABELS[tdrModule] || '') + ' — ' +
+      (document.getElementById('tdr-summary-scope').textContent || '');
   }
 
   /** Only In-Process records a Color per row today — hide the filter for the other modules rather
