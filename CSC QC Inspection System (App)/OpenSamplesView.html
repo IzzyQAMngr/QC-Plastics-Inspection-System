@@ -8,6 +8,10 @@
 </div>
 <p class="page-sub">Every Drop Freeze sample currently in the freezer and waiting on a result — On Time / Past Due is computed from when it went in plus its test's hold time. Click a row to record its result.</p>
 
+<!-- TEMP DIAGNOSTIC (2026-09-09): remove once the load hang is confirmed fixed. Visible,
+     non-fading step-by-step log so this can be read directly off the screen. -->
+<pre id="zzdebuglog" style="background:#222;color:#0f0;padding:10px;font-size:11px;max-height:180px;overflow:auto;margin-bottom:16px;white-space:pre-wrap;border-radius:4px;"></pre>
+
 <div class="tiles" id="os-tiles"></div>
 
 <section class="card">
@@ -50,6 +54,7 @@
   var OS_REFRESH_MS_ = 60000;
 
   function init_opensamples() {
+    zzLog_('init_opensamples called');
     loadOpenSamples_(true);
     if (!osRefreshTimer_) {
       osRefreshTimer_ = setInterval(function () { loadOpenSamples_(false); }, OS_REFRESH_MS_);
@@ -65,20 +70,25 @@
    *  same convention as the Run Dashboard's auto-refresh. Uses fetchDropFreezeFormData_
    *  (Combobox.html) instead of a single combined call — see its comment for why. */
   function loadOpenSamples_(showLoadingState) {
+    zzLog_('loadOpenSamples_(' + showLoadingState + ') called');
     var view = document.getElementById('view-opensamples');
-    if (!showLoadingState && view && !view.classList.contains('active')) return;
+    if (!showLoadingState && view && !view.classList.contains('active')) { zzLog_('skipped — view not active'); return; }
     if (showLoadingState) {
       document.getElementById('os-table-body').innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Loading…</td></tr>';
     }
     fetchDropFreezeFormData_(
       function (data) {
+        zzLog_('SUCCESS — rendering table');
         osfrfInit(data);
         osRecords = data.openRecords || [];
         renderOsTiles_();
         renderOsTable_();
         document.getElementById('os-updated-hint').textContent = 'Updated ' + new Date().toLocaleTimeString();
       },
-      function (err) { if (showLoadingState) showToast(err.message, true); }
+      function (err) {
+        zzLog_('FINAL FAILURE: ' + (err && err.message));
+        if (showLoadingState) showToast(err.message, true);
+      }
     );
   }
 
