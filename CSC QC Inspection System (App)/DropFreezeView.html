@@ -234,6 +234,17 @@
     document.getElementById('df-test-equipment').value = t.equipment;
   });
 
+  /** Resets the Load Samples form back to its just-opened state — reuses the Run change
+   *  handler's own clearing logic (Line/Customer/Mold/Item info, tests, cavities) by resetting
+   *  the Run select and dispatching a change event, rather than duplicating that field list. */
+  function resetDfLoadForm_() {
+    var runSel = document.getElementById('df-run');
+    runSel.value = '';
+    runSel.dispatchEvent(new Event('change'));
+    document.getElementById('df-shift').value = '';
+    document.getElementById('df-dateOfMfg').value = '';
+  }
+
   document.getElementById('df-log-samples-btn').addEventListener('click', function () {
     var runId = document.getElementById('df-run').value;
     var testName = document.getElementById('df-testName').value;
@@ -250,6 +261,10 @@
       cavities: dfCavities,
       sampleCount: count,
     };
+    var btn = this;
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span>Logging…';
     google.script.run
       .withSuccessHandler(function (result) {
         showToast('Logged ' + result.totalSamples + ' sample(s) across ' + result.totalRecords +
@@ -259,8 +274,15 @@
           .withSuccessHandler(function (data) { dfData.openRecords = data.openRecords; renderDfOpenSelect_(); })
           .withFailureHandler(function () {})
           .getDropFreezeFormData();
+        resetDfLoadForm_();
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) {
+        showToast(err.message, true);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      })
       .logDropFreezeSamples(payload);
   });
 
