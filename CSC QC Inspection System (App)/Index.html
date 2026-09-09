@@ -221,10 +221,23 @@
   }
 
   window.addEventListener('DOMContentLoaded', function () {
-    VIEWS_LOADED.dashboard = true;
-    if (window.init_dashboard) init_dashboard();
-    if (window.INITIAL_PARAMS && VIEWS.indexOf(window.INITIAL_PARAMS.view) >= 0) {
-      showView(window.INITIAL_PARAMS.view, window.INITIAL_PARAMS.dept);
+    // Run Dashboard is the default landing view, so it used to be initialized unconditionally
+    // here regardless of what page you were actually landing on — meaning every deep link
+    // (?view=..., e.g. a Print PFA Tag link or Open Samples) fired Run Dashboard's two data
+    // calls (getPlasticsLineDashboardData/getAddRunFormData) AND started its 60s background
+    // refresh timer running forever in the background, competing with whatever view you actually
+    // wanted for the same page's limited concurrent Apps Script execution — the real cause of
+    // "this other view takes forever to load" reports that traced back to nothing being wrong
+    // with that view's own server call once isolated. Only eager-init the dashboard now if
+    // that's actually where this load is landing.
+    var deepLinkView = (window.INITIAL_PARAMS && VIEWS.indexOf(window.INITIAL_PARAMS.view) >= 0)
+      ? window.INITIAL_PARAMS.view : null;
+    if (!deepLinkView || deepLinkView === 'dashboard') {
+      VIEWS_LOADED.dashboard = true;
+      if (window.init_dashboard) init_dashboard();
+    }
+    if (deepLinkView && deepLinkView !== 'dashboard') {
+      showView(deepLinkView, window.INITIAL_PARAMS.dept);
     }
   });
 </script>

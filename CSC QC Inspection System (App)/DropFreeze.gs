@@ -35,16 +35,69 @@ function getCavityIdsForMold(moldId) {
   return getCavityIds_(moldId);
 }
 
-/** Every Drop Freeze record still holding at least one OPEN sample, with enough context
- *  (Run/Mold/Cavity/Test/date/how many samples) to identify it without opening the sheet —
- *  drives both the Test Results tab's dropdown and the Open Samples table. */
+/** The Spec Register's Functional Tests tab has no separate duration/conditioning-time column —
+ *  the hold time only ever appears written into the test's own name, e.g. "Drop Freeze Test —
+ *  24 hr" or "— 72 hr" (see getFunctionalTestsForMold_) — so that text is the only place this
+ *  lives today. Returns null if the name has no recognizable "<number> hr" pattern, rather than
+ *  guessing a default — callers must treat that as "no due date computable", not "on time". */
+function parseDropFreezeDurationHours_(testName) {
+  const m = String(testName || '').match(/(\d+(?:\.\d+)?)\s*hr/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+/**
+ * Every Drop Freeze record still holding at least one OPEN sample, with enough context
+ * (Run/Mold/Cavity/Test/dates/how many samples, plus a computed due date) to identify and
+ * prioritize it without opening the sheet — drives both the Test Results tab's dropdown and the
+ * Open Samples dashboard.
+ *
+ * Reads the log in two passes instead of pulling every historical row's full width just to find
+ * the usually-much-smaller set of still-open ones (this was the main reason Open Samples got
+ * slow to load as the log grew): a narrow RecordKey+Status-only scan across the whole sheet
+ * first locates, for every record with at least one open sample, where that record's block of
+ * rows STARTS (not where its first open row happens to be — a record with some already-completed
+ * line items ahead of its still-open one would otherwise be undercounted) — then a single
+ * full-width read covers from the earliest such start to the end of the sheet. Skips the
+ * full-width read entirely once there are no open records at all. Deliberately does NOT bound
+ * this by date/age the way Dashboard.gs's In-Process read does — an unusually old still-open
+ * record is exactly what the Past Due KPI exists to surface, not hide.
+ */
 function listOpenDropFreezeRecords_() {
   const sheet = getDropFreezeLogSheet_();
-  const rows = readSheetObjects_(sheet);
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const keyCol = headers.indexOf('RecordKey'), statusCol = headers.indexOf('Status');
+  if (keyCol < 0 || statusCol < 0) return [];
+
+  const n = lastRow - 1;
+  const keys = sheet.getRange(2, keyCol + 1, n, 1).getValues().map(r => String(r[0] || '').trim());
+  const statuses = sheet.getRange(2, statusCol + 1, n, 1).getValues().map(r => String(r[0] || '').trim().toUpperCase());
+
+  const blockStart = {}, hasOpen = {};
+  for (let i = 0; i < n; i++) {
+    const k = keys[i];
+    if (!k) continue;
+    if (!(k in blockStart)) blockStart[k] = i;
+    if (statuses[i] === 'OPEN') hasOpen[k] = true;
+  }
+  const openKeys = Object.keys(hasOpen);
+  if (openKeys.length === 0) return [];
+
+  const startIdx = Math.min.apply(null, openKeys.map(k => blockStart[k]));
+  const startRow = 2 + startIdx;
+  const data = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
+  const rows = data.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
+    return obj;
+  });
+
   const groups = new Map();
   rows.forEach(r => {
     const key = String(r.RecordKey || '').trim();
-    if (!key) return;
+    if (!key || !hasOpen[key]) return;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
   });
@@ -53,6 +106,10 @@ function listOpenDropFreezeRecords_() {
     const openCount = groupRows.filter(r => String(r.Status || '').trim().toUpperCase() === 'OPEN').length;
     if (openCount === 0) return;
     const first = groupRows[0];
+    const createdAt = first.Created instanceof Date ? first.Created : new Date(first.Created);
+    const durationHours = parseDropFreezeDurationHours_(first['Test Name']);
+    const dueAt = (durationHours !== null && !isNaN(createdAt.getTime()))
+      ? new Date(createdAt.getTime() + durationHours * 3600000) : null;
     records.push({
       recordKey: key,
       runId: first['Run ID'] || '', line: first['Line #'] || '',
@@ -60,6 +117,7 @@ function listOpenDropFreezeRecords_() {
       itemNo: first['Item No'] || '', customerName: first['Customer Name'] || '',
       cavity: first.Cavity || '', testName: first['Test Name'] || '',
       dateOfMfg: dateToStr_(first.DateOfMfg),
+      createdAt: dateToStr_(createdAt), durationHours: durationHours, dueAt: dateToStr_(dueAt),
       totalSamples: groupRows.length, openSamples: openCount,
     });
   });

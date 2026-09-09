@@ -1,61 +1,158 @@
 <style>
   .os-row { cursor: pointer; }
-  .os-row:hover td { background: var(--row-alt); }
-  .os-row.active td { background: var(--gridline); }
+  .os-row.active td { background: var(--gridline) !important; }
 </style>
 
 <div class="page-title-row">
   <h1 class="page-title">🧊 Open Samples</h1>
 </div>
-<p class="page-sub">Every Drop Freeze sample currently in the freezer and waiting on a result — click one to record it.</p>
+<p class="page-sub">Every Drop Freeze sample currently in the freezer and waiting on a result — On Time / Past Due is computed from when it went in plus its test's hold time. Click a row to record its result.</p>
+
+<div class="tiles" id="os-tiles"></div>
 
 <section class="card">
-  <table class="qc-table">
-    <thead>
-      <tr><th>Record #</th><th>Run</th><th>Mold</th><th>Cavity</th><th>Test</th><th>Date of Mfg</th><th>Samples</th></tr>
-    </thead>
-    <tbody id="os-table-body"><tr><td colspan="7" style="color:var(--text-muted)">Loading…</td></tr></tbody>
-  </table>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+    <h2 style="margin:0;">Open Samples</h2>
+    <p class="spec-hint" style="margin:0;" id="os-updated-hint"></p>
+  </div>
+  <div style="overflow:auto;">
+    <table class="run-grid" id="os-table">
+      <colgroup>
+        <col style="width:14%"><col style="width:8%"><col style="width:18%"><col style="width:7%">
+        <col style="width:15%"><col style="width:11%"><col style="width:13%"><col style="width:8%"><col style="width:6%">
+      </colgroup>
+      <thead>
+        <tr><th>Record #</th><th>Run</th><th>Mold</th><th>Cavity</th><th>Test</th><th>Logged</th><th>Due</th><th>Status</th><th style="text-align:right;">Samples</th></tr>
+      </thead>
+      <tbody id="os-table-body"><tr><td colspan="9" style="color:var(--text-muted)">Loading…</td></tr></tbody>
+    </table>
+  </div>
 </section>
 
-<section class="card hidden" id="os-form-card">
-  <h2>Record Results</h2>
-  <?!= include('DropFreezeResultsForm', 'osfrf'); ?>
-</section>
+<div class="drawer-overlay" id="os-drawer-overlay"></div>
+<div class="drawer" id="os-drawer" role="dialog" aria-modal="true" aria-labelledby="os-drawer-title">
+  <div class="drawer-head">
+    <div>
+      <h2 id="os-drawer-title">Record Results</h2>
+      <p>Enter the freezer temp, drop test outcome, and any notes for this sample.</p>
+    </div>
+    <button class="drawer-close" id="os-drawer-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <?!= include('DropFreezeResultsForm', 'osfrf'); ?>
+  </div>
+</div>
 
 <script>
   var osRecords = [];
   var osSelectedKey = '';
+  var osRefreshTimer_ = null;
+  var OS_REFRESH_MS_ = 60000;
 
   function init_opensamples() {
+    loadOpenSamples_(true);
+    if (!osRefreshTimer_) {
+      osRefreshTimer_ = setInterval(function () { loadOpenSamples_(false); }, OS_REFRESH_MS_);
+    }
+  }
+
+  // Refreshes the table on return visits — see Index.html's showView.
+  function onshow_opensamples() { loadOpenSamples_(true); }
+
+  /** showLoadingState is true for the initial/return-visit load; the background 60s refresh
+   *  (keeps On Time/Past Due current without a manual reload) skips the loading flash and fails
+   *  silently, and is skipped outright if the user has navigated to another view in this tab —
+   *  same convention as the Run Dashboard's auto-refresh. */
+  function loadOpenSamples_(showLoadingState) {
+    var view = document.getElementById('view-opensamples');
+    if (!showLoadingState && view && !view.classList.contains('active')) return;
+    if (showLoadingState) {
+      document.getElementById('os-table-body').innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Loading…</td></tr>';
+    }
     google.script.run
       .withSuccessHandler(function (data) {
         osfrfInit(data);
         osRecords = data.openRecords || [];
+        renderOsTiles_();
         renderOsTable_();
+        document.getElementById('os-updated-hint').textContent = 'Updated ' + new Date().toLocaleTimeString();
       })
-      .withFailureHandler(function (err) { showToast(err.message, true); })
+      .withFailureHandler(function (err) { if (showLoadingState) showToast(err.message, true); })
       .getDropFreezeFormData();
   }
 
-  // Refreshes the table on return visits — see Index.html's showView.
-  function onshow_opensamples() { init_opensamples(); }
+  /** 'pastdue'/'ontime' when the record's Test Name carried a parseable "<N> hr" hold time
+   *  (see parseDropFreezeDurationHours_ in DropFreeze.gs); 'unknown' when it didn't, so a sample
+   *  with no computable due date reads as "no data" rather than silently counting as on time. */
+  function osStatusFor_(r) {
+    if (!r.dueAt) return 'unknown';
+    return new Date(r.dueAt).getTime() <= Date.now() ? 'pastdue' : 'ontime';
+  }
+
+  function osFmtDateTime_(iso) {
+    var d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function osRelativeDue_(r) {
+    if (!r.dueAt) return '';
+    var diffMs = new Date(r.dueAt).getTime() - Date.now();
+    var hrs = Math.abs(diffMs) / 3600000;
+    var label = hrs < 1 ? Math.max(1, Math.ceil(hrs * 60)) + 'm' : Math.round(hrs) + 'h';
+    return diffMs <= 0 ? (label + ' overdue') : (label + ' left');
+  }
+
+  function renderOsTiles_() {
+    var total = osRecords.length;
+    var pastDue = 0, onTime = 0;
+    osRecords.forEach(function (r) {
+      var s = osStatusFor_(r);
+      if (s === 'pastdue') pastDue++; else if (s === 'ontime') onTime++;
+    });
+    var unknown = total - pastDue - onTime;
+    var html =
+      '<div class="tile"><div class="label">Open Samples</div><div class="value">' + total + '</div></div>' +
+      '<div class="tile"><div class="label">On Time</div><div class="value good">' + onTime + '</div></div>' +
+      '<div class="tile"><div class="label">Past Due</div><div class="value' + (pastDue > 0 ? ' critical' : '') + '">' + pastDue + '</div></div>';
+    if (unknown > 0) {
+      html += '<div class="tile"><div class="label">No Protocol Duration</div><div class="value warning">' + unknown + '</div></div>';
+    }
+    document.getElementById('os-tiles').innerHTML = html;
+  }
 
   function renderOsTable_() {
     var body = document.getElementById('os-table-body');
     if (!osRecords.length) {
-      body.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">No open samples right now.</td></tr>';
+      body.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">No open samples right now.</td></tr>';
       return;
     }
-    body.innerHTML = osRecords.map(function (r) {
-      return '<tr class="os-row' + (r.recordKey === osSelectedKey ? ' active' : '') + '" data-key="' + esc(r.recordKey) + '">' +
-        '<td>' + esc(r.recordKey) + '</td>' +
+    // Past Due (soonest-due-first among those) floats to the top, then On Time soonest-due, so
+    // the most urgent samples are always what's visible without scrolling.
+    var sorted = osRecords.slice().sort(function (a, b) {
+      var da = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      var db = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return da - db;
+    });
+    body.innerHTML = sorted.map(function (r) {
+      var status = osStatusFor_(r);
+      var statusColor = status === 'pastdue' ? 'var(--critical)' : status === 'ontime' ? 'var(--good)' : 'var(--border)';
+      var badge = status === 'pastdue' ? '<span class="badge critical">Past Due</span>'
+        : status === 'ontime' ? '<span class="badge good">On Time</span>'
+        : '<span class="badge">No Duration</span>';
+      var dueCell = r.dueAt
+        ? '<div class="cell-primary">' + osFmtDateTime_(r.dueAt) + '</div><div class="cell-secondary">' + osRelativeDue_(r) + '</div>'
+        : '—';
+      return '<tr class="os-row' + (r.recordKey === osSelectedKey ? ' active' : '') + '" data-key="' + esc(r.recordKey) + '" style="--row-status-color:' + statusColor + '">' +
+        '<td class="cell-mono">' + esc(r.recordKey) + '</td>' +
         '<td>' + esc(r.runId || '—') + '</td>' +
-        '<td>' + esc(r.moldId || '—') + (r.moldDescription ? ' — ' + esc(r.moldDescription) : '') + '</td>' +
+        '<td><div class="cell-primary">' + esc(r.moldId || '—') + '</div><div class="cell-secondary">' + esc(r.moldDescription || '') + '</div></td>' +
         '<td>' + esc(r.cavity || '—') + '</td>' +
         '<td>' + esc(r.testName || '—') + '</td>' +
-        '<td>' + esc(r.dateOfMfg || '—') + '</td>' +
-        '<td>' + r.openSamples + ' / ' + r.totalSamples + ' open</td>' +
+        '<td>' + osFmtDateTime_(r.createdAt) + '</td>' +
+        '<td>' + dueCell + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td class="qty-cell">' + r.openSamples + ' / ' + r.totalSamples + '</td>' +
       '</tr>';
     }).join('');
     body.querySelectorAll('.os-row').forEach(function (tr) {
@@ -63,17 +160,41 @@
     });
   }
 
+  var osDrawer_ = document.getElementById('os-drawer');
+  var osDrawerOverlay_ = document.getElementById('os-drawer-overlay');
+  function osOpenDrawer_() { osDrawerOverlay_.classList.add('open'); osDrawer_.classList.add('open'); }
+  function osCloseDrawer_() {
+    osDrawerOverlay_.classList.remove('open'); osDrawer_.classList.remove('open');
+    osSelectedKey = ''; renderOsTable_();
+  }
+  document.getElementById('os-drawer-close').addEventListener('click', osCloseDrawer_);
+  osDrawerOverlay_.addEventListener('click', osCloseDrawer_);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && osDrawer_.classList.contains('open')) osCloseDrawer_(); });
+
   function osSelectRecord_(recordKey) {
     osSelectedKey = recordKey;
     renderOsTable_();
-    document.getElementById('os-form-card').classList.remove('hidden');
     osfrfLoadRecord(recordKey);
+    osOpenDrawer_();
   }
 
-  // Drop a fully-completed record from the table without a full reload.
+  // A record's samples can be saved partially (some results filled, others left blank for a
+  // later visit) — only auto-close the drawer once the just-saved record has no open samples
+  // left; otherwise keep it open so the rest can be entered without re-clicking the row.
   osfrfOnSaved = function () {
     google.script.run
-      .withSuccessHandler(function (data) { osRecords = data.openRecords || []; renderOsTable_(); })
+      .withSuccessHandler(function (data) {
+        osRecords = data.openRecords || [];
+        renderOsTiles_();
+        var stillOpen = osRecords.some(function (r) { return r.recordKey === osSelectedKey; });
+        if (!stillOpen) {
+          osSelectedKey = '';
+          osDrawerOverlay_.classList.remove('open');
+          osDrawer_.classList.remove('open');
+        }
+        renderOsTable_();
+        document.getElementById('os-updated-hint').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      })
       .withFailureHandler(function () {})
       .getDropFreezeFormData();
   };

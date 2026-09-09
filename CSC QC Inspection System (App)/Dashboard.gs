@@ -22,10 +22,13 @@ function getPlasticsLineDashboardData() {
   const inProcessSheet = getDb_().getSheetByName(INPROCESS_LOG_SHEET_NAME);
   const inProcessRows = inProcessSheet ? readSheetObjectsSince_(inProcessSheet, 'Timestamp Saved', earliestCreatedAt) : [];
 
-  // Drop Freeze rows are matched by Run ID, not a timestamp, and this log is nowhere near
-  // In-Process's size — a full read here isn't the slow part.
+  // Drop Freeze rows are matched by Run ID, not a timestamp, and this log used to be nowhere
+  // near In-Process's size — a full read here wasn't the slow part. It's grown enough since
+  // (see listOpenDropFreezeRecords_ in DropFreeze.gs, fixed for the same reason) that it's
+  // worth bounding the same way: a sample can never be logged before the Run it belongs to was
+  // created, so it's always safe to skip rows older than every currently-Active run's start.
   const dropFreezeSheet = getDb_().getSheetByName(DROPFREEZE_LOG_SHEET_NAME);
-  const dropFreezeRows = dropFreezeSheet ? readSheetObjects_(dropFreezeSheet) : [];
+  const dropFreezeRows = dropFreezeSheet ? readSheetObjectsSince_(dropFreezeSheet, 'Created', earliestCreatedAt) : [];
 
   const cards = runs.map(run => buildLineCard_(run, inProcessRows, dropFreezeRows));
   cards.sort((a, b) => {
