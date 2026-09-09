@@ -51,7 +51,7 @@
 <div class="form-loading-banner hidden" id="tdr-loading"><span class="spinner"></span> Loading records…</div>
 
 <section class="card">
-  <h2 style="margin:0 0 2px;">Trend</h2>
+  <h2 style="margin:0 0 2px;" id="tdr-trend-heading">Trend</h2>
   <p class="spec-hint" id="tdr-trend-caption" style="margin:0 0 10px;"></p>
   <div id="tdr-trend-body"></div>
 </section>
@@ -59,7 +59,8 @@
 <section class="card">
   <h2 style="margin:0 0 10px;">Characteristic Analysis</h2>
   <div id="tdr-char-analysis-body"><p class="spec-hint" style="margin:0;">Select a Characteristic above to see its average, min, and max.</p></div>
-  <div id="tdr-spec-chart-body" style="margin-top:14px;"></div>
+  <h3 class="hidden" id="tdr-spec-chart-heading" style="margin:14px 0 2px;font-size:14px;"></h3>
+  <div id="tdr-spec-chart-body" style="margin-top:6px;"></div>
 </section>
 
 <section class="card">
@@ -74,6 +75,7 @@
 
 <script>
   var tdrModule = 'inprocess';
+  var TDR_MODULE_LABELS = { inprocess: 'In-Process', dropfreeze: 'Drop Freeze', startup: 'Start-Up Verification' };
   var tdrData = null;
   var tdrSortCol = -1;
   var tdrSortAsc = true;
@@ -296,8 +298,10 @@
    *  text label rather than relying on the Pass/Fail hue difference alone — the app's existing
    *  good/critical colors read almost identically to someone with red-green color blindness. */
   function renderTdrTrend(trend) {
+    var heading = document.getElementById('tdr-trend-heading');
     var caption = document.getElementById('tdr-trend-caption');
     var body = document.getElementById('tdr-trend-body');
+    heading.textContent = (TDR_MODULE_LABELS[tdrModule] || '') + ' Trend';
     var buckets = (trend && trend.buckets) || [];
     if (!buckets.length) {
       caption.textContent = '';
@@ -466,14 +470,19 @@
    *  mold's limits and mislabeling the rest. */
   function renderTdrSpecChart(spec) {
     var el = document.getElementById('tdr-spec-chart-body');
+    var heading = document.getElementById('tdr-spec-chart-heading');
+    var charName = document.getElementById('tdr-characteristic').value;
     if (!spec || !spec.points || !spec.points.length) {
-      if (!document.getElementById('tdr-characteristic').value) { el.innerHTML = ''; return; }
+      heading.classList.add('hidden');
+      if (!charName) { el.innerHTML = ''; return; }
       var why = tdrModule === 'startup' ? 'Start-Up Verification doesn\'t store LSL/USL per record.'
         : tdrModule === 'dropfreeze' ? 'Drop Freeze doesn\'t have a numeric value or spec limits to chart.'
         : 'This characteristic has no numeric readings to chart (e.g. a visual or text field).';
       el.innerHTML = '<p class="spec-hint" style="margin:0;">No spec-limit chart available — ' + why + '</p>';
       return;
     }
+    heading.textContent = charName + ' — Readings Over Time';
+    heading.classList.remove('hidden');
     var pts = spec.points;
     var unit = spec.unit ? (' ' + esc(spec.unit)) : '';
     var values = pts.map(function (p) { return p.value; });
