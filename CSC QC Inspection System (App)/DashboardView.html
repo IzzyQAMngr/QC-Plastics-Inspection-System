@@ -47,9 +47,12 @@
   .rd-grid-label { font-family: "Barlow Condensed", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rd-dim); margin: 4px 0 12px; }
   .rd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 
-  .rd-lcard { background: var(--rd-panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--rd-line); border-left: 4px solid var(--rd-good); padding: 16px 18px 18px; position: relative; }
+  .rd-lcard { background: var(--rd-panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--rd-line); border-left: 4px solid var(--rd-good); padding: 16px 18px 18px; position: relative; cursor: pointer; transition: box-shadow 0.15s; }
   .rd-lcard.crit { border-left-color: var(--rd-critical); box-shadow: 0 0 0 1px rgba(248,113,113,0.35), 0 0 26px rgba(248,113,113,0.16); }
   .rd-lcard.fresh { border-left-color: var(--rd-dim); }
+  .rd-lcard:hover { box-shadow: 0 0 0 1px var(--rd-accent), 0 0 20px rgba(111,163,245,0.25); }
+  .rd-lcard-manage-hint { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rd-accent); opacity: 0; transition: opacity 0.15s; white-space: nowrap; align-self: center; }
+  .rd-lcard:hover .rd-lcard-manage-hint { opacity: 1; }
 
   .rd-lcard-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
   .rd-lcard-line { display: flex; align-items: baseline; gap: 8px; }
@@ -133,6 +136,45 @@
   </div>
 </div>
 
+<!-- Click-a-card side panel: stop this Line's Run and/or start its next one, without leaving
+     the dashboard. Reuses the same server calls (getAddRunFormData/addRun/endRun) as the
+     standalone Add Run page — see AddRunView.html's drawer for the pattern this copies. -->
+<div class="drawer-overlay" id="rdp-drawer-overlay"></div>
+<div class="drawer" id="rdp-drawer" role="dialog" aria-modal="true" aria-labelledby="rdp-drawer-title">
+  <div class="drawer-head">
+    <div>
+      <h2 id="rdp-drawer-title">Line <span id="rdp-line-label"></span></h2>
+      <p>Manage this Line's Run</p>
+    </div>
+    <button class="drawer-close" id="rdp-drawer-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <div class="section-divider">Current Run</div>
+    <table class="modal-info-table" style="margin-bottom:14px;"><tbody id="rdp-current-run-tbody"></tbody></table>
+    <button class="danger" id="rdp-stop-btn" style="width:100%;margin-bottom:24px;">Stop Run</button>
+
+    <div class="section-divider">Start New Run on This Line</div>
+    <div class="field-row-2">
+      <div class="field"><label>Shift</label><select id="rdp-shift"><option value="">— select —</option></select></div>
+      <div class="field"><label>Created By</label><select id="rdp-createdBy"><option value="">— select —</option></select></div>
+    </div>
+    <div class="field"><label>Mold</label><div class="combo"><input id="rdp-mold" placeholder="Start typing to search…"></div></div>
+    <div class="field-row-2">
+      <div class="field"><label>Mold Description</label><input id="rdp-moldDescription" readonly></div>
+      <div class="field"><label>Product Type</label><input id="rdp-productType" readonly></div>
+    </div>
+    <div class="field"><label>Item</label><div class="combo"><input id="rdp-item" placeholder="Start typing to search…"></div></div>
+    <div class="field"><label>Item Description</label><input id="rdp-itemDescription" readonly></div>
+    <div class="field"><label>Resin Lot</label><input id="rdp-resinLot"></div>
+    <div class="field"><label>Customer Name (if available)</label><input id="rdp-customerName"></div>
+    <div class="field"><label>Run Qty (if available)</label><input id="rdp-runQty" type="number"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="ghost" id="rdp-drawer-cancel">Close</button>
+    <button class="primary" id="rdp-add-btn">+ Add Run</button>
+  </div>
+</div>
+
 <script>
   var dashRefreshTimer_ = null;
   var DASH_REFRESH_MS_ = 60000;
@@ -144,6 +186,7 @@
     if (!dashRefreshTimer_) {
       dashRefreshTimer_ = setInterval(function () { loadDashboard_(false); }, DASH_REFRESH_MS_);
     }
+    loadRdpFormData_();
   }
 
   function tickRdClock_() {
@@ -198,9 +241,10 @@
     var cls = c.qualified ? '' : (ipTotal && ipPct < 85 ? 'crit' : 'fresh');
     var pill = c.qualified ? '<span class="rd-pill good">&#10003; QUALIFIED</span>' :
       (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">STARTING UP</span>');
-    return '<div class="rd-lcard ' + cls + '">' +
+    return '<div class="rd-lcard ' + cls + '" data-run-id="' + esc(c.runId) + '" title="Click to manage this Run">' +
       '<div class="rd-lcard-top">' +
         '<div class="rd-lcard-line"><small>LINE</small><b>' + esc(c.line || '—') + '</b></div>' +
+        '<span class="rd-lcard-manage-hint">Manage &rsaquo;</span>' +
         pill +
       '</div>' +
       '<div class="rd-lcard-meta">' +
@@ -242,10 +286,151 @@
     document.getElementById('rdBlended').textContent = totalAll ? (Math.round((totalPass / totalAll) * 1000) / 10) + '%' : '—';
     document.getElementById('rdBlendedFoot').textContent = totalAll ? (totalPass + ' / ' + totalAll + ' dimensional checks across active Lines') : '';
 
+    rdLastCards_ = cards;
     if (!cards.length) {
       wrap.innerHTML = '<div class="rd-empty">No active Runs right now — start one from Daily Run Setup to see it here.</div>';
       return;
     }
     wrap.innerHTML = '<div class="rd-cards">' + cards.map(rdCardHtml_).join('') + '</div>';
+    Array.prototype.forEach.call(wrap.querySelectorAll('.rd-lcard'), function (el) {
+      el.addEventListener('click', function () {
+        var card = rdLastCards_.find(function (c) { return c.runId === el.dataset.runId; });
+        if (card) rdpOpenForCard_(card);
+      });
+    });
   }
+
+  // ================= Click-a-card side panel (stop/add Run without leaving the dashboard) =================
+  var rdLastCards_ = [];
+  var rdpFormData_ = null;
+  var rdpCard_ = null;
+
+  function loadRdpFormData_() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        rdpFormData_ = data;
+        fillSelect('rdp-shift', data.shifts);
+        fillSelect('rdp-createdBy', data.createdByOptions);
+        var moldItems = (data.molds || []).map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
+        initCombobox(document.getElementById('rdp-mold'), moldItems, {
+          onSelect: function (moldId) {
+            var m = data.molds.find(function (x) { return x.moldId === moldId; });
+            document.getElementById('rdp-productType').value = m ? m.productType : '';
+            document.getElementById('rdp-moldDescription').value = m ? m.description : '';
+          },
+          onInvalid: function () {
+            document.getElementById('rdp-productType').value = '';
+            document.getElementById('rdp-moldDescription').value = '';
+          },
+        });
+        var itemItems = (data.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
+        initCombobox(document.getElementById('rdp-item'), itemItems, {
+          onSelect: function (itemNo, item) { document.getElementById('rdp-itemDescription').value = item.sublabel || ''; },
+          onInvalid: function () { document.getElementById('rdp-itemDescription').value = ''; },
+        });
+      })
+      // Silent — the panel just won't have Mold/Item/Shift options wired up yet if this fails;
+      // the dashboard itself (loadDashboard_) already reports load failures loudly.
+      .withFailureHandler(function () {})
+      .getAddRunFormData();
+  }
+
+  function rdpResetNewRunFields_() {
+    ['rdp-mold', 'rdp-moldDescription', 'rdp-productType', 'rdp-item', 'rdp-itemDescription',
+      'rdp-resinLot', 'rdp-customerName', 'rdp-runQty'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('rdp-shift').value = '';
+    document.getElementById('rdp-createdBy').value = '';
+  }
+
+  function rdpCurrentRunRowsHtml_(c) {
+    function row(label, value) { return '<tr><th>' + label + '</th><td>' + value + '</td></tr>'; }
+    var ip = c.inProcess, df = c.dropFreeze;
+    return row('Run ID', esc(c.runId)) +
+      row('Mold', esc(c.moldId || '—') + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '')) +
+      row('Item', esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '')) +
+      row('Customer', esc(c.customerName || '—')) +
+      row('Resin Lot', esc(c.resinLot || '—')) +
+      row('Run Qty', c.runQty ? esc(c.runQty) : '—') +
+      row('Shift', esc(c.shift || '—')) +
+      row('Started', esc(rdStartedText_(c.createdAt))) +
+      row('Qualified', c.qualified ? '<span class="badge good">Qualified</span>' : '<span class="badge critical">Not Qualified</span>') +
+      row('In-Process', ip.total ? (ip.pass + ' pass · ' + ip.fail + ' fail (' + ip.total + ' tested)') : 'No data yet') +
+      row('Drop Freeze', df.total ? (df.pass + ' pass · ' + df.fail + ' fail (' + df.total + ' tested)') : 'No data yet');
+  }
+
+  function rdpOpenForCard_(card) {
+    rdpCard_ = card;
+    document.getElementById('rdp-line-label').textContent = card.line || '—';
+    document.getElementById('rdp-current-run-tbody').innerHTML = rdpCurrentRunRowsHtml_(card);
+    rdpResetNewRunFields_();
+    rdpOpenDrawer_();
+  }
+
+  var rdpDrawer_ = document.getElementById('rdp-drawer');
+  var rdpDrawerOverlay_ = document.getElementById('rdp-drawer-overlay');
+  function rdpOpenDrawer_() { rdpDrawerOverlay_.classList.add('open'); rdpDrawer_.classList.add('open'); }
+  function rdpCloseDrawer_() { rdpDrawerOverlay_.classList.remove('open'); rdpDrawer_.classList.remove('open'); }
+  document.getElementById('rdp-drawer-close').addEventListener('click', rdpCloseDrawer_);
+  document.getElementById('rdp-drawer-cancel').addEventListener('click', rdpCloseDrawer_);
+  rdpDrawerOverlay_.addEventListener('click', rdpCloseDrawer_);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && rdpDrawer_.classList.contains('open')) rdpCloseDrawer_(); });
+
+  document.getElementById('rdp-stop-btn').addEventListener('click', function () {
+    if (!rdpCard_) return;
+    var c = rdpCard_;
+    var infoHtml = '<p>Are you sure you want to end this run? It will drop off the Active Runs list.</p>' +
+      '<table class="modal-info-table"><tbody>' + rdpCurrentRunRowsHtml_(c) + '</tbody></table>';
+    showConfirmModal('End Run ' + c.runId + '?', infoHtml, function () {
+      google.script.run
+        .withSuccessHandler(function () {
+          showToast('Run ' + c.runId + ' stopped.');
+          rdpCloseDrawer_();
+          loadDashboard_(false);
+        })
+        .withFailureHandler(function (err) { showToast(err.message, true); })
+        .endRun(c.runId);
+    });
+  });
+
+  document.getElementById('rdp-add-btn').addEventListener('click', function () {
+    if (!rdpCard_) return;
+    var moldId = document.getElementById('rdp-mold').value;
+    var item = document.getElementById('rdp-item').value;
+    if (!moldId) { showToast('Pick a Mold.', true); return; }
+    if (!item) { showToast('Pick an Item.', true); return; }
+    var fields = {
+      line: rdpCard_.line,
+      shift: document.getElementById('rdp-shift').value,
+      productType: document.getElementById('rdp-productType').value,
+      moldId: moldId,
+      moldDescription: document.getElementById('rdp-moldDescription').value,
+      resinLot: document.getElementById('rdp-resinLot').value,
+      item: item,
+      itemDescription: document.getElementById('rdp-itemDescription').value,
+      customerName: document.getElementById('rdp-customerName').value,
+      runQty: document.getElementById('rdp-runQty').value,
+      createdBy: document.getElementById('rdp-createdBy').value,
+    };
+    var infoHtml = '<p>Add this to the Active Runs list?</p>' +
+      '<table class="modal-info-table"><tbody>' +
+        '<tr><th>Line</th><td>' + esc(fields.line) + '</td></tr>' +
+        '<tr><th>Shift</th><td>' + esc(fields.shift) + '</td></tr>' +
+        '<tr><th>Mold</th><td>' + esc(fields.moldId) + '</td></tr>' +
+        '<tr><th>Item</th><td>' + esc(fields.item) + '</td></tr>' +
+        '<tr><th>Customer</th><td>' + esc(fields.customerName) + '</td></tr>' +
+        '<tr><th>Qty</th><td>' + esc(fields.runQty) + '</td></tr>' +
+      '</tbody></table>';
+    showConfirmModal('Add Run?', infoHtml, function () {
+      google.script.run
+        .withSuccessHandler(function (run) {
+          showToast('Run ' + run.runId + ' created.');
+          rdpCloseDrawer_();
+          loadDashboard_(false);
+        })
+        .withFailureHandler(function (err) { showToast(err.message, true); })
+        .addRun(fields);
+    });
+  });
 </script>
