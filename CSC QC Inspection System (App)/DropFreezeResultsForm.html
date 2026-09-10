@@ -57,17 +57,20 @@
     var count = dfrfResultLines.length;
     var html = '';
     dfrfResultLines.forEach(function (li, i) {
-      html += '<div class="dfrf-sample-block"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
+      html += '<div class="dfrf-sample-block" id="dfrf-block-' + i + '"' + (i < count - 1 ? ' style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);"' : '') + '>' +
         (count > 1 ? '<div class="spec-hint" style="font-weight:700;">SAMPLE ' + (li.sampleNo || (i + 1)) + ' OF ' + (li.sampleCount || count) + '</div>' : '') +
         '<div class="field-row">' +
           '<div class="field"><label>Freezer Temp (°F)</label><input type="number" step="any" id="dfrf-freezerTemp-' + i + '" value="' + esc(li.freezerTemp || '') + '"></div>' +
           '<div class="field"><label>Drop Height (in) — fixed</label><input type="number" id="dfrf-dropHeight-' + i + '" value="36" readonly></div>' +
           '<div class="field"><label>Drop Angle</label><select id="dfrf-dropAngle-' + i + '"></select></div>' +
           '<div class="field"><label>Pass / Fail Result</label>' +
-            '<select id="dfrf-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option></select></div>' +
+            '<select id="dfrf-result-' + i + '"><option value=""></option><option>Pass</option><option>Fail</option><option>Inconclusive</option><option>Void</option></select></div>' +
         '</div>' +
         '<div class="field"><label>Failure Description (wall side &amp; observations)</label><input id="dfrf-failDesc-' + i + '" value="' + esc(li.failureDescription || '') + '"></div>' +
         '<div class="field"><label>Other Notes / Observations</label><input id="dfrf-notes-' + i + '" value="' + esc(li.notes || '') + '"></div>' +
+        '<div class="field" id="dfrf-voidWrap-' + i + '" style="display:none;">' +
+          '<label>Void Reason — why doesn\'t this sample count? (required)</label>' +
+          '<input id="dfrf-voidReason-' + i + '" value="' + esc(li.voidReason || '') + '"></div>' +
       '</div>';
     });
     container.innerHTML = html;
@@ -76,8 +79,20 @@
       angleSel.appendChild(dfrfOpt_('', '— select —'));
       (dfrfFormData.angleOptions || []).forEach(function (a) { angleSel.appendChild(dfrfOpt_(a)); });
       if (li.dropAngle) angleSel.value = li.dropAngle;
-      document.getElementById('dfrf-result-' + i).value = li.result || '';
+      var resultSel = document.getElementById('dfrf-result-' + i);
+      resultSel.value = li.result || '';
+      resultSel.addEventListener('change', function () { dfrfToggleVoid_(i); });
+      dfrfToggleVoid_(i);
     });
+  }
+
+  /** Shows the Void Reason field and dims the rest of the sample block whenever "Void" is picked
+   *  — a voided sample doesn't need a real drop-test result, it's excluded from the record's
+   *  open/total count entirely (see listOpenDropFreezeRecords_), just kept for the audit trail. */
+  function dfrfToggleVoid_(i) {
+    var isVoid = document.getElementById('dfrf-result-' + i).value === 'Void';
+    document.getElementById('dfrf-voidWrap-' + i).style.display = isVoid ? '' : 'none';
+    document.getElementById('dfrf-block-' + i).style.opacity = isVoid ? '0.6' : '';
   }
 
   function dfrfOpt_(value, label) {
@@ -99,8 +114,11 @@
       updated.result = document.getElementById('dfrf-result-' + i).value;
       updated.failureDescription = document.getElementById('dfrf-failDesc-' + i).value;
       updated.notes = document.getElementById('dfrf-notes-' + i).value;
+      updated.voidReason = document.getElementById('dfrf-voidReason-' + i).value;
       return updated;
     });
+    var missingVoidReason = lineItems.some(function (li) { return li.result === 'Void' && !li.voidReason.trim(); });
+    if (missingVoidReason) { showToast('Enter a Void Reason for every sample marked Void.', true); return; }
     google.script.run
       .withSuccessHandler(function (result) {
         showToast('Saved results for ' + result.savedCount + ' sample(s) on Record ' + result.recordKey + '.');

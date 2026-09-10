@@ -113,6 +113,9 @@ function listOpenDropFreezeRecords_() {
   groups.forEach((groupRows, key) => {
     const openCount = groupRows.filter(r => String(r.Status || '').trim().toUpperCase() === 'OPEN').length;
     if (openCount === 0) return;
+    // Voided samples (logged in error) are excluded from the fraction shown entirely, not just
+    // treated as "done" — a record with e.g. 2 of 30 voided reads as "x / 28", not "x / 30".
+    const countedRows = groupRows.filter(r => String(r.Status || '').trim().toUpperCase() !== 'VOID');
     const first = groupRows[0];
     const createdAt = first.Created instanceof Date ? first.Created : new Date(first.Created);
     const durationHours = parseDropFreezeDurationHours_(first['Test Name']);
@@ -126,7 +129,7 @@ function listOpenDropFreezeRecords_() {
       cavity: first.Cavity || '', testName: first['Test Name'] || '',
       dateOfMfg: dateToStr_(first.DateOfMfg),
       createdAt: dateToStr_(createdAt), durationHours: durationHours, dueAt: dateToStr_(dueAt),
-      totalSamples: groupRows.length, openSamples: openCount,
+      totalSamples: countedRows.length, openSamples: openCount,
     });
   });
   records.sort((a, b) => b.recordKey.localeCompare(a.recordKey));
@@ -150,7 +153,7 @@ function loadDropFreezeRecord(recordKey) {
       dateOfMfg: dateToStr_(r.DateOfMfg), testDate: dateToStr_(r.TestDate), testedBy: r.TestedBy || '',
       sampleNo: r.SampleNo || '', sampleCount: r.SampleCount || '',
       freezerTemp: r.FreezerTemp, dropHeight: r.DropHeight, dropAngle: r.DropAngle || '', result: r.Result || '',
-      failureDescription: r.FailureDescription || '', notes: r.Notes || '',
+      failureDescription: r.FailureDescription || '', notes: r.Notes || '', voidReason: r.VoidReason || '',
     })),
   };
 }
@@ -164,12 +167,15 @@ function makeDailyRecordKey_(sheet, dateOfMfgDisplay) {
 /** Builds one Drop Freeze log row. Run context (Line #, Mold, Product Type, Resin Lot, Item,
  *  Customer Name) always comes from the resolved Run — never trusted from the client — same as
  *  In-Process/Start-Up. Status is derived from whether `li.result` is filled in, so a blank
- *  result (samples just loaded, not tested yet) always lands as OPEN. */
+ *  result (samples just loaded, not tested yet) always lands as OPEN. A "Void" result (a sample
+ *  logged in error — wrong cavity, duplicate, etc.) gets its own VOID status rather than being
+ *  deleted outright: it drops out of the Open Samples count (see listOpenDropFreezeRecords_)
+ *  while the row and its VoidReason stay in the log for a real audit trail. */
 function buildDropFreezeRow_(run, li, recordKey, lineItem, now, tz) {
   const resultRaw = String(li.result || '').trim();
   const normalized = resultRaw.replace(/[^\w\s]/g, '').toUpperCase();
-  const status = (normalized.includes('PASS') || normalized.includes('FAIL') || normalized.includes('INCONCLUSIVE'))
-    ? 'COMPLETE' : 'OPEN';
+  const status = (normalized.includes('PASS') || normalized.includes('FAIL') || normalized.includes('INCONCLUSIVE')) ? 'COMPLETE'
+    : normalized.includes('VOID') ? 'VOID' : 'OPEN';
   const d = li.dateOfMfg ? new Date(li.dateOfMfg) : now;
   return {
     RecordKey: recordKey, LineItem: lineItem, Status: status, Created: now, Updated: now,
@@ -180,7 +186,7 @@ function buildDropFreezeRow_(run, li, recordKey, lineItem, now, tz) {
     DateOfMfg: li.dateOfMfg || '', TestDate: li.testDate || '', TestedBy: li.testedBy || '',
     SampleNo: li.sampleNo || '', SampleCount: li.sampleCount || '',
     FreezerTemp: li.freezerTemp, DropHeight: li.dropHeight, DropAngle: li.dropAngle || '', Result: li.result || '',
-    FailureDescription: li.failureDescription || '', Notes: li.notes || '',
+    FailureDescription: li.failureDescription || '', Notes: li.notes || '', VoidReason: li.voidReason || '',
     Month: Utilities.formatDate(d, tz, 'MMMM'), Year: Utilities.formatDate(d, tz, 'yyyy'),
   };
 }
@@ -188,7 +194,8 @@ function buildDropFreezeRow_(run, li, recordKey, lineItem, now, tz) {
 /**
  * Saves (creates or replaces) a Drop Freeze packet.
  * payload: { recordKey (nullable), lineItems: [{runId, cavity, testName, dateOfMfg, testDate,
- *   testedBy, shift, freezerTemp, dropHeight, dropAngle, result, failureDescription, notes}] }
+ *   testedBy, shift, freezerTemp, dropHeight, dropAngle, result, failureDescription, notes,
+ *   voidReason}] } — result "Void" requires a non-blank voidReason (checked below).
  */
 function saveDropFreezePacket(payload) {
   const lock = LockService.getDocumentLock();
@@ -197,9 +204,15 @@ function saveDropFreezePacket(payload) {
     const sheet = getDropFreezeLogSheet_();
     ensureColumnExists_(sheet, 'SampleNo');
     ensureColumnExists_(sheet, 'SampleCount');
+    ensureColumnExists_(sheet, 'VoidReason');
     const items = payload.lineItems || [];
     const active = items.filter(li => String(li.runId || '').trim());
     if (active.length === 0) throw new Error('No active line items — a Run is required on at least one line.');
+    active.forEach((li, i) => {
+      if (String(li.result || '').trim().toUpperCase() === 'VOID' && !String(li.voidReason || '').trim()) {
+        throw new Error('Sample ' + (i + 1) + ' is marked Void but has no reason — enter why before saving.');
+      }
+    });
 
     let recordKey = String(payload.recordKey || '').trim();
     if (recordKey && !/^QC-\d{6}-\d+$/.test(recordKey)) {
