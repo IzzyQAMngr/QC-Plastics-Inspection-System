@@ -5,7 +5,7 @@
 // Shown under the logo in the sidebar so it's obvious at a glance which build is live —
 // bump this alongside every `clasp deploy` to the production deployment ID (see
 // reference_deployment_details memory), matching the @N version number clasp reports.
-const APP_VERSION = 'v143';
+const APP_VERSION = 'v144';
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
@@ -22,9 +22,16 @@ function doGet(e) {
  *  HTML+script is concatenated into one document, all at once, regardless of which .view is
  *  currently visible) without its element ids or global JS names colliding — e.g.
  *  DropFreezeResultsForm.html uses a "dfrf" prefix throughout; a second inclusion elsewhere on
- *  the page passes a different prefix here to get its own independent copy. */
+ *  the page passes a different prefix here to get its own independent copy.
+ *  Must use createTemplateFromFile(...).evaluate(), NOT createHtmlOutputFromFile(...).getContent()
+ *  — the latter returns the file's raw text with no scriptlet evaluation, so any <?!= include(...) ?>
+ *  tag INSIDE an included partial (e.g. DropFreezeView.html including DropFreezeResultsForm.html)
+ *  was left as literal unevaluated text in the page instead of being replaced (found 2026-09-10:
+ *  this silently broke Open Samples' and Drop Freeze Test's results form since 2026-09-04, look
+ *  like a hang because the literal tag meant osfrfInit/dfrfInit were never defined, throwing when
+ *  called and aborting the render right after the data fetch had already logged success). */
 function include(filename, renamePrefix) {
-  const html = HtmlService.createHtmlOutputFromFile(filename).getContent();
+  const html = HtmlService.createTemplateFromFile(filename).evaluate().getContent();
   return renamePrefix ? html.split('dfrf').join(renamePrefix) : html;
 }
 
