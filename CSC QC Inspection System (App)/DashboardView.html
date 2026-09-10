@@ -163,6 +163,7 @@
       <div class="field"><label>Mold Description</label><input id="rdp-moldDescription" readonly></div>
       <div class="field"><label>Product Type</label><input id="rdp-productType" readonly></div>
     </div>
+    <div class="field"><label>Color</label><select id="rdp-color"><option value="">— select —</option></select></div>
     <div class="field"><label>Item</label><div class="combo"><input id="rdp-item" placeholder="Start typing to search…"></div></div>
     <div class="field"><label>Item Description</label><input id="rdp-itemDescription" readonly></div>
     <div class="field"><label>Resin Lot</label><input id="rdp-resinLot"></div>
@@ -317,10 +318,15 @@
             var m = data.molds.find(function (x) { return x.moldId === moldId; });
             document.getElementById('rdp-productType').value = m ? m.productType : '';
             document.getElementById('rdp-moldDescription').value = m ? m.description : '';
+            google.script.run
+              .withSuccessHandler(function (colors) { fillSelect('rdp-color', colors); })
+              .withFailureHandler(function () { fillSelect('rdp-color', []); })
+              .getColorOptions(moldId);
           },
           onInvalid: function () {
             document.getElementById('rdp-productType').value = '';
             document.getElementById('rdp-moldDescription').value = '';
+            fillSelect('rdp-color', []);
           },
         });
         var itemItems = (data.itemList || []).map(function (it) { return { value: it.itemNo, label: it.itemNo, sublabel: it.description }; });
@@ -342,6 +348,7 @@
     });
     document.getElementById('rdp-shift').value = '';
     document.getElementById('rdp-createdBy').value = '';
+    fillSelect('rdp-color', []);
   }
 
   function rdpCurrentRunRowsHtml_(c) {
@@ -349,6 +356,7 @@
     var ip = c.inProcess, df = c.dropFreeze;
     return row('Run ID', esc(c.runId)) +
       row('Mold', esc(c.moldId || '—') + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '')) +
+      row('Color', esc(c.color || '—')) +
       row('Item', esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '')) +
       row('Customer', esc(c.customerName || '—')) +
       row('Resin Lot', esc(c.resinLot || '—')) +
@@ -406,6 +414,7 @@
       productType: document.getElementById('rdp-productType').value,
       moldId: moldId,
       moldDescription: document.getElementById('rdp-moldDescription').value,
+      color: document.getElementById('rdp-color').value,
       resinLot: document.getElementById('rdp-resinLot').value,
       item: item,
       itemDescription: document.getElementById('rdp-itemDescription').value,
@@ -418,6 +427,7 @@
         '<tr><th>Line</th><td>' + esc(fields.line) + '</td></tr>' +
         '<tr><th>Shift</th><td>' + esc(fields.shift) + '</td></tr>' +
         '<tr><th>Mold</th><td>' + esc(fields.moldId) + '</td></tr>' +
+        '<tr><th>Color</th><td>' + esc(fields.color || '—') + '</td></tr>' +
         '<tr><th>Item</th><td>' + esc(fields.item) + '</td></tr>' +
         '<tr><th>Customer</th><td>' + esc(fields.customerName) + '</td></tr>' +
         '<tr><th>Qty</th><td>' + esc(fields.runQty) + '</td></tr>' +

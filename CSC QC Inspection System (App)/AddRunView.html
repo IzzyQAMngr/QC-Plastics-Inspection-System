@@ -46,6 +46,7 @@
       <div class="field"><label>Mold Description</label><input id="ar-moldDescription" readonly></div>
       <div class="field"><label>Product Type</label><input id="ar-productType" readonly></div>
     </div>
+    <div class="field"><label>Color</label><select id="ar-color"><option value="">— select —</option></select></div>
     <div class="field"><label>Item</label><div class="combo"><input id="ar-item" placeholder="Start typing to search…"></div></div>
     <div class="field"><label>Item Description</label><input id="ar-itemDescription" readonly></div>
 
@@ -122,10 +123,12 @@
         var m = arData.molds.find(function (x) { return x.moldId === moldId; });
         document.getElementById('ar-productType').value = m ? m.productType : '';
         document.getElementById('ar-moldDescription').value = m ? m.description : '';
+        arFetchColorOptions_(moldId);
       },
       onInvalid: function () {
         document.getElementById('ar-productType').value = '';
         document.getElementById('ar-moldDescription').value = '';
+        fillSelect('ar-color', []);
       },
     });
 
@@ -138,6 +141,16 @@
     document.getElementById('ar-add-btn').addEventListener('click', submitAddRun);
   }
 
+  /** Same Color Specs register lookup In-Process already uses for its own Color field (keyed by
+   *  Mold only, no Item scoping) — picking Color once here means it can auto-fill everywhere
+   *  else a Run is selected instead of being re-picked on every form. */
+  function arFetchColorOptions_(moldId) {
+    google.script.run
+      .withSuccessHandler(function (colors) { fillSelect('ar-color', colors); })
+      .withFailureHandler(function () { fillSelect('ar-color', []); })
+      .getColorOptions(moldId);
+  }
+
   function resetAddRunFields() {
     ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-resinLot', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
@@ -145,6 +158,7 @@
     document.getElementById('ar-line').value = '';
     document.getElementById('ar-shift').value = '';
     document.getElementById('ar-createdBy').value = '';
+    fillSelect('ar-color', []);
   }
 
   // ---- Slide-in Add Run drawer ----
@@ -171,6 +185,7 @@
       productType: document.getElementById('ar-productType').value,
       moldId: moldId,
       moldDescription: document.getElementById('ar-moldDescription').value,
+      color: document.getElementById('ar-color').value,
       resinLot: document.getElementById('ar-resinLot').value,
       item: item,
       itemDescription: document.getElementById('ar-itemDescription').value,
@@ -184,6 +199,7 @@
         '<tr><th>Line</th><td>' + esc(fields.line) + '</td></tr>' +
         '<tr><th>Shift</th><td>' + esc(fields.shift) + '</td></tr>' +
         '<tr><th>Mold</th><td>' + esc(fields.moldId) + '</td></tr>' +
+        '<tr><th>Color</th><td>' + esc(fields.color || '—') + '</td></tr>' +
         '<tr><th>Item</th><td>' + esc(fields.item) + '</td></tr>' +
         '<tr><th>Customer</th><td>' + esc(fields.customerName) + '</td></tr>' +
         '<tr><th>Qty</th><td>' + esc(fields.runQty) + '</td></tr>' +
@@ -239,7 +255,7 @@
         '<td class="cell-mono">' + esc(r.runId) + '</td>' +
         '<td><span class="line-chip">' + esc(r.line) + '</span></td>' +
         '<td><div class="cell-primary">' + esc(r.shift) + '</div><div class="cell-secondary">' + esc(fmtStartDate(r.createdAt)) + '</div></td>' +
-        '<td><div class="cell-primary">' + esc(r.moldId) + '</div><div class="cell-secondary">' + esc(r.moldDescription) + '</div></td>' +
+        '<td><div class="cell-primary">' + esc(r.moldId) + '</div><div class="cell-secondary">' + esc([r.moldDescription, r.color].filter(Boolean).join(' · ')) + '</div></td>' +
         '<td><div class="cell-primary">' + esc(r.item) + '</div><div class="cell-secondary">' + esc(r.itemDescription) + '</div></td>' +
         '<td>' + esc(r.customerName) + '</td>' +
         '<td class="qty-cell cell-mono">' + fmtQty(r.runQty) + '</td>' +

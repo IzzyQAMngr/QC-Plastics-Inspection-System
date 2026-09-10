@@ -17,7 +17,7 @@ function getAddRunFormData() {
   };
 }
 
-/** Public wrapper — fields: {shift, line, productType, resinLot, moldId, moldDescription,
+/** Public wrapper — fields: {shift, line, productType, resinLot, moldId, moldDescription, color,
  *  item, itemDescription, customerName, runQty, createdBy}. */
 function addRun(fields) { return createRun_(fields); }
 

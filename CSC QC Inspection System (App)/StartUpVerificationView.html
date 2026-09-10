@@ -35,6 +35,7 @@
   <div class="field-row">
     <div class="field"><label>Mold ID</label><input id="suv-mold" readonly></div>
     <div class="field field-wide"><label>Mold Description</label><input id="suv-molddesc" readonly></div>
+    <div class="field"><label>Color</label><input id="suv-color" readonly></div>
     <div class="field"><label>Line #</label><input id="suv-line" readonly></div>
   </div>
   <div class="field-row">
@@ -190,6 +191,7 @@
       document.getElementById('suv-customer').value = run ? run.customerName : '';
       document.getElementById('suv-mold').value = run ? run.moldId : '';
       document.getElementById('suv-molddesc').value = run ? run.moldDescription : '';
+      document.getElementById('suv-color').value = run ? run.color : '';
       document.getElementById('suv-item').value = run ? run.item : '';
       document.getElementById('suv-itemdesc').value = run ? run.itemDescription : '';
       document.getElementById('suv-line').value = run ? run.line : '';
@@ -533,7 +535,7 @@
 
   function resetStartUpForm() {
     document.getElementById('suv-run').value = '';
-    ['suv-customer', 'suv-mold', 'suv-molddesc', 'suv-item', 'suv-itemdesc', 'suv-line', 'suv-runqty'].forEach(function (id) {
+    ['suv-customer', 'suv-mold', 'suv-molddesc', 'suv-color', 'suv-item', 'suv-itemdesc', 'suv-line', 'suv-runqty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('suv-datetime').value = suvNowDateTimeStr();

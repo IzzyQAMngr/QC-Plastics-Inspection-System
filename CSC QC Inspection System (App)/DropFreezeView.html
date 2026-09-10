@@ -27,6 +27,7 @@
     <div class="field"><label>Mold ID</label><input id="df-moldId" readonly></div>
     <div class="field field-wide"><label>Mold Description</label><input id="df-moldDesc" readonly></div>
     <div class="field"><label>Product Type</label><input id="df-productType" readonly></div>
+    <div class="field"><label>Color</label><input id="df-color" readonly></div>
     <div class="field"><label>Resin Lot</label><input id="df-resinLot" readonly></div>
   </div>
 
@@ -156,6 +157,7 @@
     document.getElementById('df-moldId').value = run ? run.moldId : '';
     document.getElementById('df-moldDesc').value = run ? run.moldDescription : '';
     document.getElementById('df-productType').value = run ? run.productType : '';
+    document.getElementById('df-color').value = run ? run.color : '';
     document.getElementById('df-resinLot').value = run ? run.resinLot : '';
     document.getElementById('df-item').value = run ? run.item : '';
     document.getElementById('df-itemDescription').value = run ? run.itemDescription : '';

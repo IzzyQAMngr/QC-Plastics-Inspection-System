@@ -838,13 +838,14 @@ function runRowToObject_(row) {
     materialLot: row['Material Lot'] || '', sizeId: row['Size ID'] || '', canDescription: row['Can Description'] || '',
     item: row['Item'] || '', itemDescription: row['Item Description'] || '', customerName: row['Customer Name'] || '',
     runQty: row['Run Qty'] || '', createdBy: row['Created By'] || '', qualified: row['Qualified'] || '',
+    color: row['Color'] || '',
     qualifiedTimestamp: dateToStr_(row['Qualified Timestamp']), stoppedAt: dateToStr_(row['Stopped At']),
     lastConfirmed: dateToStr_(row['Last Confirmed']), lastConfirmedBy: row['Last Confirmed By'] || '',
   };
 }
 
 /**
- * Creates a new Run. fields: {shift, line, productType, resinLot, moldId, moldDescription,
+ * Creates a new Run. fields: {shift, line, productType, resinLot, moldId, moldDescription, color,
  * materialLot, sizeId, canDescription, item, itemDescription, customerName, runQty, createdBy}.
  * Returns the created Run. department defaults to Plastics.
  */
@@ -853,11 +854,14 @@ function createRun_(fields, department) {
   // since a blank Item would otherwise silently land as "NOITEM" in a permanent record ID.
   if (!String(fields.item || '').trim()) throw new Error('Item is required to create a Run.');
   const sheet = getRunsSheet_(department);
+  // Color is a Plastics-only concept (picked from the Color Specs register, same list In-Process
+  // already uses) — added non-destructively, same technique as Drop Freeze's SampleNo/VoidReason.
+  if (department !== 'Metals') ensureColumnExists_(sheet, 'Color');
   const runId = makeRunId_(department, fields.line, fields.item);
   appendObjectsAsRows_(sheet, [{
     'Run ID': runId, 'Created At': new Date(), 'Shift': fields.shift || '', 'Status': 'Active',
     'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
-    'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '',
+    'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '', 'Color': fields.color || '',
     'Material Lot': fields.materialLot || '', 'Size ID': fields.sizeId || '', 'Can Description': fields.canDescription || '',
     'Item': fields.item || '', 'Item Description': fields.itemDescription || '',
     'Customer Name': fields.customerName || '', 'Run Qty': fields.runQty || '', 'Created By': fields.createdBy || '',

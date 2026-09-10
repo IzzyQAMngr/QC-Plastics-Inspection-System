@@ -56,6 +56,7 @@
       <div class="field"><label>Mold Description</label><input id="ipar-moldDescription" readonly></div>
       <div class="field"><label>Product Type</label><input id="ipar-productType" readonly></div>
     </div>
+    <div class="field"><label>Color</label><select id="ipar-color"><option value="">— select —</option></select></div>
     <div class="field"><label>Item</label><div class="combo"><input id="ipar-item" placeholder="Start typing to search…"></div></div>
     <div class="field"><label>Item Description</label><input id="ipar-itemDescription" readonly></div>
 
@@ -226,9 +227,16 @@
     return worst || 'PASS';
   }
 
-  function newCavityRow(cavity) {
+  /** Nesting/Date Code/Gauge Fit don't apply to Covers (Cover Fit still does — that's the one
+   *  functional check that's actually about a cover) — default those three to N/A instead of
+   *  blank so a Cover line doesn't require the tech to hand-pick "N/A" on every cavity. Still
+   *  editable afterward, this is just the starting value. */
+  function newCavityRow(cavity, productType) {
     var row = { cavity: cavity || '' };
     ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit','releaseDecision','releaseJustification'].forEach(function (k) { row[k] = ''; });
+    if (String(productType || '').trim().toLowerCase() === 'cover') {
+      row.nesting = 'N/A'; row.dateCode = 'N/A'; row.gaugeFit = 'N/A';
+    }
     return row;
   }
 
@@ -245,7 +253,11 @@
     line.product = m ? m.productType : (run.productType || line.product);
     line.moldDescription = run.moldDescription || line.moldDescription;
     line.qualified = run.qualified || '';
-    line.color = ''; line.colorOptions = []; line.colorSpec = null;
+    // Color picked at Add Run time carries straight over — colorOptions/colorSpec still need a
+    // fresh fetch for this mold (fetchMoldDependents, called right after this by every caller),
+    // which also re-derives the ΔE bound since line.color is now already truthy (see its
+    // "if (line.color) refetchColorSpec(n)" call).
+    line.color = run.color || ''; line.colorOptions = []; line.colorSpec = null;
   }
 
   function ensureLine(n) {
@@ -554,7 +566,8 @@
       line.sampleDate = parts.date; line.sampleTime = parts.time;
     });
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
-      ensureLine(n).cavityRows.push(newCavityRow(''));
+      var line = ensureLine(n);
+      line.cavityRows.push(newCavityRow('', line.product));
       renderLinePanel();
       refreshReviewIfOpen();
     });
@@ -613,7 +626,7 @@
         line.colorSpec = specInfo.colorSpec;
         if (regenerateRows || line.cavityRows.length === 0) {
           var cavities = specInfo.cavityIds && specInfo.cavityIds.length ? specInfo.cavityIds : [''];
-          line.cavityRows = cavities.map(function (cav) { return newCavityRow(cav); });
+          line.cavityRows = cavities.map(function (cav) { return newCavityRow(cav, line.product); });
         }
         renderLinePanel();
         renderLineTabs();
@@ -895,10 +908,15 @@
         var m = iparData.molds.find(function (x) { return x.moldId === moldId; });
         document.getElementById('ipar-productType').value = m ? m.productType : '';
         document.getElementById('ipar-moldDescription').value = m ? m.description : '';
+        google.script.run
+          .withSuccessHandler(function (colors) { fillSelect('ipar-color', colors); })
+          .withFailureHandler(function () { fillSelect('ipar-color', []); })
+          .getColorOptions(moldId);
       },
       onInvalid: function () {
         document.getElementById('ipar-productType').value = '';
         document.getElementById('ipar-moldDescription').value = '';
+        fillSelect('ipar-color', []);
       },
     });
 
@@ -918,6 +936,7 @@
     document.getElementById('ipar-line').value = '';
     document.getElementById('ipar-shift').value = '';
     document.getElementById('ipar-createdBy').value = '';
+    fillSelect('ipar-color', []);
   }
 
   function ipArSubmit() {
@@ -933,6 +952,7 @@
       productType: document.getElementById('ipar-productType').value,
       moldId: moldId,
       moldDescription: document.getElementById('ipar-moldDescription').value,
+      color: document.getElementById('ipar-color').value,
       resinLot: document.getElementById('ipar-resinLot').value,
       item: item,
       itemDescription: document.getElementById('ipar-itemDescription').value,

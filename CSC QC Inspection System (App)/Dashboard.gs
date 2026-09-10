@@ -70,7 +70,7 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
 
   return {
     runId: run.runId, line: run.line, shift: run.shift, createdAt: run.createdAt,
-    moldId: run.moldId, moldDescription: run.moldDescription,
+    moldId: run.moldId, moldDescription: run.moldDescription, color: run.color,
     item: run.item, itemDescription: run.itemDescription, customerName: run.customerName,
     resinLot: run.resinLot, runQty: run.runQty,
     qualified: run.qualified === 'Yes',
