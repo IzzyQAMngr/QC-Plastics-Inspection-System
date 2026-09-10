@@ -85,6 +85,9 @@
   /** Text shown under the Color field — which Color Type the register expects and its ΔE* Max, if any. */
   function colorHintText(line) {
     if (!line.color) return '';
+    // Natural has nothing to color-test against by definition (unpigmented — see
+    // applyNaturalColorDefaults_) — a missing Color Specs row here is expected, not an error.
+    if (String(line.color).trim().toLowerCase() === 'natural') return 'Natural — no color test required (ΔL/ΔA/ΔB/ΔE* default to N/A).';
     var cs = line.colorSpec;
     if (!cs) return 'No color spec on file for "' + line.color + '" for this mold — check the Spec Register.';
     var max = parseFloat(cs.deltaEMax);
@@ -230,14 +233,32 @@
   /** Nesting/Date Code/Gauge Fit don't apply to Covers (Cover Fit still does — that's the one
    *  functional check that's actually about a cover) — default those three to N/A instead of
    *  blank so a Cover line doesn't require the tech to hand-pick "N/A" on every cavity. Still
-   *  editable afterward, this is just the starting value. */
-  function newCavityRow(cavity, productType) {
+   *  editable afterward, this is just the starting value. Same idea for Color "Natural" — there's
+   *  no L*a*b* target to test against for unpigmented material, so ΔL/ΔA/ΔB/ΔE default to N/A. */
+  function newCavityRow(cavity, productType, color) {
     var row = { cavity: cavity || '' };
     ['visual','dateCode','deltaL','deltaA','deltaB','deltaE','nesting','coverFit','gaugeFit','releaseDecision','releaseJustification'].forEach(function (k) { row[k] = ''; });
     if (String(productType || '').trim().toLowerCase() === 'cover') {
       row.nesting = 'N/A'; row.dateCode = 'N/A'; row.gaugeFit = 'N/A';
     }
+    if (String(color || '').trim().toLowerCase() === 'natural') {
+      row.deltaL = 'N/A'; row.deltaA = 'N/A'; row.deltaB = 'N/A'; row.deltaE = 'N/A';
+    }
     return row;
+  }
+
+  /** Reactive counterpart to newCavityRow's Natural default, for when Color is picked/changed on
+   *  a line that already has cavity rows — only fills fields still blank (never overwrites a real
+   *  reading) and only clears fields still exactly 'N/A' when switching away from Natural (so a
+   *  real reading typed over an N/A is never touched either way). */
+  function applyNaturalColorDefaults_(line) {
+    var isNatural = String(line.color || '').trim().toLowerCase() === 'natural';
+    (line.cavityRows || []).forEach(function (row) {
+      ['deltaL', 'deltaA', 'deltaB', 'deltaE'].forEach(function (k) {
+        if (isNatural) { if (row[k] === '') row[k] = 'N/A'; }
+        else if (row[k] === 'N/A') { row[k] = ''; }
+      });
+    });
   }
 
   /** Copies a picked Active Run's Mold/Item/Resin Lot onto a line — shared by the "Active Run"
@@ -348,9 +369,13 @@
         return '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('') + '</select>';
     } else {
+      // A number-type field (ΔL/ΔA/ΔB/ΔE) can hold the literal string "N/A" — see
+      // applyNaturalColorDefaults_ — which a real <input type="number"> can't display at all
+      // (the browser just blanks it), so render as text instead whenever that's the value.
+      var isNumber = f.type === 'number' && String(value).trim().toUpperCase() !== 'N/A';
       var tier = f.spec ? evalBound(value, bound) : '';
       var oos = tier === 'Fail' ? ' oos' : (tier === 'NeedsReview' ? ' oos-review' : '');
-      input = '<input type="' + (f.type === 'number' ? 'number" step="any' : 'text') + '" class="' + oos + '" data-field="' + f.key + '" value="' + esc(value) + '">';
+      input = '<input type="' + (isNumber ? 'number" step="any' : 'text') + '" class="' + oos + '" data-field="' + f.key + '" value="' + esc(value) + '">';
     }
     var hint = (f.spec && bound && (bound.lsl !== null || bound.usl !== null))
       ? '<div class="spec-hint">LSL ' + (bound.lsl === null ? '—' : bound.lsl) + ' / USL ' + (bound.usl === null ? '—' : bound.usl) + '</div>' : '';
@@ -554,8 +579,11 @@
     });
 
     document.getElementById('lb-color').addEventListener('change', function (e) {
-      ensureLine(n).color = e.target.value;
+      var line = ensureLine(n);
+      line.color = e.target.value;
+      applyNaturalColorDefaults_(line);
       refetchColorSpec(n);
+      renderLinePanel();
     });
     ['resinLot','pallet'].forEach(function (key) {
       document.getElementById('lb-' + key).addEventListener('input', function (e) { ensureLine(n)[key] = e.target.value; });
@@ -567,7 +595,7 @@
     });
     document.getElementById('lb-addrow-btn').addEventListener('click', function () {
       var line = ensureLine(n);
-      line.cavityRows.push(newCavityRow('', line.product));
+      line.cavityRows.push(newCavityRow('', line.product, line.color));
       renderLinePanel();
       refreshReviewIfOpen();
     });
@@ -626,7 +654,7 @@
         line.colorSpec = specInfo.colorSpec;
         if (regenerateRows || line.cavityRows.length === 0) {
           var cavities = specInfo.cavityIds && specInfo.cavityIds.length ? specInfo.cavityIds : [''];
-          line.cavityRows = cavities.map(function (cav) { return newCavityRow(cav, line.product); });
+          line.cavityRows = cavities.map(function (cav) { return newCavityRow(cav, line.product, line.color); });
         }
         renderLinePanel();
         renderLineTabs();
