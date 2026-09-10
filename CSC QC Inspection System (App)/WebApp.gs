@@ -5,7 +5,7 @@
 // Shown under the logo in the sidebar so it's obvious at a glance which build is live —
 // bump this alongside every `clasp deploy` to the production deployment ID (see
 // reference_deployment_details memory), matching the @N version number clasp reports.
-const APP_VERSION = 'v142';
+const APP_VERSION = 'v143';
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
