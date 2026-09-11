@@ -435,6 +435,17 @@
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.error { background: var(--critical); }
 
+  .update-banner {
+    position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 130%);
+    display: flex; align-items: center; gap: 14px; background: var(--text-primary); color: var(--surface-1);
+    padding: 12px 18px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); z-index: 900;
+    font-size: 13.5px; max-width: calc(100vw - 40px); transition: transform 0.25s ease;
+  }
+  .update-banner.show { transform: translate(-50%, 0); }
+  .update-banner button { flex: none; }
+  .update-banner button.ghost { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.4); }
+  .update-banner button.ghost:hover { background: rgba(255,255,255,0.22); }
+
   /* ---- Shared Yes/No confirmation modal ---- */
   .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(10,14,18,0.55);

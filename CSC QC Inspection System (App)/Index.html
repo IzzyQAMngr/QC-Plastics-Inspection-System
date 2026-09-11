@@ -113,6 +113,16 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- A tab can sit open for days (the Run Dashboard is meant to run on a wall monitor), so its
+     loaded JS silently falls behind every deploy after the first. This banner is how it finds
+     out — polled from a version check, not pushed — and never reloads on its own, since forcing
+     a reload could wipe an in-progress inspection someone's mid-way through entering. -->
+<div class="update-banner" id="update-banner">
+  <span>A newer version of this app is available.</span>
+  <button class="ghost" id="update-banner-dismiss">Later</button>
+  <button class="primary" id="update-banner-reload">Reload Now</button>
+</div>
+
 <div class="modal-overlay" id="confirm-modal-overlay">
   <div class="modal-box">
     <div class="modal-header" id="confirm-modal-title">Confirm</div>
@@ -130,6 +140,7 @@
   var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'opensamples', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
+  var CSC_LOADED_VERSION = '<?!= appVersion ?>';
 
   // Fallback department per view, used only when there's no clicked nav-item to read from
   // (initial page load, or a deep link) — Deviation Approvals is shared by both departments'
@@ -219,6 +230,31 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 4000);
   }
+
+  // ---- Update banner — a tab left open across a deploy (the Run Dashboard is meant to sit on
+  // a wall monitor for days) otherwise keeps running its old page JS forever, no matter how much
+  // the server-side data changes underneath it. Polled rather than pushed (Apps Script has no
+  // way to notify an open tab), and never auto-reloads — that could wipe an in-progress
+  // inspection someone's mid-way through entering — just surfaces a dismissible prompt.
+  var CSC_UPDATE_CHECK_MS = 5 * 60 * 1000;
+  var csc_latestLiveVersion_ = null;
+  var csc_dismissedVersion_ = null; // dismissing "Later" quiets THIS version, not the next deploy after it
+  function checkForAppUpdate_() {
+    google.script.run
+      .withSuccessHandler(function (liveVersion) {
+        csc_latestLiveVersion_ = liveVersion;
+        var isNew = liveVersion && liveVersion !== CSC_LOADED_VERSION && liveVersion !== csc_dismissedVersion_;
+        document.getElementById('update-banner').classList.toggle('show', !!isNew);
+      })
+      .withFailureHandler(function () {}) // silent — worth trying again next tick, not bothering anyone over it
+      .getAppVersion();
+  }
+  setInterval(checkForAppUpdate_, CSC_UPDATE_CHECK_MS);
+  document.getElementById('update-banner-reload').addEventListener('click', function () { location.reload(); });
+  document.getElementById('update-banner-dismiss').addEventListener('click', function () {
+    csc_dismissedVersion_ = csc_latestLiveVersion_;
+    document.getElementById('update-banner').classList.remove('show');
+  });
 
   window.addEventListener('DOMContentLoaded', function () {
     // Run Dashboard is the default landing view, so it used to be initialized unconditionally

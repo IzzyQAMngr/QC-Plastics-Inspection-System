@@ -5,7 +5,7 @@
 // Shown under the logo in the sidebar so it's obvious at a glance which build is live —
 // bump this alongside every `clasp deploy` to the production deployment ID (see
 // reference_deployment_details memory), matching the @N version number clasp reports.
-const APP_VERSION = 'v154';
+const APP_VERSION = 'v155';
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
@@ -17,6 +17,11 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
+
+/** Polled from the client (see Index.html's update-banner logic) so a tab left open across a
+ *  deploy — e.g. the Run Dashboard, meant to sit on a wall monitor for days — finds out its
+ *  page code is stale without anyone having to manually refresh it. */
+function getAppVersion() { return APP_VERSION; }
 
 /** renamePrefix lets the SAME partial be included more than once on one page (every view's
  *  HTML+script is concatenated into one document, all at once, regardless of which .view is
