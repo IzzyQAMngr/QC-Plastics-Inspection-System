@@ -268,7 +268,7 @@
     var ipPct = ipTotal ? (c.inProcess.pass / ipTotal) * 100 : null;
     var cls = c.qualified ? '' : (ipTotal && ipPct < 85 ? 'crit' : 'fresh');
     var pill = c.qualified ? '<span class="rd-pill good">&#10003; QUALIFIED</span>' :
-      (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">STARTING UP</span>');
+      (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">NEEDS QUALIFICATION</span>');
     return '<div class="rd-lcard ' + cls + '" data-run-id="' + esc(c.runId) + '" title="Click to manage this Run">' +
       '<div class="rd-lcard-top">' +
         '<div class="rd-lcard-line"><small>LINE</small><b>' + esc(c.line || '—') + '</b></div>' +
