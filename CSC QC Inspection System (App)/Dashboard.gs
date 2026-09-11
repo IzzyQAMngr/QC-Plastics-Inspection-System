@@ -32,7 +32,13 @@ function getPlasticsLineDashboardData() {
   const dropFreezeSheet = getDb_().getSheetByName(DROPFREEZE_LOG_SHEET_NAME);
   const dropFreezeRows = dropFreezeSheet ? readSheetObjectsSince_(dropFreezeSheet, 'Created', earliestCreatedAt) : [];
 
-  const cards = runs.map(run => buildLineCard_(run, inProcessRows, dropFreezeRows));
+  // Start-Up Verification: drafts (in-progress, not yet submitted) and deviation status
+  // (submitted with a deviation, pending Manager approval, or approved and awaiting PFA
+  // sign-off) — both keyed by Run ID so buildLineCard_ can just look its Run up.
+  const drafts = getDraftedRunIds_('Plastics');
+  const suStatusByRun = getStartUpStatusByRun_('Plastics');
+
+  const cards = runs.map(run => buildLineCard_(run, inProcessRows, dropFreezeRows, drafts[run.runId], suStatusByRun[run.runId]));
   cards.sort((a, b) => {
     const na = parseFloat(a.line), nb = parseFloat(b.line);
     return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a.line).localeCompare(String(b.line));
@@ -41,7 +47,52 @@ function getPlasticsLineDashboardData() {
   return { cards: cards, generatedAt: dateToStr_(new Date()) };
 }
 
-function buildLineCard_(run, inProcessRows, dropFreezeRows) {
+/** One pass over the Start-Up Verification log, grouped into records (by Verification Record
+ *  #) and then reduced to the MOST RECENTLY SAVED record per Run ID — mirrors
+ *  getPendingDeviations_'s grouping but keyed by Run instead of listed by record, and kept for
+ *  every deviation regardless of whether it's still pending, since an already-qualified Run
+ *  still needs to know its qualification came through an approved deviation (for the
+ *  Dashboard's small flag) rather than a clean pass. Runs with no deviation at all are simply
+ *  absent from the returned map. */
+function getStartUpStatusByRun_(department) {
+  const sheet = getDb_().getSheetByName(getSuLogSheetName_(department));
+  if (!sheet) return {};
+  const rows = readSheetObjects_(sheet);
+  const byRecord = {};
+  rows.forEach(r => {
+    const id = r['Verification Record #'];
+    if (!id) return;
+    (byRecord[id] = byRecord[id] || []).push(r);
+  });
+
+  const latestByRun = {};
+  Object.keys(byRecord).forEach(recordId => {
+    const group = byRecord[recordId];
+    const runId = String(group[0]['Run ID'] || '').trim();
+    if (!runId) return;
+    const raw = group[0]['Timestamp saved'];
+    const ts = raw instanceof Date ? raw : new Date(raw);
+    const prev = latestByRun[runId];
+    if (!prev || (!isNaN(ts.getTime()) && ts > prev.ts)) latestByRun[runId] = { ts: ts, group: group };
+  });
+
+  const out = {};
+  Object.keys(latestByRun).forEach(runId => {
+    const group = latestByRun[runId].group;
+    const hasDeviation = group.some(r => r['Verification Item'] === 'Was there a deviation?' && String(r['Actual Value']).trim() === 'Yes');
+    if (!hasDeviation) return;
+    const approved = group.some(r => r['Verification Item'] === 'Deviation Approved by' && String(r['Actual Value']).trim());
+    const signedOff = group.some(r => r['Verification Item'] === 'PFA Signed off by' && String(r['Actual Value']).trim());
+    const descRow = group.find(r => r['Verification Item'] === 'Deviation Description / Notes');
+    out[runId] = {
+      status: signedOff ? 'Qualified' : (approved ? 'Awaiting PFA Sign-off' : 'Awaiting Approval'),
+      deviationDescription: descRow ? String(descRow['Actual Value'] || '').trim() : '',
+    };
+  });
+  return out;
+}
+
+function buildLineCard_(run, inProcessRows, dropFreezeRows, draftInfo, suStatus) {
   const createdAt = run.createdAt ? new Date(run.createdAt) : null;
 
   // Line #/Mold/Run ID cells can come back from Sheets as either a number or a string
@@ -108,6 +159,8 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
     item: run.item, itemDescription: run.itemDescription,
     runQty: run.runQty, resinLot: latestResinLot, resinLotAsOf: dateToStr_(latestResinLotAt),
     qualified: run.qualified === 'Yes',
+    hasDraft: !!draftInfo, draftSavedBy: draftInfo ? draftInfo.savedBy : '',
+    deviationStatus: suStatus ? suStatus.status : '', deviationDescription: suStatus ? suStatus.deviationDescription : '',
     inProcess: { pass: ipPass, fail: ipFail, total: ipPass + ipFail, failingChars: failingChars },
     dropFreeze: { pass: dfPass, fail: dfFail, total: dfPass + dfFail },
   };

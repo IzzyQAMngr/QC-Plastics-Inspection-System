@@ -51,6 +51,7 @@
   .rd-lcard { background: var(--rd-panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--rd-line); border-left: 4px solid var(--rd-good); padding: 16px 18px 18px; position: relative; cursor: pointer; transition: box-shadow 0.15s; }
   .rd-lcard.crit { border-left-color: var(--rd-critical); box-shadow: 0 0 0 1px rgba(248,113,113,0.35), 0 0 26px rgba(248,113,113,0.16); }
   .rd-lcard.fresh { border-left-color: var(--rd-dim); }
+  .rd-lcard.warning { border-left-color: var(--rd-warning); box-shadow: 0 0 0 1px rgba(251,191,36,0.35), 0 0 26px rgba(251,191,36,0.16); }
   .rd-lcard:hover { box-shadow: 0 0 0 1px var(--rd-accent), 0 0 20px rgba(111,163,245,0.25); }
   .rd-lcard-manage-hint { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rd-accent); opacity: 0; transition: opacity 0.15s; white-space: nowrap; align-self: center; }
   .rd-lcard:hover .rd-lcard-manage-hint { opacity: 1; }
@@ -64,6 +65,15 @@
   .rd-pill.good { color: var(--rd-good); border-color: var(--rd-good); background: var(--rd-good-bg); }
   .rd-pill.crit { color: var(--rd-critical); border-color: var(--rd-critical); background: var(--rd-critical-bg); }
   .rd-pill.fresh { color: var(--rd-dim); border-color: var(--rd-line); background: rgba(255,255,255,0.03); }
+  .rd-pill.warning { color: var(--rd-warning); border-color: var(--rd-warning); background: var(--rd-warning-bg); }
+
+  .rd-pill-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .rd-pill-caption { font-size: 10px; letter-spacing: 0.04em; text-align: right; color: var(--rd-dim); white-space: nowrap; }
+  .rd-pill-caption.warning { color: var(--rd-warning); text-transform: uppercase; font-weight: 700; }
+
+  .rd-dev-notes { background: var(--rd-warning-bg); border: 1px solid rgba(251,191,36,0.35); padding: 9px 11px; margin-bottom: 12px; }
+  .rd-dev-notes-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rd-warning); margin-bottom: 4px; }
+  .rd-dev-notes-text { font-size: 11.5px; color: #eef4fa; line-height: 1.4; }
 
   .rd-lcard-meta { font-size: 12.5px; line-height: 1.55; color: var(--rd-dim); margin-bottom: 14px; }
   .rd-lcard-meta b { color: #eef4fa; font-weight: 600; }
@@ -272,20 +282,58 @@
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
 
+  /** Pill + card-border state — Qualified/Not Qualified/Needs Qualification are the original
+   *  three; Start-Up In Progress (a saved draft exists), Awaiting Approval and Needs PFA (a
+   *  deviation was reported during Start-Up — see StartUpVerification.gs's approve/sign-off
+   *  flow) are layered in ahead of them, since a draft and a pending deviation are mutually
+   *  exclusive with each other and with "needs qualification" (submitting a deviation deletes
+   *  the draft; a Run can't be both qualified and still awaiting its own qualification). A
+   *  QUALIFIED Run whose Start-Up went through an approved deviation instead of a clean pass
+   *  gets a small caption under the pill flagging that, rather than a different pill. */
+  function rdStatusHtml_(c, ipTotal, ipPct) {
+    var pill, cls, caption = '';
+    if (c.qualified) {
+      cls = '';
+      pill = '<span class="rd-pill good">&#10003; QUALIFIED</span>';
+      if (c.deviationStatus === 'Qualified') {
+        caption = '<div class="rd-pill-caption warning">&#9888; Approved w/ Deviation</div>';
+      }
+    } else if (c.deviationStatus === 'Awaiting Approval') {
+      cls = 'warning';
+      pill = '<span class="rd-pill warning">AWAITING APPROVAL</span>';
+    } else if (c.deviationStatus === 'Awaiting PFA Sign-off') {
+      cls = 'warning';
+      pill = '<span class="rd-pill warning">NEEDS PFA</span>';
+    } else if (c.hasDraft) {
+      cls = 'fresh';
+      pill = '<span class="rd-pill fresh">START-UP IN PROGRESS</span>';
+      if (c.draftSavedBy) caption = '<div class="rd-pill-caption">by ' + esc(c.draftSavedBy) + '</div>';
+    } else if (ipTotal && ipPct < 85) {
+      cls = 'crit';
+      pill = '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>';
+    } else {
+      cls = 'fresh';
+      pill = '<span class="rd-pill fresh">NEEDS QUALIFICATION</span>';
+    }
+    return { cls: cls, html: '<div class="rd-pill-wrap">' + pill + caption + '</div>' };
+  }
+
   function rdCardHtml_(c) {
     var ipTotal = c.inProcess.total || 0;
     var ipPct = ipTotal ? (c.inProcess.pass / ipTotal) * 100 : null;
-    var cls = c.qualified ? '' : (ipTotal && ipPct < 85 ? 'crit' : 'fresh');
-    var pill = c.qualified ? '<span class="rd-pill good">&#10003; QUALIFIED</span>' :
-      (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">NEEDS QUALIFICATION</span>');
-    return '<div class="rd-lcard ' + cls + '" data-run-id="' + esc(c.runId) + '" title="Click to manage this Run">' +
+    var status = rdStatusHtml_(c, ipTotal, ipPct);
+    var devNotesHtml = c.deviationDescription
+      ? '<div class="rd-dev-notes"><div class="rd-dev-notes-label">&#9888; Deviation</div><div class="rd-dev-notes-text">' + esc(c.deviationDescription) + '</div></div>'
+      : '';
+    return '<div class="rd-lcard ' + status.cls + '" data-run-id="' + esc(c.runId) + '" title="Click to manage this Run">' +
       '<div class="rd-lcard-top">' +
         '<div class="rd-lcard-line"><small>INJ. MACHINE</small><b>' + esc(c.line || '—') + '</b></div>' +
         '<span class="rd-lcard-manage-hint">Manage &rsaquo;</span>' +
-        pill +
+        status.html +
       '</div>' +
+      (devNotesHtml ? '<div class="rd-gauge-divider"></div>' + devNotesHtml : '') +
       '<div class="rd-lcard-meta">' +
-        'Mold <b>' + esc(c.moldId || '—') + '</b>' + (c.moldDescription ? ' &mdash; ' + esc(c.moldDescription) : '') + '<br>' +
+        'Mold <b>' + esc(c.moldId || '—') + '</b><br>' +
         'Item ' + esc(c.item || '—') + (c.itemDescription ? ' &mdash; ' + esc(c.itemDescription) : '') + '<br>' +
         'Color ' + esc(c.color || '—') + '<br>' +
         'Resin Lot ' + esc(c.resinLot || '—') + (c.resinLot && c.resinLotAsOf ? ' <span class="rd-asof">(as of ' + esc(rdAsOfText_(c.resinLotAsOf)) + ')</span>' : '') +
