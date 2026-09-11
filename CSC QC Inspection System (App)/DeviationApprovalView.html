@@ -1,15 +1,35 @@
+<style>
+  .da-lock-banner { display: flex; align-items: center; gap: 10px; background: var(--serious-bg); border: 1px solid var(--serious); color: var(--serious); padding: 10px 14px; margin-bottom: 16px; font-weight: 600; font-size: 13.5px; }
+  .da-lock-banner .icon { font-size: 18px; }
+  #da-page-wrap.da-locked { filter: grayscale(0.9) opacity(0.55); pointer-events: none; user-select: none; }
+</style>
+
 <h1 class="page-title">🔏 Deviation Approvals</h1>
 <p class="page-sub">Deviations reported during Start-Up Verification land here. Approve first — the PFA can't be signed off until a deviation is approved. Signing off the PFA qualifies the Run.</p>
 
-<section class="card hidden" id="da-focus-card">
-  <h2>From your link</h2>
-  <div id="da-focus-detail"></div>
-</section>
+<div class="da-lock-banner hidden" id="da-lock-banner">
+  <span class="icon">🔒</span>
+  <span>View only — approving deviations and signing off PFAs is locked to the QA Manager. You can see everything below, but can't act on it here.</span>
+</div>
 
-<section class="card">
-  <h2>Pending Deviations</h2>
-  <div id="da-pending-table"></div>
-</section>
+<div id="da-page-wrap">
+  <section class="card hidden" id="da-focus-card">
+    <h2>From your link</h2>
+    <div id="da-focus-detail"></div>
+  </section>
+
+  <section class="card">
+    <h2>Pending Deviations</h2>
+    <p class="spec-hint">Awaiting your approval, or already approved and awaiting a PFA sign-off.</p>
+    <div id="da-pending-table"></div>
+  </section>
+
+  <section class="card" style="margin-top:16px;">
+    <h2>Approved Deviations</h2>
+    <p class="spec-hint">A running history of every deviation that has been approved, newest first — stays here even after the PFA is signed off, so it never empties out.</p>
+    <div id="da-approved-table"></div>
+  </section>
+</div>
 
 <script>
   var daData = null;
@@ -22,7 +42,10 @@
     google.script.run
       .withSuccessHandler(function (data) {
         daData = data;
+        document.getElementById('da-lock-banner').classList.toggle('hidden', !!data.canManage);
+        document.getElementById('da-page-wrap').classList.toggle('da-locked', !data.canManage);
         renderPendingTable();
+        renderApprovedTable();
         maybeOpenFromLink();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
@@ -33,6 +56,7 @@
     var rows = daData.pending || [];
     var el = document.getElementById('da-pending-table');
     if (!rows.length) { el.innerHTML = '<p class="spec-hint">No deviations awaiting action.</p><div id="da-action-panel"></div>'; return; }
+    var showAct = !!daData.canManage;
     var body = rows.map(function (r) {
       var badge = r.status === 'Awaiting Approval' ? '<span class="badge warning">Awaiting Approval</span>' : '<span class="badge serious">Awaiting PFA Sign-off</span>';
       return '<tr>' +
@@ -44,18 +68,43 @@
         '<td>' + esc(r.verificationDate) + '</td>' +
         '<td>' + esc(r.deviationDescription) + '</td>' +
         '<td>' + badge + '</td>' +
-        '<td><button class="ghost" data-act="' + esc(r.recordId) + '">Act</button></td>' +
+        (showAct ? '<td><button class="ghost" data-act="' + esc(r.recordId) + '">Act</button></td>' : '') +
         '</tr>';
     }).join('');
     el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
-      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Status</th><th></th>' +
+      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Status</th>' + (showAct ? '<th></th>' : '') +
       '</tr></thead><tbody>' + body + '</tbody></table></div><div id="da-action-panel"></div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-act]'), function (btn) {
       btn.addEventListener('click', function () { openActionPanel(btn.dataset.act); });
     });
   }
 
+  function renderApprovedTable() {
+    var rows = daData.approved || [];
+    var el = document.getElementById('da-approved-table');
+    if (!rows.length) { el.innerHTML = '<p class="spec-hint">No deviations have been approved yet.</p>'; return; }
+    var body = rows.map(function (r) {
+      var badge = r.status === 'Complete' ? '<span class="badge good">Complete</span>' : '<span class="badge serious">Awaiting PFA Sign-off</span>';
+      return '<tr>' +
+        '<td>' + esc(r.recordId) + '</td>' +
+        '<td>' + esc(r.department) + '</td>' +
+        '<td>' + esc(r.runId) + '</td>' +
+        '<td>' + esc(r.moldId || r.sizeId) + '</td>' +
+        '<td>' + esc(r.line) + '</td>' +
+        '<td>' + esc(r.verificationDate) + '</td>' +
+        '<td>' + esc(r.deviationDescription) + '</td>' +
+        '<td>' + esc(r.approvedBy) + (r.supervisorAuthorization ? '<br><span class="spec-hint">Supervisor: ' + esc(r.supervisorAuthorization) + '</span>' : '') + '</td>' +
+        '<td>' + esc(r.pfaSignedOffBy || '—') + (r.pfaId ? '<br><span class="spec-hint">' + esc(r.pfaId) + '</span>' : '') + '</td>' +
+        '<td>' + badge + '</td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
+      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Approved By</th><th>PFA Signed Off</th><th>Status</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
   function openActionPanel(recordId) {
+    if (!daData.canManage) return; // page is already locked/dimmed for view-only visitors — this is just a backstop
     var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
     var panel = document.getElementById('da-action-panel');
     if (!panel || !rec) return;
@@ -116,7 +165,7 @@
     var rid = window.INITIAL_PARAMS.record;
     var dept = window.INITIAL_PARAMS.dept || '';
     var rec = (daData.pending || []).find(function (r) { return r.recordId === rid; });
-    if (rec) { openActionPanel(rid); } else { loadFocusedRecord(rid, dept); }
+    if (rec && daData.canManage) { openActionPanel(rid); } else { loadFocusedRecord(rid, dept); }
     window.INITIAL_PARAMS.record = ''; // only auto-open once
   }
 

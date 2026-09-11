@@ -296,14 +296,66 @@ function getPendingDeviations_(department) {
 }
 function getPendingDeviations() { return getPendingDeviations_('Plastics').concat(getPendingDeviations_('Metals')); }
 
+/** Every deviation that has ever been approved — a running audit-trail log, not just the ones
+ *  still awaiting action. Includes records already fully signed off (Complete) alongside ones
+ *  still waiting on their PFA sign-off, so it stays a permanent history rather than something
+ *  that empties out over time the way getPendingDeviations_ does by design. Newest first. */
+function getApprovedDeviations_(department) {
+  const rows = readSheetObjects_(getSuLogSheet_(department));
+  const byRecord = {};
+  rows.forEach(r => {
+    const id = r['Verification Record #'];
+    if (!id) return;
+    (byRecord[id] = byRecord[id] || []).push(r);
+  });
+  const out = [];
+  Object.keys(byRecord).forEach(id => {
+    const group = byRecord[id];
+    const approvedRow = group.find(r => r['Verification Item'] === 'Deviation Approved by' && String(r['Actual Value']).trim());
+    if (!approvedRow) return;
+    const ctx = group[0];
+    const descRow = group.find(r => r['Verification Item'] === 'Deviation Description / Notes');
+    const supervisorRow = group.find(r => r['Verification Item'] === 'Supervisor Authorization (if deviation)');
+    const signOffRow = group.find(r => r['Verification Item'] === 'PFA Signed off by');
+    const pfaRow = group.find(r => r['Verification Item'] === 'PFA completed (PFA ID)');
+    out.push({
+      recordId: id, department: department === 'Metals' ? 'Metals' : 'Plastics', runId: ctx['Run ID'] || '',
+      moldId: ctx['Mold ID'] || '', moldDescription: ctx['Mold Description'] || '', sizeId: ctx['Size ID'] || '',
+      line: ctx['Line #'] || '', verificationDate: dateToStr_(ctx['Verification Date']), qcTechName: ctx['QC Tech Name'] || '',
+      startUpTechName: ctx['Start-Up Tech'] || '', deviationDescription: descRow ? String(descRow['Actual Value'] || '') : '',
+      approvedBy: String(approvedRow['Actual Value'] || ''), supervisorAuthorization: supervisorRow ? String(supervisorRow['Actual Value'] || '') : '',
+      pfaSignedOffBy: signOffRow ? String(signOffRow['Actual Value'] || '') : '', pfaId: pfaRow ? String(pfaRow['Actual Value'] || '') : '',
+      status: signOffRow ? 'Complete' : 'Awaiting PFA Sign-off',
+    });
+  });
+  return out;
+}
+
+// Deviation approval + PFA sign-off are locked to the QA Manager — everyone else can open the
+// Deviation Approvals page to see the pending inbox and the approved-deviations history, but
+// can't act on either. Checked both server-side (the real gate — approveDeviation_/signPfa_
+// throw for anyone else, so this can't be bypassed by tampering with the client) and
+// client-side (DeviationApprovalView.html greys the page out with a lock icon so a non-Manager
+// viewer immediately understands why nothing is clickable, rather than clicks silently failing).
+const DEVIATION_APPROVAL_MANAGER_EMAILS = ['izuniga@cscmfg.com'];
+function isDeviationManager_() {
+  const email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+  return !!email && DEVIATION_APPROVAL_MANAGER_EMAILS.indexOf(email) >= 0;
+}
+
 /** Called by DeviationApprovalView.html on load — merges both departments' pending deviations
- *  into one inbox, and keeps their auth lists separate (each department may have different
- *  authorized approvers). */
+ *  and approved-deviation history into one inbox, keeps their auth lists separate (each
+ *  department may have different authorized approvers), and tells the client whether the
+ *  current viewer is allowed to act here at all. */
 function getDeviationApprovalFormData() {
+  const approved = getApprovedDeviations_('Plastics').concat(getApprovedDeviations_('Metals'));
+  approved.sort((a, b) => String(b.recordId).localeCompare(String(a.recordId))); // newest first, across both departments
   return {
     pending: getPendingDeviations_('Plastics').concat(getPendingDeviations_('Metals')),
+    approved: approved,
     authOptionsPlastics: getDeviationAuthList_(),
     authOptionsMetals: getDeviationAuthList_('Metals'),
+    canManage: isDeviationManager_(),
   };
 }
 
@@ -329,6 +381,7 @@ function getDeviationRecordDetail(recordId, department) { return getDeviationRec
 
 /** Approves the deviation — does NOT touch PFA Signed off by, which stays locked until this exists. */
 function approveDeviation_(recordId, approverName, supervisorName, department) {
+  if (!isDeviationManager_()) throw new Error('Only the QA Manager can approve deviations.');
   const rows = getRecordRows_(recordId, department);
   if (!rows.length) throw new Error('Verification record not found: ' + recordId);
   const authList = getDeviationAuthList_(department);
@@ -345,6 +398,7 @@ function approveDeviation(recordId, approverName, supervisorName, department) { 
 
 /** Signs off the PFA and qualifies the Run — blocked until the deviation has been approved. */
 function signPfa_(recordId, qcName, adjustmentsText, department) {
+  if (!isDeviationManager_()) throw new Error('Only the QA Manager can sign off a PFA.');
   const detail = getDeviationRecordDetail_(recordId, department);
   if (!detail) throw new Error('Verification record not found: ' + recordId);
   if (!detail.deviationApprovedBy) throw new Error('This deviation has not been approved yet — the PFA cannot be signed off until it is.');
