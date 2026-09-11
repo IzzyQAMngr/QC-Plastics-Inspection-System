@@ -70,6 +70,7 @@
 
   .rd-gauge { margin-bottom: 10px; }
   .rd-gauge:last-child { margin-bottom: 0; }
+  .rd-gauge-divider { height: 1px; background: var(--rd-line); margin: 4px 0 14px; }
   .rd-gauge-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
   .rd-gauge-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--rd-dim); }
   .rd-gauge-pct { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -274,6 +275,7 @@
         '<div class="rd-idline">' + esc(c.runId) + (c.shift ? ' &middot; SHIFT ' + esc(c.shift) : '') + ' &middot; STARTED ' + rdStartedText_(c.createdAt).toUpperCase() + '</div>' +
       '</div>' +
       rdGaugeHtml_('In-Process', c.inProcess) +
+      '<div class="rd-gauge-divider"></div>' +
       rdGaugeHtml_('Drop Freeze', c.dropFreeze) +
     '</div>';
   }
