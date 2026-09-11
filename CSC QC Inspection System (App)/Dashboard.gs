@@ -1,8 +1,10 @@
 /*************************************************************
  * PLASTICS DASHBOARD — one card per currently Active Run, showing
- * that run's In-Process and Drop Freeze pass rates plus its
- * Qualified status. Computed live off the log sheets on every load
- * (no separate dashboard tabs are written).
+ * that run's In-Process and Drop Freeze pass rates, most recent Resin
+ * Lot, and Qualified status. Computed live off the log sheets on every
+ * load (no separate dashboard tabs are written) — Resin Lot in
+ * particular is read straight off the In-Process log rather than kept
+ * in some imported/synced copy, same as everything else here.
  *
  * In-Process has no Run ID column (only Line # + Mold), so its rows
  * are matched to a Run by Line # + Mold + Timestamp Saved on/after
@@ -47,14 +49,24 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
   // before comparing — comparing a bare (possibly numeric) run.line/run.moldId against an
   // already-stringified sheet value silently matched nothing.
   let ipPass = 0, ipFail = 0;
+  let latestResinLot = '', latestResinLotAt = null;
   const charStats = {}; // Characteristic Name -> {pass, fail} — which dimensions are driving a Line's fails
   inProcessRows.forEach(r => {
     if (String(r['Line #'] || '').trim() !== String(run.line || '').trim()) return;
     if (String(r['Mold'] || '').trim() !== String(run.moldId || '').trim()) return;
-    if (createdAt && !isNaN(createdAt.getTime())) {
-      const t = r['Timestamp Saved'] instanceof Date ? r['Timestamp Saved'] : new Date(r['Timestamp Saved']);
-      if (!isNaN(t.getTime()) && t < createdAt) return;
+    const t = r['Timestamp Saved'] instanceof Date ? r['Timestamp Saved'] : new Date(r['Timestamp Saved']);
+    if (createdAt && !isNaN(createdAt.getTime()) && !isNaN(t.getTime()) && t < createdAt) return;
+
+    // Resin Lot is captured per sample on every In-Process row regardless of Test Type (Visual,
+    // Color, Dimensional, Functional rows from the same save all carry the same "LOT of Resin"),
+    // so it's tracked here off the whole matched set, not just the Dimensional rows the pass/fail
+    // tally below is scoped to — whichever row has the latest Timestamp Saved wins.
+    const resinLot = String(r['LOT of Resin'] || '').trim();
+    if (resinLot && !isNaN(t.getTime()) && (!latestResinLotAt || t > latestResinLotAt)) {
+      latestResinLot = resinLot;
+      latestResinLotAt = t;
     }
+
     if (r['Test Type'] !== 'Dimensional') return;
     const status = String(r.Status || '').trim();
     if (status === 'Pass') ipPass++;
@@ -94,7 +106,7 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
     runId: run.runId, line: run.line, shift: run.shift, createdAt: run.createdAt,
     moldId: run.moldId, moldDescription: run.moldDescription, color: run.color,
     item: run.item, itemDescription: run.itemDescription,
-    runQty: run.runQty,
+    runQty: run.runQty, resinLot: latestResinLot,
     qualified: run.qualified === 'Yes',
     inProcess: { pass: ipPass, fail: ipFail, total: ipPass + ipFail, failingChars: failingChars },
     dropFreeze: { pass: dfPass, fail: dfFail, total: dfPass + dfFail },
