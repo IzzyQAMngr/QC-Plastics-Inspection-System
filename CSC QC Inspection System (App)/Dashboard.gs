@@ -66,16 +66,20 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
     charStats[charName][status === 'Pass' ? 'pass' : 'fail']++;
   });
 
-  // Only the characteristics actually failing, worst rate first — this is what tells a QC
-  // Manager glancing at the board WHY a Line's In-Process rate is low, not just that it is.
+  // Only the characteristics actually failing, worst contributor first — this is what tells a
+  // QC Manager glancing at the board WHY a Line's In-Process rate is low, not just that it is.
+  // `rate` is each characteristic's share of the LINE'S OVERALL total (ipPass + ipFail), not of
+  // that characteristic's own sample count — so every failingChars[].rate plus the gauge's own
+  // pass rate always adds up to 100%, matching what's shown above it (e.g. 90% pass + 10% fail,
+  // with a single failing characteristic accounting for the whole 10%).
+  const ipTotal = ipPass + ipFail;
   const failingChars = Object.keys(charStats)
     .map(name => {
       const s = charStats[name];
-      const total = s.pass + s.fail;
-      return { name, fail: s.fail, total, rate: Math.round((s.fail / total) * 1000) / 10 };
+      return { name, fail: s.fail, total: ipTotal, rate: ipTotal ? Math.round((s.fail / ipTotal) * 1000) / 10 : 0 };
     })
     .filter(c => c.fail > 0)
-    .sort((a, b) => b.rate - a.rate || b.fail - a.fail)
+    .sort((a, b) => b.fail - a.fail)
     .slice(0, 5);
 
   let dfPass = 0, dfFail = 0;
