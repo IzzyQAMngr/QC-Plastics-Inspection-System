@@ -68,6 +68,7 @@
   .rd-lcard-meta { font-size: 12.5px; line-height: 1.55; color: var(--rd-dim); margin-bottom: 14px; }
   .rd-lcard-meta b { color: #eef4fa; font-weight: 600; }
   .rd-lcard-meta .rd-idline { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: #61748d; margin-top: 3px; }
+  .rd-lcard-meta .rd-asof { font-size: 11px; color: var(--rd-dim); }
 
   .rd-gauge { margin-bottom: 10px; }
   .rd-gauge:last-child { margin-bottom: 0; }
@@ -263,6 +264,14 @@
     return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : '—';
   }
 
+  /** Date + time, not just date — a Resin Lot can change more than once in a day (a lot runs
+   *  out mid-shift, a new one gets loaded), so "as of" needs to say when, not just which day. */
+  function rdAsOfText_(v) {
+    var d = v ? new Date(v) : null;
+    if (!d || isNaN(d.getTime())) return '';
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
   function rdCardHtml_(c) {
     var ipTotal = c.inProcess.total || 0;
     var ipPct = ipTotal ? (c.inProcess.pass / ipTotal) * 100 : null;
@@ -279,7 +288,7 @@
         'Mold <b>' + esc(c.moldId || '—') + '</b>' + (c.moldDescription ? ' &mdash; ' + esc(c.moldDescription) : '') + '<br>' +
         'Item ' + esc(c.item || '—') + (c.itemDescription ? ' &mdash; ' + esc(c.itemDescription) : '') + '<br>' +
         'Color ' + esc(c.color || '—') + '<br>' +
-        'Resin Lot ' + esc(c.resinLot || '—') +
+        'Resin Lot ' + esc(c.resinLot || '—') + (c.resinLot && c.resinLotAsOf ? ' <span class="rd-asof">(as of ' + esc(rdAsOfText_(c.resinLotAsOf)) + ')</span>' : '') +
         '<div class="rd-idline">' + esc(c.runId) + (c.shift ? ' &middot; SHIFT ' + esc(c.shift) : '') + ' &middot; STARTED ' + rdStartedText_(c.createdAt).toUpperCase() + '</div>' +
       '</div>' +
       rdGaugeHtml_('In-Process', c.inProcess) +
@@ -386,7 +395,7 @@
       row('Mold', esc(c.moldId || '—') + (c.moldDescription ? ' — ' + esc(c.moldDescription) : '')) +
       row('Color', esc(c.color || '—')) +
       row('Item', esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '')) +
-      row('Resin Lot', esc(c.resinLot || '—')) +
+      row('Resin Lot', esc(c.resinLot || '—') + (c.resinLot && c.resinLotAsOf ? ' <span class="spec-hint">(as of ' + esc(rdAsOfText_(c.resinLotAsOf)) + ')</span>' : '')) +
       row('Run Qty', c.runQty ? esc(c.runQty) : '—') +
       row('Shift', esc(c.shift || '—')) +
       row('Started', esc(rdStartedText_(c.createdAt))) +
