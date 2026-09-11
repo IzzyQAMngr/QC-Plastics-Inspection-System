@@ -22,6 +22,7 @@
   .rd-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 22px; flex-wrap: wrap; gap: 12px; }
   .rd-title { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 30px; letter-spacing: 0.01em; margin: 0; }
   .rd-sub { font-size: 12.5px; color: var(--rd-dim); margin: 2px 0 0; }
+  .rd-head-right { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
   .rd-live { text-align: right; }
   .rd-live-chip { display: inline-flex; align-items: center; gap: 6px; font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.14em; color: var(--rd-good); }
   .rd-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rd-good); animation: rd-pulse 1.8s infinite; }
@@ -97,9 +98,12 @@
       <h1 class="rd-title">Run Dashboard</h1>
       <p class="rd-sub">Live pass/fail performance and qualification status for every Line currently running a Plastics job.</p>
     </div>
-    <div class="rd-live">
-      <div class="rd-live-chip"><span class="rd-live-dot"></span>LIVE &middot; REFRESHES EVERY 60S</div>
-      <div class="rd-clock" id="rdClock">&nbsp;</div>
+    <div class="rd-head-right">
+      <button class="primary" id="rdp-open-add-btn">+ Add Run</button>
+      <div class="rd-live">
+        <div class="rd-live-chip"><span class="rd-live-dot"></span>LIVE &middot; REFRESHES EVERY 60S</div>
+        <div class="rd-clock" id="rdClock">&nbsp;</div>
+      </div>
     </div>
   </div>
 
@@ -150,17 +154,20 @@
 <div class="drawer" id="rdp-drawer" role="dialog" aria-modal="true" aria-labelledby="rdp-drawer-title">
   <div class="drawer-head">
     <div>
-      <h2 id="rdp-drawer-title">Line <span id="rdp-line-label"></span></h2>
-      <p>Manage this Line's Run</p>
+      <h2 id="rdp-drawer-title">Add Run</h2>
+      <p id="rdp-drawer-sub">Manage this Line's Run</p>
     </div>
     <button class="drawer-close" id="rdp-drawer-close" aria-label="Close">&times;</button>
   </div>
   <div class="drawer-body">
-    <div class="section-divider">Current Run</div>
-    <table class="modal-info-table" style="margin-bottom:14px;"><tbody id="rdp-current-run-tbody"></tbody></table>
-    <button class="danger" id="rdp-stop-btn" style="width:100%;margin-bottom:24px;">Stop Run</button>
+    <div id="rdp-current-run-section">
+      <div class="section-divider">Current Run</div>
+      <table class="modal-info-table" style="margin-bottom:14px;"><tbody id="rdp-current-run-tbody"></tbody></table>
+      <button class="danger" id="rdp-stop-btn" style="width:100%;margin-bottom:24px;">Stop Run</button>
+    </div>
 
-    <div class="section-divider">Start New Run on This Line</div>
+    <div class="section-divider" id="rdp-new-run-label">Start New Run on This Line</div>
+    <div class="field hidden" id="rdp-line-field"><label>Line #</label><select id="rdp-line"><option value="">— select —</option></select></div>
     <div class="field-row-2">
       <div class="field"><label>Shift</label><select id="rdp-shift"><option value="">— select —</option></select></div>
       <div class="field"><label>Created By</label><select id="rdp-createdBy"><option value="">— select —</option></select></div>
@@ -328,6 +335,7 @@
     google.script.run
       .withSuccessHandler(function (data) {
         rdpFormData_ = data;
+        fillSelect('rdp-line', data.lines || []);
         fillSelect('rdp-shift', data.shifts);
         fillSelect('rdp-createdBy', data.createdByOptions);
         var moldItems = (data.molds || []).map(function (m) { return { value: m.moldId, label: m.moldId, sublabel: m.productType }; });
@@ -364,6 +372,7 @@
       'rdp-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
+    document.getElementById('rdp-line').value = '';
     document.getElementById('rdp-shift').value = '';
     document.getElementById('rdp-createdBy').value = '';
     fillSelect('rdp-color', []);
@@ -386,11 +395,31 @@
 
   function rdpOpenForCard_(card) {
     rdpCard_ = card;
-    document.getElementById('rdp-line-label').textContent = card.line || '—';
+    document.getElementById('rdp-drawer-title').textContent = 'Line ' + (card.line || '—');
+    document.getElementById('rdp-drawer-sub').textContent = "Manage this Line's Run";
+    document.getElementById('rdp-current-run-section').classList.remove('hidden');
+    document.getElementById('rdp-line-field').classList.add('hidden');
+    document.getElementById('rdp-new-run-label').textContent = 'Start New Run on This Line';
     document.getElementById('rdp-current-run-tbody').innerHTML = rdpCurrentRunRowsHtml_(card);
     rdpResetNewRunFields_();
     rdpOpenDrawer_();
   }
+
+  /** The dashboard's own "+ Add Run" button — same drawer, but with no Run already selected:
+   *  no Current Run to show or Stop, and a Line # field (hidden in the per-card flow, where
+   *  the clicked card's Line is already implied) so a Line with no Active run yet — the whole
+   *  reason a QC Manager would come here instead of clicking an existing card — can get one. */
+  function rdpOpenForNewRun_() {
+    rdpCard_ = null;
+    document.getElementById('rdp-drawer-title').textContent = 'Add Run';
+    document.getElementById('rdp-drawer-sub').textContent = 'Start a new Run on any Line';
+    document.getElementById('rdp-current-run-section').classList.add('hidden');
+    document.getElementById('rdp-line-field').classList.remove('hidden');
+    document.getElementById('rdp-new-run-label').textContent = 'New Run';
+    rdpResetNewRunFields_();
+    rdpOpenDrawer_();
+  }
+  document.getElementById('rdp-open-add-btn').addEventListener('click', rdpOpenForNewRun_);
 
   var rdpDrawer_ = document.getElementById('rdp-drawer');
   var rdpDrawerOverlay_ = document.getElementById('rdp-drawer-overlay');
@@ -419,13 +448,14 @@
   });
 
   document.getElementById('rdp-add-btn').addEventListener('click', function () {
-    if (!rdpCard_) return;
+    var line = rdpCard_ ? rdpCard_.line : document.getElementById('rdp-line').value;
     var moldId = document.getElementById('rdp-mold').value;
     var item = document.getElementById('rdp-item').value;
+    if (!line) { showToast('Pick a Line #.', true); return; }
     if (!moldId) { showToast('Pick a Mold.', true); return; }
     if (!item) { showToast('Pick an Item.', true); return; }
     var fields = {
-      line: rdpCard_.line,
+      line: line,
       shift: document.getElementById('rdp-shift').value,
       productType: document.getElementById('rdp-productType').value,
       moldId: moldId,
