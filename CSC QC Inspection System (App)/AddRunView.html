@@ -51,7 +51,6 @@
     <div class="field"><label>Item Description</label><input id="ar-itemDescription" readonly></div>
 
     <div class="section-divider">Order Info</div>
-    <div class="field"><label>Customer Name (if available)</label><input id="ar-customerName"></div>
     <div class="field"><label>Run Qty (if available)</label><input id="ar-runQty" type="number"></div>
   </div>
   <div class="drawer-foot">
@@ -64,12 +63,12 @@
   var arData = null;
   var AR_SKELETON_ROWS = 15;
   var AR_TABLE_COLGROUP =
-    '<col style="width:12%"><col style="width:5%"><col style="width:11%"><col style="width:15%">' +
-    '<col style="width:15%"><col style="width:11%"><col style="width:6%"><col style="width:8%">' +
+    '<col style="width:12%"><col style="width:5%"><col style="width:14%"><col style="width:19%">' +
+    '<col style="width:19%"><col style="width:6%"><col style="width:8%">' +
     '<col style="width:9%"><col style="width:8%">';
   var AR_TABLE_HEADER =
     '<th>Run</th><th>Line</th><th>Shift / Start</th><th>Mold</th><th>Item</th>' +
-    '<th>Customer</th><th style="text-align:right;">Qty</th><th>Qualified</th><th>Confirmed</th><th></th>';
+    '<th style="text-align:right;">Qty</th><th>Qualified</th><th>Confirmed</th><th></th>';
   var AR_TABLE_COLS = AR_TABLE_HEADER.split('<th').length - 1;
 
   /** e.g. "8/20/2026, 5:17 PM" -> "8/20/2026 5:17 PM" (no time = "—"). */
@@ -151,7 +150,7 @@
   }
 
   function resetAddRunFields() {
-    ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
+    ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('ar-line').value = '';
@@ -187,7 +186,6 @@
       color: document.getElementById('ar-color').value,
       item: item,
       itemDescription: document.getElementById('ar-itemDescription').value,
-      customerName: document.getElementById('ar-customerName').value,
       runQty: document.getElementById('ar-runQty').value,
       createdBy: document.getElementById('ar-createdBy').value,
     };
@@ -199,7 +197,6 @@
         '<tr><th>Mold</th><td>' + esc(fields.moldId) + '</td></tr>' +
         '<tr><th>Color</th><td>' + esc(fields.color || '—') + '</td></tr>' +
         '<tr><th>Item</th><td>' + esc(fields.item) + '</td></tr>' +
-        '<tr><th>Customer</th><td>' + esc(fields.customerName) + '</td></tr>' +
         '<tr><th>Qty</th><td>' + esc(fields.runQty) + '</td></tr>' +
       '</tbody></table>';
     showConfirmModal('Add Run?', infoHtml, function () {
@@ -255,7 +252,6 @@
         '<td><div class="cell-primary">' + esc(r.shift) + '</div><div class="cell-secondary">' + esc(fmtStartDate(r.createdAt)) + '</div></td>' +
         '<td><div class="cell-primary">' + esc(r.moldId) + '</div><div class="cell-secondary">' + esc([r.moldDescription, r.color].filter(Boolean).join(' · ')) + '</div></td>' +
         '<td><div class="cell-primary">' + esc(r.item) + '</div><div class="cell-secondary">' + esc(r.itemDescription) + '</div></td>' +
-        '<td>' + esc(r.customerName) + '</td>' +
         '<td class="qty-cell cell-mono">' + fmtQty(r.runQty) + '</td>' +
         '<td>' + qualifiedBadge + '</td>' +
         '<td>' + confirmedHtml + '</td>' +
@@ -277,7 +273,6 @@
             '<tr><th>Shift</th><td>' + esc(run.shift) + '</td></tr>' +
             '<tr><th>Mold</th><td>' + esc(run.moldId) + '</td></tr>' +
             '<tr><th>Item</th><td>' + esc(run.item) + '</td></tr>' +
-            '<tr><th>Customer</th><td>' + esc(run.customerName) + '</td></tr>' +
             '<tr><th>Qty</th><td>' + esc(run.runQty) + '</td></tr>' +
           '</tbody></table>';
         showConfirmModal('End Run ' + runId + '?', infoHtml, function () {

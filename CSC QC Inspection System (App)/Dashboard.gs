@@ -47,6 +47,7 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
   // before comparing — comparing a bare (possibly numeric) run.line/run.moldId against an
   // already-stringified sheet value silently matched nothing.
   let ipPass = 0, ipFail = 0;
+  const charStats = {}; // Characteristic Name -> {pass, fail} — which dimensions are driving a Line's fails
   inProcessRows.forEach(r => {
     if (String(r['Line #'] || '').trim() !== String(run.line || '').trim()) return;
     if (String(r['Mold'] || '').trim() !== String(run.moldId || '').trim()) return;
@@ -58,7 +59,24 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
     const status = String(r.Status || '').trim();
     if (status === 'Pass') ipPass++;
     else if (status === 'Fail') ipFail++;
+    else return;
+    const charName = String(r['Characteristic Name'] || '').trim();
+    if (!charName) return;
+    if (!charStats[charName]) charStats[charName] = { pass: 0, fail: 0 };
+    charStats[charName][status === 'Pass' ? 'pass' : 'fail']++;
   });
+
+  // Only the characteristics actually failing, worst rate first — this is what tells a QC
+  // Manager glancing at the board WHY a Line's In-Process rate is low, not just that it is.
+  const failingChars = Object.keys(charStats)
+    .map(name => {
+      const s = charStats[name];
+      const total = s.pass + s.fail;
+      return { name, fail: s.fail, total, rate: Math.round((s.fail / total) * 1000) / 10 };
+    })
+    .filter(c => c.fail > 0)
+    .sort((a, b) => b.rate - a.rate || b.fail - a.fail)
+    .slice(0, 5);
 
   let dfPass = 0, dfFail = 0;
   dropFreezeRows.forEach(r => {
@@ -71,10 +89,10 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
   return {
     runId: run.runId, line: run.line, shift: run.shift, createdAt: run.createdAt,
     moldId: run.moldId, moldDescription: run.moldDescription, color: run.color,
-    item: run.item, itemDescription: run.itemDescription, customerName: run.customerName,
+    item: run.item, itemDescription: run.itemDescription,
     runQty: run.runQty,
     qualified: run.qualified === 'Yes',
-    inProcess: { pass: ipPass, fail: ipFail, total: ipPass + ipFail },
+    inProcess: { pass: ipPass, fail: ipFail, total: ipPass + ipFail, failingChars: failingChars },
     dropFreeze: { pass: dfPass, fail: dfFail, total: dfPass + dfFail },
   };
 }

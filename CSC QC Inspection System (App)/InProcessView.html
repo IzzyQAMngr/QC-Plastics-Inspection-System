@@ -61,7 +61,6 @@
     <div class="field"><label>Item Description</label><input id="ipar-itemDescription" readonly></div>
 
     <div class="section-divider">Order Info</div>
-    <div class="field"><label>Customer Name (if available)</label><input id="ipar-customerName"></div>
     <div class="field"><label>Run Qty (if available)</label><input id="ipar-runQty" type="number"></div>
   </div>
   <div class="drawer-foot">
@@ -957,7 +956,7 @@
   }
 
   function ipArResetFields_() {
-    ['ipar-mold', 'ipar-moldDescription', 'ipar-productType', 'ipar-item', 'ipar-itemDescription', 'ipar-customerName', 'ipar-runQty'].forEach(function (id) {
+    ['ipar-mold', 'ipar-moldDescription', 'ipar-productType', 'ipar-item', 'ipar-itemDescription', 'ipar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('ipar-line').value = '';
@@ -982,7 +981,6 @@
       color: document.getElementById('ipar-color').value,
       item: item,
       itemDescription: document.getElementById('ipar-itemDescription').value,
-      customerName: document.getElementById('ipar-customerName').value,
       runQty: document.getElementById('ipar-runQty').value,
       createdBy: document.getElementById('ipar-createdBy').value,
     };
