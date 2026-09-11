@@ -834,7 +834,7 @@ function runRowToObject_(row) {
   return {
     runId: row['Run ID'] || '', createdAt: dateToStr_(row['Created At']), shift: row['Shift'] || '',
     status: row['Status'] || '', line: row['Line #'] || '', productType: row['Product Type'] || '',
-    resinLot: row['Resin Lot'] || '', moldId: row['Mold ID'] || '', moldDescription: row['Mold Description'] || '',
+    moldId: row['Mold ID'] || '', moldDescription: row['Mold Description'] || '',
     materialLot: row['Material Lot'] || '', sizeId: row['Size ID'] || '', canDescription: row['Can Description'] || '',
     item: row['Item'] || '', itemDescription: row['Item Description'] || '', customerName: row['Customer Name'] || '',
     runQty: row['Run Qty'] || '', createdBy: row['Created By'] || '', qualified: row['Qualified'] || '',
@@ -845,8 +845,10 @@ function runRowToObject_(row) {
 }
 
 /**
- * Creates a new Run. fields: {shift, line, productType, resinLot, moldId, moldDescription, color,
+ * Creates a new Run. fields: {shift, line, productType, moldId, moldDescription, color,
  * materialLot, sizeId, canDescription, item, itemDescription, customerName, runQty, createdBy}.
+ * Resin Lot is not a Run-level field — a Run can span multiple resin lots — it's captured
+ * per sample instead (In-Process's "LOT of Resin", Drop Freeze's own Resin Lot field).
  * Returns the created Run. department defaults to Plastics.
  */
 function createRun_(fields, department) {
@@ -860,7 +862,7 @@ function createRun_(fields, department) {
   const runId = makeRunId_(department, fields.line, fields.item);
   appendObjectsAsRows_(sheet, [{
     'Run ID': runId, 'Created At': new Date(), 'Shift': fields.shift || '', 'Status': 'Active',
-    'Line #': fields.line || '', 'Product Type': fields.productType || '', 'Resin Lot': fields.resinLot || '',
+    'Line #': fields.line || '', 'Product Type': fields.productType || '',
     'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '', 'Color': fields.color || '',
     'Material Lot': fields.materialLot || '', 'Size ID': fields.sizeId || '', 'Can Description': fields.canDescription || '',
     'Item': fields.item || '', 'Item Description': fields.itemDescription || '',

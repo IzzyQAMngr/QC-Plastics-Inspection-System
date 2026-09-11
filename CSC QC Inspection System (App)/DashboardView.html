@@ -166,7 +166,6 @@
     <div class="field"><label>Color</label><select id="rdp-color"><option value="">— select —</option></select></div>
     <div class="field"><label>Item</label><div class="combo"><input id="rdp-item" placeholder="Start typing to search…"></div></div>
     <div class="field"><label>Item Description</label><input id="rdp-itemDescription" readonly></div>
-    <div class="field"><label>Resin Lot</label><input id="rdp-resinLot"></div>
     <div class="field"><label>Customer Name (if available)</label><input id="rdp-customerName"></div>
     <div class="field"><label>Run Qty (if available)</label><input id="rdp-runQty" type="number"></div>
   </div>
@@ -343,7 +342,7 @@
 
   function rdpResetNewRunFields_() {
     ['rdp-mold', 'rdp-moldDescription', 'rdp-productType', 'rdp-item', 'rdp-itemDescription',
-      'rdp-resinLot', 'rdp-customerName', 'rdp-runQty'].forEach(function (id) {
+      'rdp-customerName', 'rdp-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('rdp-shift').value = '';
@@ -359,7 +358,6 @@
       row('Color', esc(c.color || '—')) +
       row('Item', esc(c.item || '—') + (c.itemDescription ? ' — ' + esc(c.itemDescription) : '')) +
       row('Customer', esc(c.customerName || '—')) +
-      row('Resin Lot', esc(c.resinLot || '—')) +
       row('Run Qty', c.runQty ? esc(c.runQty) : '—') +
       row('Shift', esc(c.shift || '—')) +
       row('Started', esc(rdStartedText_(c.createdAt))) +
@@ -415,7 +413,6 @@
       moldId: moldId,
       moldDescription: document.getElementById('rdp-moldDescription').value,
       color: document.getElementById('rdp-color').value,
-      resinLot: document.getElementById('rdp-resinLot').value,
       item: item,
       itemDescription: document.getElementById('rdp-itemDescription').value,
       customerName: document.getElementById('rdp-customerName').value,

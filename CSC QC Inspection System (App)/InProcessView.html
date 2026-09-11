@@ -61,7 +61,6 @@
     <div class="field"><label>Item Description</label><input id="ipar-itemDescription" readonly></div>
 
     <div class="section-divider">Order Info</div>
-    <div class="field"><label>Resin Lot</label><input id="ipar-resinLot"></div>
     <div class="field"><label>Customer Name (if available)</label><input id="ipar-customerName"></div>
     <div class="field"><label>Run Qty (if available)</label><input id="ipar-runQty" type="number"></div>
   </div>
@@ -261,12 +260,12 @@
     });
   }
 
-  /** Copies a picked Active Run's Mold/Item/Resin Lot onto a line — shared by the "Active Run"
+  /** Copies a picked Active Run's Mold/Item onto a line — shared by the "Active Run"
    *  dropdown's own change handler and ensureLine's auto-load-on-first-visit below, so both
-   *  paths populate a line identically. */
+   *  paths populate a line identically. Resin Lot is sample-level (a Run can span multiple
+   *  resin lots), so it's never pulled from the Run — always typed in per sample below. */
   function applyRunToLine_(line, run) {
     line.runId = run.runId;
-    line.resinLot = run.resinLot || line.resinLot;
     line.itemNo = run.item || line.itemNo;
     line.itemDescription = run.itemDescription || line.itemDescription;
     var m = ipData.molds.find(function (x) { return x.moldId === run.moldId; });
@@ -290,7 +289,7 @@
         runId:'', bounds:null, dimFields:[], colorSpec:null, cavityRows:[],
       };
       // First time this Line tab is touched — if there's exactly one (or several; take the
-      // most recent) Active Run already set up for this Line #, pull its Mold/Item/Resin Lot
+      // most recent) Active Run already set up for this Line #, pull its Mold/Item
       // in automatically instead of making the tech also pick it from "Active Run" below.
       var match = ipData && (ipData.runs || []).find(function (r) { return String(r.line) === String(n); });
       if (match) { applyRunToLine_(ipLines[n], match); ipLines[n]._justAutoLoaded = true; }
@@ -488,7 +487,7 @@
       '<div class="field-row">' +
         '<div class="field"><label>Active Run (optional)</label>' +
           '<select id="lb-loadrun"><option value="">— none —</option>' + runOptions + '</select>' +
-          '<div class="spec-hint">Pulls Mold/Item/Resin Lot from a Run already set up in Add Run.</div>' +
+          '<div class="spec-hint">Pulls Mold/Item from a Run already set up in Add Run.</div>' +
         '</div>' +
         '<div class="field"><label>Mold ID</label><div class="combo"><input id="lb-mold" placeholder="Start typing to search…" value="' + esc(line.mold) + '"></div></div>' +
         '<div class="field field-wide"><label>Mold Description</label>' + fieldSimpleInput('lb-moldDescription', 'text', line.moldDescription, true) + '</div>' +
@@ -958,7 +957,7 @@
   }
 
   function ipArResetFields_() {
-    ['ipar-mold', 'ipar-moldDescription', 'ipar-productType', 'ipar-item', 'ipar-itemDescription', 'ipar-resinLot', 'ipar-customerName', 'ipar-runQty'].forEach(function (id) {
+    ['ipar-mold', 'ipar-moldDescription', 'ipar-productType', 'ipar-item', 'ipar-itemDescription', 'ipar-customerName', 'ipar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('ipar-line').value = '';
@@ -981,7 +980,6 @@
       moldId: moldId,
       moldDescription: document.getElementById('ipar-moldDescription').value,
       color: document.getElementById('ipar-color').value,
-      resinLot: document.getElementById('ipar-resinLot').value,
       item: item,
       itemDescription: document.getElementById('ipar-itemDescription').value,
       customerName: document.getElementById('ipar-customerName').value,

@@ -14,7 +14,7 @@
   <p class="spec-hint">Log the Run, the samples going in the freezer, and which test they're for. Saving here creates one new record in Open Status — come back to the Test Results tab once the test's conditioning time has passed to record its results.</p>
 
   <div class="section-divider">RUN INFO</div>
-  <p class="spec-hint">Pick the Run being tested — Line #, Mold, Product Type, Resin Lot, Item, and Customer all auto-fill from it.</p>
+  <p class="spec-hint">Pick the Run being tested — Line #, Mold, Product Type, Item, and Customer all auto-fill from it.</p>
   <div class="field-row">
     <div class="field"><label>Run</label><select id="df-run"></select></div>
     <div class="field"><label>Shift</label><select id="df-shift"></select></div>
@@ -28,7 +28,6 @@
     <div class="field field-wide"><label>Mold Description</label><input id="df-moldDesc" readonly></div>
     <div class="field"><label>Product Type</label><input id="df-productType" readonly></div>
     <div class="field"><label>Color</label><input id="df-color" readonly></div>
-    <div class="field"><label>Resin Lot</label><input id="df-resinLot" readonly></div>
   </div>
 
   <div class="section-divider">ITEM INFO</div>
@@ -59,6 +58,7 @@
   <div class="section-divider">SAMPLE INFO</div>
   <div class="field-row">
     <div class="field"><label>Date / Time of Mfg</label><input type="datetime-local" id="df-dateOfMfg"></div>
+    <div class="field"><label>Resin Lot</label><input id="df-resinLot"></div>
   </div>
   <p class="spec-hint" id="df-cavity-hint">Pick a Run above to see this mold's cavities.</p>
 
@@ -158,7 +158,6 @@
     document.getElementById('df-moldDesc').value = run ? run.moldDescription : '';
     document.getElementById('df-productType').value = run ? run.productType : '';
     document.getElementById('df-color').value = run ? run.color : '';
-    document.getElementById('df-resinLot').value = run ? run.resinLot : '';
     document.getElementById('df-item').value = run ? run.item : '';
     document.getElementById('df-itemDescription').value = run ? run.itemDescription : '';
     if (run && run.shift) document.getElementById('df-shift').value = run.shift;
@@ -245,6 +244,7 @@
     runSel.dispatchEvent(new Event('change'));
     document.getElementById('df-shift').value = '';
     document.getElementById('df-dateOfMfg').value = '';
+    document.getElementById('df-resinLot').value = '';
   }
 
   document.getElementById('df-log-samples-btn').addEventListener('click', function () {
@@ -260,6 +260,7 @@
       shift: document.getElementById('df-shift').value,
       testName: testName,
       dateOfMfg: document.getElementById('df-dateOfMfg').value,
+      resinLot: document.getElementById('df-resinLot').value,
       cavities: dfCavities,
       sampleCount: count,
     };

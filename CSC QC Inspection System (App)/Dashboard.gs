@@ -72,7 +72,7 @@ function buildLineCard_(run, inProcessRows, dropFreezeRows) {
     runId: run.runId, line: run.line, shift: run.shift, createdAt: run.createdAt,
     moldId: run.moldId, moldDescription: run.moldDescription, color: run.color,
     item: run.item, itemDescription: run.itemDescription, customerName: run.customerName,
-    resinLot: run.resinLot, runQty: run.runQty,
+    runQty: run.runQty,
     qualified: run.qualified === 'Yes',
     inProcess: { pass: ipPass, fail: ipFail, total: ipPass + ipFail },
     dropFreeze: { pass: dfPass, fail: dfFail, total: dfPass + dfFail },

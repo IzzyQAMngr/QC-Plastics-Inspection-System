@@ -164,9 +164,11 @@ function makeDailyRecordKey_(sheet, dateOfMfgDisplay) {
   return makeSequentialId_(sheet, 'RecordKey', 'QC', baseDate);
 }
 
-/** Builds one Drop Freeze log row. Run context (Line #, Mold, Product Type, Resin Lot, Item,
- *  Customer Name) always comes from the resolved Run — never trusted from the client — same as
- *  In-Process/Start-Up. Status is derived from whether `li.result` is filled in, so a blank
+/** Builds one Drop Freeze log row. Run context (Line #, Mold, Product Type, Item, Customer Name)
+ *  always comes from the resolved Run — never trusted from the client — same as In-Process/
+ *  Start-Up. Resin Lot is the exception: it's sample/batch-level (a Run can span multiple resin
+ *  lots), so it's taken from the client-entered `li.resinLot` instead. Status is derived from
+ *  whether `li.result` is filled in, so a blank
  *  result (samples just loaded, not tested yet) always lands as OPEN. A "Void" result (a sample
  *  logged in error — wrong cavity, duplicate, etc.) gets its own VOID status rather than being
  *  deleted outright: it drops out of the Open Samples count (see listOpenDropFreezeRecords_)
@@ -181,7 +183,7 @@ function buildDropFreezeRow_(run, li, recordKey, lineItem, now, tz) {
     RecordKey: recordKey, LineItem: lineItem, Status: status, Created: now, Updated: now,
     'Run ID': run.runId, 'Line #': run.line, Shift: li.shift || run.shift, 'Customer Name': run.customerName,
     'Mold ID': run.moldId, 'Mold Description': run.moldDescription, 'Product Type': run.productType,
-    'Resin Lot': run.resinLot, 'Item No': run.item, 'Item Description': run.itemDescription,
+    'Resin Lot': li.resinLot || '', 'Item No': run.item, 'Item Description': run.itemDescription,
     Cavity: li.cavity || '', 'Test Name': li.testName || '',
     DateOfMfg: li.dateOfMfg || '', TestDate: li.testDate || '', TestedBy: li.testedBy || '',
     SampleNo: li.sampleNo || '', SampleCount: li.sampleCount || '',
@@ -244,7 +246,7 @@ function saveDropFreezePacket(payload) {
  * Logs samples for EVERY cavity of the mold at once — one new Open record per cavity, each
  * holding sampleCount blank-result line items — instead of making the tech pick a single cavity
  * and repeat "Log Samples" per cavity. Mirrors In-Process auto-generating a row per cavity.
- * payload: { runId, shift, testName, dateOfMfg, cavities: [cavityId, ...], sampleCount }
+ * payload: { runId, shift, testName, dateOfMfg, resinLot, cavities: [cavityId, ...], sampleCount }
  */
 function logDropFreezeSamples(payload) {
   const lock = LockService.getDocumentLock();
@@ -273,6 +275,7 @@ function logDropFreezeSamples(payload) {
       for (let i = 0; i < count; i++) {
         const li = {
           shift: payload.shift, testName: payload.testName, dateOfMfg: payload.dateOfMfg, cavity: cavity,
+          resinLot: payload.resinLot || '',
           sampleNo: count > 1 ? (i + 1) : '', sampleCount: count > 1 ? count : '',
         };
         rows.push(buildDropFreezeRow_(run, li, recordKey, i + 1, now, tz));

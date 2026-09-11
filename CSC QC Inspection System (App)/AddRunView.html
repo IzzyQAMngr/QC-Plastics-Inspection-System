@@ -51,7 +51,6 @@
     <div class="field"><label>Item Description</label><input id="ar-itemDescription" readonly></div>
 
     <div class="section-divider">Order Info</div>
-    <div class="field"><label>Resin Lot</label><input id="ar-resinLot"></div>
     <div class="field"><label>Customer Name (if available)</label><input id="ar-customerName"></div>
     <div class="field"><label>Run Qty (if available)</label><input id="ar-runQty" type="number"></div>
   </div>
@@ -152,7 +151,7 @@
   }
 
   function resetAddRunFields() {
-    ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-resinLot', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
+    ['ar-mold', 'ar-moldDescription', 'ar-productType', 'ar-item', 'ar-itemDescription', 'ar-customerName', 'ar-runQty'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('ar-line').value = '';
@@ -186,7 +185,6 @@
       moldId: moldId,
       moldDescription: document.getElementById('ar-moldDescription').value,
       color: document.getElementById('ar-color').value,
-      resinLot: document.getElementById('ar-resinLot').value,
       item: item,
       itemDescription: document.getElementById('ar-itemDescription').value,
       customerName: document.getElementById('ar-customerName').value,
