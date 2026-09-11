@@ -830,10 +830,13 @@ function makeRunId_(department, line, item) {
 
 // Reads both Plastics' and Metals' domain-specific columns — whichever set the row's sheet
 // doesn't have simply comes back blank, so this stays a single function for both departments.
+// Plastics renamed its "Line #" column to "Inj. Machine #" (Izzy's Equipment Register
+// terminology, 2026-09-11) — Metals' Runs sheet still says "Line #", so a row only ever has
+// one of the two populated; checking both is simpler than threading department through here.
 function runRowToObject_(row) {
   return {
     runId: row['Run ID'] || '', createdAt: dateToStr_(row['Created At']), shift: row['Shift'] || '',
-    status: row['Status'] || '', line: row['Line #'] || '', productType: row['Product Type'] || '',
+    status: row['Status'] || '', line: row['Inj. Machine #'] || row['Line #'] || '', productType: row['Product Type'] || '',
     moldId: row['Mold ID'] || '', moldDescription: row['Mold Description'] || '',
     materialLot: row['Material Lot'] || '', sizeId: row['Size ID'] || '', canDescription: row['Can Description'] || '',
     item: row['Item'] || '', itemDescription: row['Item Description'] || '', customerName: row['Customer Name'] || '',
@@ -860,9 +863,11 @@ function createRun_(fields, department) {
   // already uses) — added non-destructively, same technique as Drop Freeze's SampleNo/VoidReason.
   if (department !== 'Metals') ensureColumnExists_(sheet, 'Color');
   const runId = makeRunId_(department, fields.line, fields.item);
+  // Plastics' Runs sheet column is "Inj. Machine #" (renamed 2026-09-11); Metals kept "Line #".
+  const lineHeader = department === 'Metals' ? 'Line #' : 'Inj. Machine #';
   appendObjectsAsRows_(sheet, [{
     'Run ID': runId, 'Created At': new Date(), 'Shift': fields.shift || '', 'Status': 'Active',
-    'Line #': fields.line || '', 'Product Type': fields.productType || '',
+    [lineHeader]: fields.line || '', 'Product Type': fields.productType || '',
     'Mold ID': fields.moldId || '', 'Mold Description': fields.moldDescription || '', 'Color': fields.color || '',
     'Material Lot': fields.materialLot || '', 'Size ID': fields.sizeId || '', 'Can Description': fields.canDescription || '',
     'Item': fields.item || '', 'Item Description': fields.itemDescription || '',

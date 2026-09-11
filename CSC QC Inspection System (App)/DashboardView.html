@@ -96,7 +96,7 @@
   <div class="rd-head">
     <div>
       <h1 class="rd-title">Run Dashboard</h1>
-      <p class="rd-sub">Live pass/fail performance and qualification status for every Line currently running a Plastics job.</p>
+      <p class="rd-sub">Live pass/fail performance and qualification status for every Inj. Machine currently running a Plastics job.</p>
     </div>
     <div class="rd-head-right">
       <button class="primary" id="rdp-open-add-btn">+ Add Run</button>
@@ -109,7 +109,7 @@
 
   <div class="rd-hero">
     <div class="rd-tile">
-      <div class="rd-tile-label">Lines Active</div>
+      <div class="rd-tile-label">Inj. Machines Active</div>
       <div class="rd-tile-num" id="rdLinesActive">&mdash;</div>
       <div class="rd-tile-foot" id="rdShiftsFoot"></div>
     </div>
@@ -134,7 +134,7 @@
     </div>
   </div>
 
-  <div class="rd-grid-label">Active Lines</div>
+  <div class="rd-grid-label">Active Inj. Machines</div>
   <div id="rdCardsWrap">
     <p style="color:var(--rd-dim);font-size:13px;" id="rd-loading">Loading dashboard&hellip;</p>
   </div>
@@ -147,15 +147,15 @@
   </div>
 </div>
 
-<!-- Click-a-card side panel: stop this Line's Run and/or start its next one, without leaving
-     the dashboard. Reuses the same server calls (getAddRunFormData/addRun/endRun) as the
-     standalone Add Run page — see AddRunView.html's drawer for the pattern this copies. -->
+<!-- Click-a-card side panel: stop this Inj. Machine's Run and/or start its next one, without
+     leaving the dashboard. Reuses the same server calls (getAddRunFormData/addRun/endRun) as
+     the standalone Add Run page — see AddRunView.html's drawer for the pattern this copies. -->
 <div class="drawer-overlay" id="rdp-drawer-overlay"></div>
 <div class="drawer" id="rdp-drawer" role="dialog" aria-modal="true" aria-labelledby="rdp-drawer-title">
   <div class="drawer-head">
     <div>
       <h2 id="rdp-drawer-title">Add Run</h2>
-      <p id="rdp-drawer-sub">Manage this Line's Run</p>
+      <p id="rdp-drawer-sub">Manage this Inj. Machine's Run</p>
     </div>
     <button class="drawer-close" id="rdp-drawer-close" aria-label="Close">&times;</button>
   </div>
@@ -166,8 +166,8 @@
       <button class="danger" id="rdp-stop-btn" style="width:100%;margin-bottom:24px;">Stop Run</button>
     </div>
 
-    <div class="section-divider" id="rdp-new-run-label">Start New Run on This Line</div>
-    <div class="field hidden" id="rdp-line-field"><label>Line #</label><select id="rdp-line"><option value="">— select —</option></select></div>
+    <div class="section-divider" id="rdp-new-run-label">Start New Run on This Inj. Machine</div>
+    <div class="field hidden" id="rdp-line-field"><label>Inj. Machine #</label><select id="rdp-line"><option value="">— select —</option></select></div>
     <div class="field-row-2">
       <div class="field"><label>Shift</label><select id="rdp-shift"><option value="">— select —</option></select></div>
       <div class="field"><label>Created By</label><select id="rdp-createdBy"><option value="">— select —</option></select></div>
@@ -271,7 +271,7 @@
       (cls === 'crit' ? '<span class="rd-pill crit">&#9888; NOT QUALIFIED</span>' : '<span class="rd-pill fresh">NEEDS QUALIFICATION</span>');
     return '<div class="rd-lcard ' + cls + '" data-run-id="' + esc(c.runId) + '" title="Click to manage this Run">' +
       '<div class="rd-lcard-top">' +
-        '<div class="rd-lcard-line"><small>LINE</small><b>' + esc(c.line || '—') + '</b></div>' +
+        '<div class="rd-lcard-line"><small>INJ. MACHINE</small><b>' + esc(c.line || '—') + '</b></div>' +
         '<span class="rd-lcard-manage-hint">Manage &rsaquo;</span>' +
         pill +
       '</div>' +
@@ -300,7 +300,7 @@
     var qualPct = cards.length ? Math.round((qualifiedCount / cards.length) * 100) : 0;
     document.getElementById('rdRingPct').textContent = cards.length ? (qualPct + '%') : '—';
     document.getElementById('rdQualFoot').textContent = !cards.length ? '' :
-      freshCount ? (freshCount + ' Line' + (freshCount > 1 ? 's' : '') + ' still starting up') : 'All remaining Lines in review';
+      freshCount ? (freshCount + ' Inj. Machine' + (freshCount > 1 ? 's' : '') + ' still starting up') : 'All remaining Inj. Machines in review';
     var ring = document.getElementById('rdRing');
     var circumference = 2 * Math.PI * 46;
     ring.setAttribute('stroke-dasharray', circumference + ' ' + circumference);
@@ -310,7 +310,7 @@
     var totalPass = 0, totalAll = 0;
     cards.forEach(function (c) { totalPass += c.inProcess.pass; totalAll += c.inProcess.total; });
     document.getElementById('rdBlended').textContent = totalAll ? (Math.round((totalPass / totalAll) * 1000) / 10) + '%' : '—';
-    document.getElementById('rdBlendedFoot').textContent = totalAll ? (totalPass + ' / ' + totalAll + ' dimensional checks across active Lines') : '';
+    document.getElementById('rdBlendedFoot').textContent = totalAll ? (totalPass + ' / ' + totalAll + ' dimensional checks across active Inj. Machines') : '';
 
     rdLastCards_ = cards;
     if (!cards.length) {
@@ -395,24 +395,25 @@
 
   function rdpOpenForCard_(card) {
     rdpCard_ = card;
-    document.getElementById('rdp-drawer-title').textContent = 'Line ' + (card.line || '—');
-    document.getElementById('rdp-drawer-sub').textContent = "Manage this Line's Run";
+    document.getElementById('rdp-drawer-title').textContent = 'Inj. Machine ' + (card.line || '—');
+    document.getElementById('rdp-drawer-sub').textContent = "Manage this Inj. Machine's Run";
     document.getElementById('rdp-current-run-section').classList.remove('hidden');
     document.getElementById('rdp-line-field').classList.add('hidden');
-    document.getElementById('rdp-new-run-label').textContent = 'Start New Run on This Line';
+    document.getElementById('rdp-new-run-label').textContent = 'Start New Run on This Inj. Machine';
     document.getElementById('rdp-current-run-tbody').innerHTML = rdpCurrentRunRowsHtml_(card);
     rdpResetNewRunFields_();
     rdpOpenDrawer_();
   }
 
   /** The dashboard's own "+ Add Run" button — same drawer, but with no Run already selected:
-   *  no Current Run to show or Stop, and a Line # field (hidden in the per-card flow, where
-   *  the clicked card's Line is already implied) so a Line with no Active run yet — the whole
-   *  reason a QC Manager would come here instead of clicking an existing card — can get one. */
+   *  no Current Run to show or Stop, and an Inj. Machine # field (hidden in the per-card flow,
+   *  where the clicked card's Inj. Machine is already implied) so an Inj. Machine with no
+   *  Active run yet — the whole reason a QC Manager would come here instead of clicking an
+   *  existing card — can get one. */
   function rdpOpenForNewRun_() {
     rdpCard_ = null;
     document.getElementById('rdp-drawer-title').textContent = 'Add Run';
-    document.getElementById('rdp-drawer-sub').textContent = 'Start a new Run on any Line';
+    document.getElementById('rdp-drawer-sub').textContent = 'Start a new Run on any Inj. Machine';
     document.getElementById('rdp-current-run-section').classList.add('hidden');
     document.getElementById('rdp-line-field').classList.remove('hidden');
     document.getElementById('rdp-new-run-label').textContent = 'New Run';
@@ -451,7 +452,7 @@
     var line = rdpCard_ ? rdpCard_.line : document.getElementById('rdp-line').value;
     var moldId = document.getElementById('rdp-mold').value;
     var item = document.getElementById('rdp-item').value;
-    if (!line) { showToast('Pick a Line #.', true); return; }
+    if (!line) { showToast('Pick an Inj. Machine #.', true); return; }
     if (!moldId) { showToast('Pick a Mold.', true); return; }
     if (!item) { showToast('Pick an Item.', true); return; }
     var fields = {
@@ -468,7 +469,7 @@
     };
     var infoHtml = '<p>Add this to the Active Runs list?</p>' +
       '<table class="modal-info-table"><tbody>' +
-        '<tr><th>Line</th><td>' + esc(fields.line) + '</td></tr>' +
+        '<tr><th>Inj. Machine</th><td>' + esc(fields.line) + '</td></tr>' +
         '<tr><th>Shift</th><td>' + esc(fields.shift) + '</td></tr>' +
         '<tr><th>Mold</th><td>' + esc(fields.moldId) + '</td></tr>' +
         '<tr><th>Color</th><td>' + esc(fields.color || '—') + '</td></tr>' +
