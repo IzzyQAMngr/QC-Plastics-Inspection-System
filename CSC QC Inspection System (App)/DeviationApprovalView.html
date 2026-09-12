@@ -34,6 +34,14 @@
 <script>
   var daData = null;
 
+  /** Verification Date comes from the server as an ISO string (dateToStr_'s Date.toISOString()),
+   *  so it needs re-parsing and re-formatting here rather than just escaping it as-is — otherwise
+   *  it prints as the raw "2026-09-04T07:00:00.000Z". */
+  function daFmtDate_(v) {
+    var d = v ? new Date(v) : null;
+    return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : esc(v || '—');
+  }
+
   function init_devapproval() {
     loadPendingDeviations();
   }
@@ -65,7 +73,7 @@
         '<td>' + esc(r.runId) + '</td>' +
         '<td>' + esc(r.moldId || r.sizeId) + '</td>' +
         '<td>' + esc(r.line) + '</td>' +
-        '<td>' + esc(r.verificationDate) + '</td>' +
+        '<td>' + daFmtDate_(r.verificationDate) + '</td>' +
         '<td>' + esc(r.deviationDescription) + '</td>' +
         '<td>' + badge + '</td>' +
         (showAct ? '<td><button class="ghost" data-act="' + esc(r.recordId) + '">Act</button></td>' : '') +
@@ -91,15 +99,16 @@
         '<td>' + esc(r.runId) + '</td>' +
         '<td>' + esc(r.moldId || r.sizeId) + '</td>' +
         '<td>' + esc(r.line) + '</td>' +
-        '<td>' + esc(r.verificationDate) + '</td>' +
+        '<td>' + daFmtDate_(r.verificationDate) + '</td>' +
         '<td>' + esc(r.deviationDescription) + '</td>' +
         '<td>' + esc(r.approvedBy) + (r.supervisorAuthorization ? '<br><span class="spec-hint">Supervisor: ' + esc(r.supervisorAuthorization) + '</span>' : '') + '</td>' +
+        '<td>' + esc(r.approvalJustification || '—') + '</td>' +
         '<td>' + esc(r.pfaSignedOffBy || '—') + (r.pfaId ? '<br><span class="spec-hint">' + esc(r.pfaId) + '</span>' : '') + '</td>' +
         '<td>' + badge + '</td>' +
         '</tr>';
     }).join('');
     el.innerHTML = '<div style="overflow-x:auto;"><table class="qc-table"><thead><tr>' +
-      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Approved By</th><th>PFA Signed Off</th><th>Status</th>' +
+      '<th>Record #</th><th>Dept</th><th>Run</th><th>Mold / Can Size</th><th>Line</th><th>Date</th><th>Deviation</th><th>Approved By</th><th>Justification</th><th>PFA Signed Off</th><th>Status</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
@@ -113,11 +122,14 @@
     if (rec.status === 'Awaiting Approval') {
       panel.innerHTML =
         '<div class="row-card"><div class="row-head"><strong>Approve deviation — ' + esc(recordId) + '</strong></div>' +
+        '<p class="spec-hint">Deviation reported: ' + esc(rec.deviationDescription || '—') + '</p>' +
         '<div class="field-row">' +
         '<div class="field"><label>Deviation Approved by</label><select id="da-approver"><option value="">— select —</option>' + authOpts + '</select></div>' +
         '<div class="field"><label>Supervisor Authorization (optional)</label><select id="da-supervisor"><option value="">— none —</option>' + authOpts + '</select></div>' +
-        '<div class="field" style="align-self:end;"><button id="da-approve-btn" class="primary">Approve Deviation</button></div>' +
-        '</div></div>';
+        '</div>' +
+        '<div class="field"><label>Justification for approving</label><textarea id="da-justification" rows="2" placeholder="Why is it okay to proceed despite this deviation?"></textarea></div>' +
+        '<button id="da-approve-btn" class="primary">Approve Deviation</button>' +
+        '</div>';
       document.getElementById('da-approve-btn').addEventListener('click', function () { doApprove(recordId); });
     } else {
       panel.innerHTML =
@@ -136,14 +148,16 @@
     var rec = (daData.pending || []).find(function (r) { return r.recordId === recordId; });
     var approver = document.getElementById('da-approver').value;
     var supervisor = document.getElementById('da-supervisor').value;
+    var justification = document.getElementById('da-justification').value.trim();
     if (!approver) { showToast('Pick who is approving.', true); return; }
+    if (!justification) { showToast('Enter a justification for approving this deviation.', true); return; }
     google.script.run
       .withSuccessHandler(function () {
         showToast('Deviation approved for ' + recordId + '.');
         loadPendingDeviations();
       })
       .withFailureHandler(function (err) { showToast(err.message, true); })
-      .approveDeviation(recordId, approver, supervisor, rec ? rec.department : '');
+      .approveDeviation(recordId, approver, supervisor, justification, rec ? rec.department : '');
   }
 
   function doSignPfa(recordId) {
@@ -179,6 +193,7 @@
           '<p><strong>' + esc(detail.recordId) + '</strong> — Run ' + esc(detail.runId) + ', ' + esc(detail.moldId || detail.sizeId) + '</p>' +
           '<p>Deviation: ' + esc(detail.deviationDescription || '—') + '</p>' +
           '<p>Approved by: ' + esc(detail.deviationApprovedBy || '— pending —') + '</p>' +
+          (detail.deviationApprovedBy ? '<p>Justification: ' + esc(detail.approvalJustification || '—') + '</p>' : '') +
           '<p>PFA Signed off by: ' + esc(detail.pfaSignedOffBy || '— pending —') + (detail.pfaId ? ' (' + esc(detail.pfaId) + ')' : '') + '</p>';
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       })

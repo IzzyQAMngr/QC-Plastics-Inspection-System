@@ -316,6 +316,7 @@ function getApprovedDeviations_(department) {
     const ctx = group[0];
     const descRow = group.find(r => r['Verification Item'] === 'Deviation Description / Notes');
     const supervisorRow = group.find(r => r['Verification Item'] === 'Supervisor Authorization (if deviation)');
+    const justificationRow = group.find(r => r['Verification Item'] === 'Deviation Approval Justification');
     const signOffRow = group.find(r => r['Verification Item'] === 'PFA Signed off by');
     const pfaRow = group.find(r => r['Verification Item'] === 'PFA completed (PFA ID)');
     out.push({
@@ -324,6 +325,7 @@ function getApprovedDeviations_(department) {
       line: ctx['Line #'] || '', verificationDate: dateToStr_(ctx['Verification Date']), qcTechName: ctx['QC Tech Name'] || '',
       startUpTechName: ctx['Start-Up Tech'] || '', deviationDescription: descRow ? String(descRow['Actual Value'] || '') : '',
       approvedBy: String(approvedRow['Actual Value'] || ''), supervisorAuthorization: supervisorRow ? String(supervisorRow['Actual Value'] || '') : '',
+      approvalJustification: justificationRow ? String(justificationRow['Actual Value'] || '') : '',
       pfaSignedOffBy: signOffRow ? String(signOffRow['Actual Value'] || '') : '', pfaId: pfaRow ? String(pfaRow['Actual Value'] || '') : '',
       status: signOffRow ? 'Complete' : 'Awaiting PFA Sign-off',
     });
@@ -373,15 +375,20 @@ function getDeviationRecordDetail_(recordId, department) {
     deviationDescription: findVal('Deviation Description / Notes'),
     deviationApprovedBy: findVal('Deviation Approved by'),
     supervisorAuthorization: findVal('Supervisor Authorization (if deviation)'),
+    approvalJustification: findVal('Deviation Approval Justification'),
     pfaSignedOffBy: findVal('PFA Signed off by'),
     pfaId: findVal('PFA completed (PFA ID)'),
   };
 }
 function getDeviationRecordDetail(recordId, department) { return getDeviationRecordDetail_(recordId, department); }
 
-/** Approves the deviation — does NOT touch PFA Signed off by, which stays locked until this exists. */
-function approveDeviation_(recordId, approverName, supervisorName, department) {
+/** Approves the deviation — does NOT touch PFA Signed off by, which stays locked until this exists.
+ *  justification is the Manager's own reasoning for approving (distinct from the QC tech's
+ *  original "Deviation Description / Notes" — that says what happened, this says why it's okay
+ *  to proceed anyway) and is required, same rigor as In-Process's Release Decision + Justification. */
+function approveDeviation_(recordId, approverName, supervisorName, justification, department) {
   if (!isDeviationManager_()) throw new Error('Only the QA Manager can approve deviations.');
+  if (!String(justification || '').trim()) throw new Error('A justification is required to approve a deviation.');
   const rows = getRecordRows_(recordId, department);
   if (!rows.length) throw new Error('Verification record not found: ' + recordId);
   const authList = getDeviationAuthList_(department);
@@ -389,12 +396,15 @@ function approveDeviation_(recordId, approverName, supervisorName, department) {
   if (supervisorName && authList.indexOf(supervisorName) < 0) throw new Error(supervisorName + ' is not on the Deviation Authorization List.');
 
   const context = contextFromRow_(rows[0]);
-  const newRows = [Object.assign({}, context, { 'Verification Item': 'Deviation Approved by', 'Value Type': 'Drop Down', 'Unit': '', 'Actual Value': approverName, 'Status': '', 'Notes': '' })];
+  const newRows = [
+    Object.assign({}, context, { 'Verification Item': 'Deviation Approved by', 'Value Type': 'Drop Down', 'Unit': '', 'Actual Value': approverName, 'Status': '', 'Notes': '' }),
+    Object.assign({}, context, { 'Verification Item': 'Deviation Approval Justification', 'Value Type': 'Text', 'Unit': '', 'Actual Value': justification.trim(), 'Status': '', 'Notes': '' }),
+  ];
   if (supervisorName) newRows.push(Object.assign({}, context, { 'Verification Item': 'Supervisor Authorization (if deviation)', 'Value Type': 'Drop Down', 'Unit': '', 'Actual Value': supervisorName, 'Status': '', 'Notes': '' }));
   appendObjectsAsRows_(getSuLogSheet_(department), newRows);
   return getDeviationRecordDetail_(recordId, department);
 }
-function approveDeviation(recordId, approverName, supervisorName, department) { return approveDeviation_(recordId, approverName, supervisorName, department); }
+function approveDeviation(recordId, approverName, supervisorName, justification, department) { return approveDeviation_(recordId, approverName, supervisorName, justification, department); }
 
 /** Signs off the PFA and qualifies the Run — blocked until the deviation has been approved. */
 function signPfa_(recordId, qcName, adjustmentsText, department) {
