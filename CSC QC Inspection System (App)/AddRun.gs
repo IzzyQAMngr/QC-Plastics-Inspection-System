@@ -5,7 +5,7 @@
  * Start-Up Verification submission.
  *************************************************************/
 
-/** Called by AddRunView.html on load. */
+/** Called by the Run Dashboard's Add Run drawer (and In-Process's embedded one) on load. */
 function getAddRunFormData() {
   return {
     molds: getAllMoldsList_(),        // [{moldId, description, productType}]
@@ -22,5 +22,3 @@ function getAddRunFormData() {
 function addRun(fields) { return createRun_(fields); }
 
 function endRun(runId) { return stopRun_(runId); }
-
-function confirmRunsToday(confirmedBy) { return confirmTodaysRuns_(confirmedBy); }

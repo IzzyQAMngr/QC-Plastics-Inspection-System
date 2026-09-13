@@ -159,8 +159,9 @@
 </div>
 
 <!-- Click-a-card side panel: stop this Inj. Machine's Run and/or start its next one, without
-     leaving the dashboard. Reuses the same server calls (getAddRunFormData/addRun/endRun) as
-     the standalone Add Run page — see AddRunView.html's drawer for the pattern this copies. -->
+     leaving the dashboard. Reuses the same server calls (getAddRunFormData/addRun/endRun) that
+     used to back the standalone Daily Run Setup page (removed 2026-09-12 — the dashboard now
+     covers the same Add Run/Stop Run/qualification-status workflow on its own). -->
 <div class="drawer-overlay" id="rdp-drawer-overlay"></div>
 <div class="drawer" id="rdp-drawer" role="dialog" aria-modal="true" aria-labelledby="rdp-drawer-title">
   <div class="drawer-head">
@@ -372,7 +373,7 @@
 
     rdLastCards_ = cards;
     if (!cards.length) {
-      wrap.innerHTML = '<div class="rd-empty">No active Runs right now — start one from Daily Run Setup to see it here.</div>';
+      wrap.innerHTML = '<div class="rd-empty">No active Runs right now — click "+ Add Run" above to start one.</div>';
       return;
     }
     wrap.innerHTML = '<div class="rd-cards">' + cards.map(rdCardHtml_).join('') + '</div>';

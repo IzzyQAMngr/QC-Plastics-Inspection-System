@@ -72,7 +72,6 @@
     <div class="nav-group-label">Plastics</div>
     <div class="nav-group">
       <div class="nav-item active" data-view="dashboard" data-dept="Plastics">Run Dashboard</div>
-      <div class="nav-item" data-view="addrun" data-dept="Plastics">Daily Run Setup</div>
       <div class="nav-item" data-view="startup" data-dept="Plastics">Start-Up Verification</div>
       <div class="nav-item" data-view="devapproval" data-dept="Plastics">Deviation Approvals</div>
       <div class="nav-item" data-view="pfatag" data-dept="Plastics">Print PFA Tag</div>
@@ -97,7 +96,6 @@
   <main id="main">
     <div class="dept-banner plastics" id="dept-banner">Plastics Department</div>
     <div class="view active" id="view-dashboard"><?!= include('DashboardView'); ?></div>
-    <div class="view" id="view-addrun"><?!= include('AddRunView'); ?></div>
     <div class="view" id="view-startup"><?!= include('StartUpVerificationView'); ?></div>
     <div class="view" id="view-devapproval"><?!= include('DeviationApprovalView'); ?></div>
     <div class="view" id="view-dropfreeze"><?!= include('DropFreezeView'); ?></div>
@@ -137,7 +135,7 @@
 <?!= include('PfaTag'); ?>
 
 <script>
-  var VIEWS = ['dashboard', 'addrun', 'startup', 'devapproval', 'dropfreeze', 'opensamples', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
+  var VIEWS = ['dashboard', 'startup', 'devapproval', 'dropfreeze', 'opensamples', 'inprocess', 'testdatareview', 'metalsdashboard', 'metalsaddrun', 'metalsstartup', 'metals', 'pfatag'];
   var VIEWS_LOADED = {};
   window.INITIAL_PARAMS = <?!= initialParamsJson ?>;
   var CSC_LOADED_VERSION = '<?!= appVersion ?>';
@@ -146,7 +144,7 @@
   // (initial page load, or a deep link) — Deviation Approvals is shared by both departments'
   // menus, so its default here is overridden by ?dept= on a deep link when present.
   var VIEW_DEPT = {
-    dashboard: 'Plastics', addrun: 'Plastics', startup: 'Plastics', devapproval: 'Plastics',
+    dashboard: 'Plastics', startup: 'Plastics', devapproval: 'Plastics',
     inprocess: 'Plastics', dropfreeze: 'Plastics', opensamples: 'Plastics', testdatareview: 'Plastics',
     metalsdashboard: 'Metals', metalsaddrun: 'Metals', metalsstartup: 'Metals', metals: 'Metals',
     pfatag: 'Plastics',
