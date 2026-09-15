@@ -230,6 +230,19 @@ function getPfaTagIndex_() {
       if (!pfaId) return;
       const runId = String(ctx['Run ID'] || '').trim();
       const signOffRow = group.find(r => r['Verification Item'] === 'PFA Signed off by');
+
+      // For the no-deviation self-serve path, the PFA is signed off in the same save as the
+      // checklist, so ctx's Verification Date/Time already is the qualifying moment. But for a
+      // deviation, sign-off happens later (sometimes days later, once the Manager has approved) —
+      // reusing the original checklist's Verification Date/Time there tagged the PFA with
+      // whatever time the QC started the Start-Up checklist, not when it was actually qualified.
+      // signOffRow's own 'Timestamp saved' (set to `new Date()` when that row was appended by
+      // signPfa_) is the real qualifying moment, so prefer it whenever it's there.
+      const signOffAt = signOffRow && signOffRow['Timestamp saved'] instanceof Date ? signOffRow['Timestamp saved']
+        : (signOffRow && signOffRow['Timestamp saved'] ? new Date(signOffRow['Timestamp saved']) : null);
+      const qualifiedDate = signOffAt && !isNaN(signOffAt.getTime()) ? tagDateStr_(signOffAt, tz) : tagDateStr_(ctx['Verification Date'], tz);
+      const qualifiedTime = signOffAt && !isNaN(signOffAt.getTime()) ? tagTimeStr_(signOffAt, tz) : tagTimeStr_(ctx['Verification Time'], tz);
+
       results.push({
         department: department, recordId: recordId, pfaId: pfaId, runId: runId,
         itemNo: ctx['Item'] || '', itemDescription: ctx['Item Description'] || '',
@@ -237,7 +250,7 @@ function getPfaTagIndex_() {
         moldFieldLabel: department === 'Metals' ? 'Size ID' : 'Mold ID',
         customerName: ctx['Customer Name'] || '', line: ctx['Line #'] || '', shift: ctx['Shift'] || '',
         runQty: ctx['Run Qty'] || '', qualifiedBy: signOffRow ? String(signOffRow['Actual Value'] || '') : '',
-        qualifiedDate: tagDateStr_(ctx['Verification Date'], tz), qualifiedTime: tagTimeStr_(ctx['Verification Time'], tz),
+        qualifiedDate: qualifiedDate, qualifiedTime: qualifiedTime,
       });
     });
   });
@@ -333,12 +346,13 @@ function getApprovedDeviations_(department) {
   return out;
 }
 
-// Deviation approval + PFA sign-off are locked to the QA Manager — everyone else can open the
-// Deviation Approvals page to see the pending inbox and the approved-deviations history, but
-// can't act on either. Checked both server-side (the real gate — approveDeviation_/signPfa_
-// throw for anyone else, so this can't be bypassed by tampering with the client) and
-// client-side (DeviationApprovalView.html greys the page out with a lock icon so a non-Manager
-// viewer immediately understands why nothing is clickable, rather than clicks silently failing).
+// Approving a deviation is locked to the QA Manager — that's the one decision that has to come
+// from management. Signing off the PFA afterward is NOT locked: once the Manager has approved,
+// the job of actually qualifying the Run (confirming the fix/adjustment was made and signing the
+// PFA) goes back to QC, same as the no-deviation self-serve path in the Start-Up Verification
+// form has always worked. Checked server-side in approveDeviation_ (the real gate — it throws
+// for anyone else) and client-side in DeviationApprovalView.html (greys out just the "Awaiting
+// Approval" rows' Act button for a non-Manager viewer, rather than clicks silently failing).
 const DEVIATION_APPROVAL_MANAGER_EMAILS = ['izuniga@cscmfg.com'];
 function isDeviationManager_() {
   const email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
@@ -348,7 +362,8 @@ function isDeviationManager_() {
 /** Called by DeviationApprovalView.html on load — merges both departments' pending deviations
  *  and approved-deviation history into one inbox, keeps their auth lists separate (each
  *  department may have different authorized approvers), and tells the client whether the
- *  current viewer is allowed to act here at all. */
+ *  current viewer is allowed to approve a deviation (PFA sign-off has no such gate — see
+ *  isDeviationManager_'s comment above). */
 function getDeviationApprovalFormData() {
   const approved = getApprovedDeviations_('Plastics').concat(getApprovedDeviations_('Metals'));
   approved.sort((a, b) => String(b.recordId).localeCompare(String(a.recordId))); // newest first, across both departments
@@ -357,7 +372,7 @@ function getDeviationApprovalFormData() {
     approved: approved,
     authOptionsPlastics: getDeviationAuthList_(),
     authOptionsMetals: getDeviationAuthList_('Metals'),
-    canManage: isDeviationManager_(),
+    canApprove: isDeviationManager_(),
   };
 }
 
@@ -406,9 +421,10 @@ function approveDeviation_(recordId, approverName, supervisorName, justification
 }
 function approveDeviation(recordId, approverName, supervisorName, justification, department) { return approveDeviation_(recordId, approverName, supervisorName, justification, department); }
 
-/** Signs off the PFA and qualifies the Run — blocked until the deviation has been approved. */
+/** Signs off the PFA and qualifies the Run — blocked until the deviation has been approved, but
+ *  NOT locked to the QA Manager: once approved, this is QC's step to complete (see the comment
+ *  above isDeviationManager_). */
 function signPfa_(recordId, qcName, adjustmentsText, department) {
-  if (!isDeviationManager_()) throw new Error('Only the QA Manager can sign off a PFA.');
   const detail = getDeviationRecordDetail_(recordId, department);
   if (!detail) throw new Error('Verification record not found: ' + recordId);
   if (!detail.deviationApprovedBy) throw new Error('This deviation has not been approved yet — the PFA cannot be signed off until it is.');
