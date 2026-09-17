@@ -44,41 +44,7 @@ function getPlasticsLineDashboardData() {
     return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a.line).localeCompare(String(b.line));
   });
 
-  return { cards: cards, changeovers: detectChangeovers_(runs), generatedAt: dateToStr_(new Date()) };
-}
-
-/** Flags an Inj. Machine as mid-changeover purely from what's already on the Active Runs list —
- *  no separate downtime/idle tracking exists (or is wanted here, per Izzy), so this only fires
- *  off an actual Item/Mold difference between two Active Runs left open on the same machine, which
- *  is exactly the state a QC leaves behind when they've started the next job but haven't yet
- *  clicked Stop Run on the old one. A machine sitting idle between runs, or just re-adding the
- *  same Item/Mold, never has two differing Active Runs at once, so it never trips this. */
-function detectChangeovers_(runs) {
-  const byLine = {};
-  runs.forEach(r => {
-    const line = String(r.line || '').trim();
-    if (!line) return;
-    (byLine[line] = byLine[line] || []).push(r);
-  });
-
-  const changeovers = [];
-  Object.keys(byLine).forEach(line => {
-    const lineRuns = byLine[line];
-    if (lineRuns.length < 2) return;
-    lineRuns.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    const oldest = lineRuns[0], newest = lineRuns[lineRuns.length - 1];
-    const itemChanged = String(oldest.item || '').trim() !== String(newest.item || '').trim();
-    const moldChanged = String(oldest.moldId || '').trim() !== String(newest.moldId || '').trim();
-    if (!itemChanged && !moldChanged) return;
-    changeovers.push({
-      line: line,
-      oldRunId: oldest.runId, newRunId: newest.runId,
-      oldItem: oldest.item, newItem: newest.item,
-      oldMoldId: oldest.moldId, newMoldId: newest.moldId,
-      itemChanged: itemChanged, moldChanged: moldChanged,
-    });
-  });
-  return changeovers;
+  return { cards: cards, generatedAt: dateToStr_(new Date()) };
 }
 
 /** One pass over the Start-Up Verification log, grouped into records (by Verification Record
