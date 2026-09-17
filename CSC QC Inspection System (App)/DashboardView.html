@@ -105,10 +105,12 @@
   /* Caution-tape changeover reminder — a fixed footer pinned to the bottom of the screen so it's
      visible at all times without scrolling, not tied to any Run data (per Izzy: it's a static
      reminder, not a detector — "stop the current job when the Item #/Mold changes, not for idle
-     time or other downtime" is instructions for the QC reading it, not a condition to compute). */
-  .rd-changeover-banner { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; }
+     time or other downtime" is instructions for the QC reading it, not a condition to compute).
+     left: 220px matches #sidenav's width (Stylesheet.html) so the banner spans only the Run
+     Dashboard's own content area, not underneath the sidenav. */
+  .rd-changeover-banner { position: fixed; left: 220px; right: 0; bottom: 0; z-index: 50; }
   .rd-changeover-stripe { height: 8px; background: repeating-linear-gradient(45deg, #111 0 14px, #fbbf24 14px 28px); }
-  .rd-changeover-body { background: #fbbf24; color: #111; padding: 9px 20px; text-align: center; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 14px; letter-spacing: 0.02em; }
+  .rd-changeover-body { background: #fbbf24; color: #111; padding: 9px 20px; text-align: center; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 19px; letter-spacing: 0.02em; }
   .rd-board { padding-bottom: 70px; }
 </style>
 
