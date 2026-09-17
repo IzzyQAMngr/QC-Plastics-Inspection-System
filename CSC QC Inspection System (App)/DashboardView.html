@@ -101,6 +101,18 @@
   .rd-empty { background: var(--rd-panel); backdrop-filter: blur(10px); border: 1px dashed var(--rd-line); padding: 30px; text-align: center; color: var(--rd-dim); font-size: 13px; }
   .rd-grid-sub { font-size: 11.5px; color: var(--rd-dim); margin: -8px 0 12px; }
   .rd-soon-pill { display: inline-block; font-family: "Barlow Condensed", sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--rd-dim); border: 1px solid var(--rd-line); background: rgba(255,255,255,0.03); padding: 3px 9px; margin-bottom: 10px; }
+
+  /* Caution-tape changeover banner — deliberately loud/low-tech (Izzy just wants something
+     simple flagging a machine mid-changeover, not a redesign). Only ever shown when
+     detectChangeovers_ (Dashboard.gs) finds two Active Runs left open on the same Inj. Machine
+     with a different Item or Mold; never fires for idle time or any other downtime reason,
+     since there's no such state to compare against. */
+  .rd-changeover-banner { margin-top: 26px; }
+  .rd-changeover-stripe { height: 10px; background: repeating-linear-gradient(45deg, #111 0 14px, #fbbf24 14px 28px); }
+  .rd-changeover-body { background: #fbbf24; color: #111; padding: 12px 18px; }
+  .rd-changeover-row { display: flex; align-items: baseline; gap: 8px; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 14px; letter-spacing: 0.02em; padding: 3px 0; }
+  .rd-changeover-row + .rd-changeover-row { border-top: 1px dashed rgba(17,17,17,0.35); }
+  .rd-changeover-row b { font-size: 15px; }
 </style>
 
 <div class="rd-board">
@@ -155,6 +167,12 @@
   <div class="rd-empty">
     <span class="rd-soon-pill">COMING SOON</span><br>
     This board isn&rsquo;t wired up yet &mdash; it&rsquo;s waiting on a Print Decoration log and Line setup.
+  </div>
+
+  <div class="rd-changeover-banner" id="rdChangeoverBanner" style="display:none;">
+    <div class="rd-changeover-stripe"></div>
+    <div class="rd-changeover-body" id="rdChangeoverBody"></div>
+    <div class="rd-changeover-stripe"></div>
   </div>
 </div>
 
@@ -383,6 +401,26 @@
         if (card) rdpOpenForCard_(card);
       });
     });
+
+    rdRenderChangeoverBanner_(data.changeovers || []);
+  }
+
+  /** Caution-tape banner at the bottom of the board, listing every Inj. Machine that still has
+   *  its old Run sitting Active alongside the new one it changed over to (see detectChangeovers_
+   *  in Dashboard.gs) — a nudge to go click Stop Run on the old one, not an automatic stop. */
+  function rdChangeoverRowHtml_(c) {
+    var what = c.itemChanged
+      ? ('Item ' + esc(c.oldItem || '—') + ' → ' + esc(c.newItem || '—'))
+      : ('Mold ' + esc(c.oldMoldId || '—') + ' → ' + esc(c.newMoldId || '—'));
+    return '<div class="rd-changeover-row">&#9888;&#65039; <b>CHANGEOVER &mdash; Inj. Machine ' + esc(c.line) + ':</b> ' +
+      what + ' &mdash; stop ' + esc(c.oldRunId) + ' when ready.</div>';
+  }
+
+  function rdRenderChangeoverBanner_(changeovers) {
+    var banner = document.getElementById('rdChangeoverBanner');
+    if (!changeovers.length) { banner.style.display = 'none'; return; }
+    document.getElementById('rdChangeoverBody').innerHTML = changeovers.map(rdChangeoverRowHtml_).join('');
+    banner.style.display = '';
   }
 
   // ================= Click-a-card side panel (stop/add Run without leaving the dashboard) =================
